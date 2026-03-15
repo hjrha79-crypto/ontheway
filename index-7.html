@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>OnTheWay</title>
+<meta name="theme-color" content="#00E5A0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OnTheWay">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#0D0F14;color:#F0F2F7;font-family:'Noto Sans KR',sans-serif;min-height:100vh}
+header{position:sticky;top:0;z-index:100;background:rgba(13,15,20,.95);border-bottom:1px solid #2A2F3E;padding:14px 20px;display:flex;align-items:center;justify-content:space-between}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;color:#00E5A0}
+.logo span{color:#F0F2F7}
+.badge{font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;background:#1E2230;color:#6B7280;border:1px solid #2A2F3E}
+.badge.on{background:rgba(0,229,160,.1);color:#00E5A0;border-color:#00E5A0}
+main{max-width:480px;margin:0 auto;padding:20px 16px 120px}
+.lbl{font-size:11px;font-weight:700;letter-spacing:1.5px;color:#6B7280;text-transform:uppercase;margin:24px 0 10px}
+
+/* 음성 입력 버튼 영역 */
+.voice-area{background:#161920;border:1px solid #2A2F3E;border-radius:16px;padding:16px;margin-bottom:6px}
+.voice-title{font-size:12px;color:#6B7280;font-weight:600;margin-bottom:10px}
+.voice-btn{width:100%;background:#1E2230;border:2px solid #2A2F3E;border-radius:12px;padding:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;font-family:'Noto Sans KR',sans-serif;font-size:15px;font-weight:700;color:#F0F2F7;transition:all .2s}
+.voice-btn:active{transform:scale(.97)}
+.voice-btn.listening{border-color:#FF6B35;background:rgba(255,107,53,.1);animation:pulse 1s infinite}
+.voice-btn.processing{border-color:#00E5A0;background:rgba(0,229,160,.08)}
+.mic-ico{font-size:24px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.voice-result{margin-top:10px;background:#1E2230;border-radius:10px;padding:10px 12px;font-size:13px;color:#6B7280;min-height:36px;line-height:1.5;display:none}
+.voice-result.show{display:block}
+.voice-result b{color:#00E5A0}
+
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.scard{background:#161920;border:1px solid #2A2F3E;border-radius:12px;padding:12px 10px;display:flex;flex-direction:column;gap:4px;cursor:pointer}
+.scard.on{border-color:#00E5A0}
+.scard .ico{font-size:18px;margin-bottom:2px}
+.scard .slbl{font-size:10px;color:#6B7280;font-weight:500}
+.scard .sval{font-size:13px;font-weight:700;color:#F0F2F7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panel{background:#161920;border:1px solid #2A2F3E;border-radius:14px;padding:14px;margin-top:8px;display:none;flex-direction:column;gap:10px}
+.panel.open{display:flex}
+.panel input,.panel select{background:#1E2230;border:1px solid #2A2F3E;border-radius:10px;color:#F0F2F7;font-family:'Noto Sans KR',sans-serif;font-size:15px;padding:12px 14px;width:100%;outline:none}
+.panel input:focus,.panel select:focus{border-color:#00E5A0}
+.panel input::placeholder{color:#6B7280}
+.panel select option{background:#1E2230}
+.ok-btn{background:#00E5A0;color:#000;border:none;border-radius:10px;font-family:'Noto Sans KR',sans-serif;font-size:14px;font-weight:700;padding:12px;cursor:pointer;width:100%}
+.box{background:#161920;border:1px solid #2A2F3E;border-radius:16px;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid #2A2F3E}
+.tab-btn{flex:1;padding:12px;text-align:center;font-size:13px;font-weight:700;color:#6B7280;background:transparent;border:none;cursor:pointer;font-family:'Noto Sans KR',sans-serif}
+.tab-btn.on{color:#00E5A0;background:rgba(0,229,160,.06)}
+.tab-pane{display:none;padding:14px}
+.tab-pane.on{display:block}
+.col-head{display:grid;grid-template-columns:1fr 1fr 80px 44px;gap:6px;margin-bottom:6px}
+.col-head span{font-size:10px;color:#6B7280;font-weight:600}
+.call-area{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.call-row{display:grid;grid-template-columns:1fr 1fr 80px 44px;gap:6px}
+.call-row input{background:#1E2230;border:1px solid #2A2F3E;border-radius:8px;color:#F0F2F7;font-family:'Noto Sans KR',sans-serif;font-size:13px;padding:10px;outline:none;width:100%}
+.call-row input:focus{border-color:#00E5A0}
+.call-row input::placeholder{color:#6B7280;font-size:11px}
+.del{background:#1E2230;border:1px solid #2A2F3E;border-radius:8px;color:#6B7280;font-size:14px;cursor:pointer;width:100%;min-height:40px}
+.add-btn{background:transparent;border:1px dashed #2A2F3E;border-radius:8px;color:#6B7280;font-size:13px;font-weight:600;padding:10px;cursor:pointer;width:100%;font-family:'Noto Sans KR',sans-serif}
+.up-zone{border:2px dashed #2A2F3E;border-radius:12px;padding:32px 20px;text-align:center;cursor:pointer;position:relative}
+.up-zone .ico2{font-size:36px;margin-bottom:10px}
+.up-zone .txt{font-size:14px;color:#6B7280;line-height:1.6}
+.up-zone .txt b{color:#F0F2F7}
+#fileInput{position:absolute;inset:0;opacity:0;cursor:pointer}
+.prev-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.prev-item{aspect-ratio:1;border-radius:8px;overflow:hidden;position:relative;background:#1E2230}
+.prev-item img{width:100%;height:100%;object-fit:cover}
+.prev-item button{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.7);border:none;border-radius:50%;color:#fff;font-size:11px;width:22px;height:22px;cursor:pointer}
+.go-btn{width:100%;margin-top:14px;background:#00E5A0;color:#000;border:none;border-radius:14px;font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;padding:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px}
+.go-btn:disabled{background:#2A2F3E;color:#6B7280;cursor:not-allowed}
+.spinner{width:20px;height:20px;border:3px solid rgba(0,0,0,.3);border-top-color:#000;border-radius:50%;animation:spin .7s linear infinite;display:none}
+.go-btn.loading .spinner{display:block}
+.go-btn.loading .btn-txt{display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.result-sec{margin-top:28px}
+.result-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.result-title{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:#00E5A0}
+.mode-tag{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(0,229,160,.1);color:#00E5A0;border:1px solid rgba(0,229,160,.3)}
+.rcard{background:#161920;border:1px solid #2A2F3E;border-radius:16px;padding:16px;margin-bottom:10px;position:relative;overflow:hidden}
+.rcard::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;background:#00E5A0}
+.rcard.r2::before{background:#6B7280}
+.rcard.r3::before{background:#3A3F50}
+.rcard.fb::before{background:#FF6B35}
+.rank-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.rnum{font-family:'Bebas Neue',sans-serif;font-size:28px;line-height:1;color:#00E5A0}
+.rcard.r2 .rnum{color:#6B7280}
+.rcard.r3 .rnum{color:#4A4F60}
+.rlbl{font-size:11px;color:#6B7280;font-weight:600}
+.tags{display:flex;gap:5px;margin-left:auto}
+.tag{font-size:11px;padding:3px 8px;border-radius:20px;font-weight:700;background:rgba(255,107,53,.15);color:#FF6B35}
+.tag.warn{background:rgba(255,184,0,.15);color:#FFB800}
+.route{font-size:18px;font-weight:900;color:#F0F2F7;margin-bottom:6px}
+.arrow{color:#6B7280;margin:0 4px}
+.fare{font-size:22px;font-weight:900;color:#00E5A0;margin-bottom:8px}
+.rcard.r2 .fare{color:#F0F2F7}
+.rcard.r3 .fare{color:#6B7280}
+.rsn{font-size:12px;color:#6B7280;background:#1E2230;border-radius:8px;padding:8px 10px;line-height:1.5}
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);background:#1E2230;border:1px solid #2A2F3E;border-radius:30px;padding:10px 20px;font-size:13px;font-weight:600;color:#F0F2F7;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;z-index:999}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">On<span>The</span>Way</div>
+  <div class="badge" id="badge">대기중</div>
+</header>
+<main>
+
+  <!-- 음성 입력 -->
+  <div class="lbl">음성으로 한 번에 입력</div>
+  <div class="voice-area">
+    <div class="voice-title">마이크를 누르고 말해주세요 &nbsp;&#x2192;&nbsp; "강남역에서 송파 방향으로 30분 뒤 이동"</div>
+    <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">
+      <span class="mic-ico">&#127908;</span>
+      <span id="voiceBtnTxt">마이크 누르고 말하기</span>
+    </button>
+    <div class="voice-result" id="voiceResult"></div>
+  </div>
+
+  <!-- 현재 상태 -->
+  <div class="lbl">현재 상태</div>
+  <div class="row3">
+    <div class="scard" id="cLoc" onclick="togglePanel('loc')">
+      <div class="ico">&#128205;</div>
+      <div class="slbl">현재 위치</div>
+      <div class="sval" id="vLoc">미입력</div>
+    </div>
+    <div class="scard" id="cDir" onclick="togglePanel('dir')">
+      <div class="ico">&#129517;</div>
+      <div class="slbl">방향</div>
+      <div class="sval" id="vDir">미입력</div>
+    </div>
+    <div class="scard" id="cTime" onclick="togglePanel('time')">
+      <div class="ico">&#9201;</div>
+      <div class="slbl">가능 시간</div>
+      <div class="sval" id="vTime">미입력</div>
+    </div>
+  </div>
+  <div class="panel" id="pLoc">
+    <input type="text" id="iLoc" placeholder="예: 강남역, 서초구">
+    <button class="ok-btn" onclick="save('loc')">확인</button>
+  </div>
+  <div class="panel" id="pDir">
+    <input type="text" id="iDir" placeholder="예: 송파 방향, 강북 방향">
+    <button class="ok-btn" onclick="save('dir')">확인</button>
+  </div>
+  <div class="panel" id="pTime">
+    <select id="iTime">
+      <option value="">가능 시간 선택</option>
+      <option value="제한 없음">제한 없음</option>
+      <option value="10분 이상">10분 이상</option>
+      <option value="20분 이상">20분 이상</option>
+      <option value="30분 이상">30분 이상</option>
+      <option value="1시간 이상">1시간 이상</option>
+    </select>
+    <button class="ok-btn" onclick="save('time')">확인</button>
+  </div>
+
+  <!-- 콜 리스트 -->
+  <div class="lbl">콜 리스트 입력</div>
+  <div class="box">
+    <div class="tabs">
+      <button class="tab-btn on" id="tabText" onclick="switchTab('text')">직접 입력</button>
+      <button class="tab-btn" id="tabImg" onclick="switchTab('img')">화면 캡처</button>
+    </div>
+    <div class="tab-pane on" id="pText">
+      <div class="col-head">
+        <span>출발지</span><span>도착지</span><span>금액(원)</span><span></span>
+      </div>
+      <div class="call-area" id="callArea"></div>
+      <button class="add-btn" onclick="addRow()">+ 콜 추가</button>
+    </div>
+    <div class="tab-pane" id="pImg">
+      <div class="up-zone" id="upZone">
+        <input type="file" id="fileInput" accept="image/*" multiple onchange="onFiles(this.files)">
+        <div class="ico2">&#128248;</div>
+        <div class="txt"><b>캡처 이미지 업로드</b><br>콜 리스트 화면을 2~3장 올려주세요<br><br>&#128161; 캡처 직후 공유 버튼 &gt; OnTheWay 선택하면 더 빠릅니다</div>
+      </div>
+      <div class="prev-grid" id="prevGrid"></div>
+    </div>
+  </div>
+
+  <button class="go-btn" id="goBtn" onclick="recommend()">
+    <div class="spinner"></div>
+    <span class="btn-txt">TOP 3 추천받기</span>
+  </button>
+
+  <div class="result-sec" id="resultSec" style="display:none">
+    <div class="result-head">
+      <div class="result-title">추천 결과</div>
+      <div class="mode-tag" id="modeTag"></div>
+    </div>
+    <div id="cards"></div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+var S = { loc:'', dir:'', time:'', imgs:[], tab:'text' };
+var recog = null;
+var isListening = false;
+
+window.onload = function(){ addRow(); addRow(); addRow(); };
+
+// ── 음성 입력 ──────────────────────────────────────────────────────
+function toggleVoice() {
+  if (isListening) {
+    stopVoice();
+  } else {
+    startVoice();
+  }
+}
+
+function startVoice() {
+  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    toast('이 브라우저는 음성 인식을 지원하지 않습니다. Chrome을 사용해주세요.');
+    return;
+  }
+
+  recog = new SpeechRecognition();
+  recog.lang = 'ko-KR';
+  recog.continuous = false;
+  recog.interimResults = true;
+
+  recog.onstart = function() {
+    isListening = true;
+    var btn = document.getElementById('voiceBtn');
+    btn.classList.add('listening');
+    document.getElementById('voiceBtnTxt').textContent = '듣는 중... (다시 누르면 중지)';
+    var vr = document.getElementById('voiceResult');
+    vr.textContent = '말씀해주세요...';
+    vr.classList.add('show');
+  };
+
+  recog.onresult = function(e) {
+    var txt = '';
+    for (var i=0; i<e.results.length; i++) txt += e.results[i][0].transcript;
+    document.getElementById('voiceResult').textContent = txt;
+    if (e.results[e.results.length-1].isFinal) {
+      stopVoice();
+      parseVoice(txt);
+    }
+  };
+
+  recog.onerror = function(e) {
+    stopVoice();
+    if (e.error === 'not-allowed') toast('마이크 권한을 허용해주세요.');
+    else toast('음성 인식 오류: ' + e.error);
+  };
+
+  recog.onend = function() {
+    stopVoice();
+  };
+
+  recog.start();
+}
+
+function stopVoice() {
+  isListening = false;
+  if (recog) { try { recog.stop(); } catch(e){} }
+  var btn = document.getElementById('voiceBtn');
+  btn.classList.remove('listening');
+  btn.classList.add('processing');
+  document.getElementById('voiceBtnTxt').textContent = '분석 중...';
+}
+
+async function parseVoice(txt) {
+  if (!txt || txt.trim() === '') {
+    resetVoiceBtn();
+    toast('음성이 인식되지 않았습니다. 다시 시도해주세요.');
+    return;
+  }
+
+  var vr = document.getElementById('voiceResult');
+  vr.innerHTML = '인식된 내용: <b>' + txt + '</b><br>분석 중...';
+  vr.classList.add('show');
+
+  try {
+    var res = await fetch('/api/recommend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{
+          role: 'user',
+          content: '다음 음성 입력에서 현재 위치, 이동 방향, 가능 시간을 추출해줘.\n\n음성 입력: "' + txt + '"\n\n반드시 아래 JSON 형식으로만 반환해. 다른 텍스트 없이.\n{"loc":"현재위치(없으면 빈 문자열)","dir":"이동방향(없으면 빈 문자열)","time":"가능시간(없으면 빈 문자열)"}\n\n예시:\n입력: "강남역에서 송파 방향으로 30분 뒤 이동" -> {"loc":"강남역","dir":"송파 방향","time":"30분 이상"}\n입력: "지금 서초동이고 잠실 방향" -> {"loc":"서초동","dir":"잠실 방향","time":""}\n입력: "한 시간 여유 있어" -> {"loc":"","dir":"","time":"1시간 이상"}\n\n가능 시간은 반드시 다음 중 하나로 변환: 제한 없음, 10분 이상, 20분 이상, 30분 이상, 1시간 이상'
+        }]
+      })
+    });
+
+    var data = await res.json();
+    var raw = '';
+    if (data.content) for (var k=0; k<data.content.length; k++) if(data.content[k].type==='text'){ raw=data.content[k].text; break; }
+
+    var parsed = JSON.parse(raw.replace(/```json/g,'').replace(/```/g,'').trim());
+    var applied = [];
+
+    if (parsed.loc) {
+      S.loc = parsed.loc;
+      document.getElementById('vLoc').textContent = parsed.loc;
+      document.getElementById('iLoc').value = parsed.loc;
+      document.getElementById('cLoc').classList.add('on');
+      applied.push('위치: ' + parsed.loc);
+    }
+    if (parsed.dir) {
+      S.dir = parsed.dir;
+      document.getElementById('vDir').textContent = parsed.dir;
+      document.getElementById('iDir').value = parsed.dir;
+      document.getElementById('cDir').classList.add('on');
+      applied.push('방향: ' + parsed.dir);
+    }
+    if (parsed.time) {
+      S.time = parsed.time;
+      document.getElementById('vTime').textContent = parsed.time;
+      var sel = document.getElementById('iTime');
+      for (var i=0; i<sel.options.length; i++) {
+        if (sel.options[i].value === parsed.time) { sel.selectedIndex = i; break; }
+      }
+      document.getElementById('cTime').classList.add('on');
+      applied.push('시간: ' + parsed.time);
+    }
+
+    updateBadge();
+
+    if (applied.length > 0) {
+      vr.innerHTML = '&#10003; 자동 입력 완료<br>' + applied.join(' &nbsp;|&nbsp; ');
+    } else {
+      vr.innerHTML = '&#x26A0; 위치/방향/시간을 찾지 못했습니다.<br>다시 말씀해주세요.';
+    }
+
+  } catch(err) {
+    vr.innerHTML = '&#x26A0; 분석 실패. 카드를 직접 탭해서 입력해주세요.';
+  }
+
+  resetVoiceBtn();
+}
+
+function resetVoiceBtn() {
+  var btn = document.getElementById('voiceBtn');
+  btn.classList.remove('listening', 'processing');
+  document.getElementById('voiceBtnTxt').textContent = '마이크 누르고 말하기';
+}
+
+// ── 패널 ──────────────────────────────────────────────────────────
+function togglePanel(t) {
+  var map = { loc:'pLoc', dir:'pDir', time:'pTime' };
+  var keys = Object.keys(map);
+  for (var i=0; i<keys.length; i++) {
+    var el = document.getElementById(map[keys[i]]);
+    if (keys[i] === t) {
+      var isOpen = el.classList.contains('open');
+      el.classList.toggle('open');
+      if (!isOpen) { var f = el.querySelector('input,select'); if(f) setTimeout(function(x){ return function(){ x.focus(); }; }(f), 50); }
+    } else { el.classList.remove('open'); }
+  }
+}
+
+function save(t) {
+  var imap = { loc:'iLoc', dir:'iDir', time:'iTime' };
+  var v = document.getElementById(imap[t]).value.trim();
+  if (!v) { toast('값을 입력해주세요'); return; }
+  S[t] = v;
+  var c = t.charAt(0).toUpperCase()+t.slice(1);
+  document.getElementById('v'+c).textContent = v;
+  document.getElementById('c'+c).classList.add('on');
+  document.getElementById('p'+c).classList.remove('open');
+  updateBadge();
+}
+
+function updateBadge() {
+  var b = document.getElementById('badge');
+  var n = (S.loc?1:0)+(S.dir?1:0)+(S.time?1:0);
+  if (n===0){ b.textContent='대기중'; b.classList.remove('on'); }
+  else if (n<3){ b.textContent=n+'/3 입력됨'; b.classList.remove('on'); }
+  else { b.textContent='준비완료'; b.classList.add('on'); }
+}
+
+// ── 탭 ──────────────────────────────────────────────────────────
+function switchTab(t) {
+  S.tab = t;
+  document.getElementById('tabText').classList.toggle('on', t==='text');
+  document.getElementById('tabImg').classList.toggle('on', t==='img');
+  document.getElementById('pText').classList.toggle('on', t==='text');
+  document.getElementById('pImg').classList.toggle('on', t==='img');
+}
+
+// ── 콜 행 ──────────────────────────────────────────────────────────
+function addRow() {
+  var area = document.getElementById('callArea');
+  var row = document.createElement('div');
+  row.className = 'call-row';
+  row.innerHTML = '<input type="text" placeholder="출발지"><input type="text" placeholder="도착지"><input type="number" placeholder="금액"><button class="del" onclick="this.parentNode.remove()">X</button>';
+  area.appendChild(row);
+}
+
+function getCalls() {
+  var rows = document.querySelectorAll('.call-row');
+  var out = [];
+  for (var i=0; i<rows.length; i++) {
+    var ins = rows[i].querySelectorAll('input');
+    if (ins[0].value.trim()||ins[1].value.trim()) out.push({ from:ins[0].value.trim(), to:ins[1].value.trim(), fare:ins[2].value.trim() });
+  }
+  return out;
+}
+
+// ── 이미지 ──────────────────────────────────────────────────────────
+function onFiles(files) {
+  var grid = document.getElementById('prevGrid');
+  for (var i=0; i<files.length; i++) {
+    if (S.imgs.length>=5){ toast('최대 5장까지 가능합니다'); break; }
+    (function(file){
+      var reader = new FileReader();
+      var id = Date.now()+Math.random();
+      reader.onload = function(e){
+        S.imgs.push({ id:id, data:e.target.result, file:file });
+        var item = document.createElement('div');
+        item.className = 'prev-item'; item.id = 'img_'+id;
+        item.innerHTML = '<img src="'+e.target.result+'"><button onclick="rmImg('+id+')">X</button>';
+        grid.appendChild(item);
+      };
+      reader.readAsDataURL(file);
+    })(files[i]);
+  }
+}
+
+function rmImg(id) {
+  S.imgs = S.imgs.filter(function(x){ return x.id!==id; });
+  var el = document.getElementById('img_'+id);
+  if (el) el.remove();
+}
+
+// ── 추천 ──────────────────────────────────────────────────────────
+async function recommend() {
+  var btn = document.getElementById('goBtn');
+  btn.classList.add('loading'); btn.disabled = true;
+  try {
+    var prompt = makePrompt();
+    var messages;
+    if (S.tab==='img' && S.imgs.length>0) {
+      var content = [{ type:'text', text:prompt }];
+      for (var i=0; i<Math.min(S.imgs.length,4); i++)
+        content.push({ type:'image', source:{ type:'base64', media_type:S.imgs[i].file.type||'image/jpeg', data:S.imgs[i].data.split(',')[1] }});
+      messages = [{ role:'user', content:content }];
+    } else {
+      var calls = getCalls();
+      if (!calls.length){ toast('콜 정보를 최소 1개 입력해주세요'); return; }
+      var ct = '';
+      for (var j=0; j<calls.length; j++) ct += (j+1)+'. '+calls[j].from+' -> '+calls[j].to+' / '+(calls[j].fare||'미기재')+'원\n';
+      messages = [{ role:'user', content:prompt+'\n\n[콜 리스트]\n'+ct }];
+    }
+    var res = await fetch('/api/recommend', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ messages:messages }) });
+    if (!res.ok){ var e=await res.json(); throw new Error(e.error||'서버 오류 '+res.status); }
+    var data = await res.json();
+    var txt = '';
+    if (data.content) for (var k=0; k<data.content.length; k++) if (data.content[k].type==='text'){ txt=data.content[k].text; break; }
+    showResult(txt);
+  } catch(err){ toast('오류: '+err.message); }
+  finally { btn.classList.remove('loading'); btn.disabled=false; }
+}
+
+function makePrompt() {
+  var note = S.tab==='img' ? '첨부 이미지에서 콜 목록을 읽고 위 규칙으로 추천하라.' : '';
+  return '당신은 OnTheWay v2 추천 알고리즘입니다.\n\n현재 기사 상태\n현재 위치: '+(S.loc||'미입력')+'\n이동 방향: '+(S.dir||'미입력')+'\n가능 시간: '+(S.time||'미입력')+'\n\n방향 판단(최우선): 서울 지리 기반으로 각 콜이 기사 이동 방향과 얼마나 맞는지 판단.\n방향 점수 = 픽업방향(0~5) + 도착방향(0~5) = 최대 10점\n완전 일치 5점, 인접 3점, 무관 2점, 반대 1점(제거)\n\n예시(송파 방향): 강남->가락동 10점, 서초->방이동 9점, 역삼->마포 2점(제거), 강남->홍대 2점(제거)\n\n추천 단계:\n1. 콜 5개이상=Standard(방향70+효율30), 4개이하=Sparse(방향50+효율50)\n2. 방향점수 2이하 제거, Standard 10000원미만 제거, Sparse 7000원미만 제거\n3. 효율=금액높고 거리짧을수록 높음\n4. 종합스코어 상위 3개\n\n출력은 JSON만, 다른 텍스트 없이:\n{"mode":"Standard","results":[{"rank":1,"from":"출발","to":"도착","fare":"숫자","tags":[],"reason":"이유"},{"rank":2,"from":"출발","to":"도착","fare":"숫자","tags":[],"reason":"이유"},{"rank":3,"from":"출발","to":"도착","fare":"숫자","tags":[],"reason":"이유"}],"notice":""}\ntags: fallback warn sparse\n'+note;
+}
+
+// ── 결과 렌더링 ──────────────────────────────────────────────────────────
+function showResult(txt) {
+  var parsed;
+  try {
+    // 백틱 코드블록 제거 후 JSON 추출
+    var clean = txt;
+    clean = clean.replace(/`{3}json/gi, '').replace(/`{3}/g, '').trim();
+    // { } 사이 JSON만 추출
+    var start = clean.indexOf('{');
+    var end = clean.lastIndexOf('}');
+    if (start !== -1 && end !== -1) clean = clean.substring(start, end+1);
+    parsed = JSON.parse(clean);
+  }
+  catch(e) {
+    document.getElementById('resultSec').style.display='block';
+    document.getElementById('modeTag').textContent='';
+    document.getElementById('cards').innerHTML='<div class="rcard"><div style="font-size:14px;line-height:1.8;white-space:pre-wrap">'+txt+'</div></div>';
+    document.getElementById('resultSec').scrollIntoView({behavior:'smooth',block:'start'});
+    return;
+  }
+  document.getElementById('resultSec').style.display='block';
+  document.getElementById('modeTag').textContent=parsed.mode||'';
+  var rc=['','','r2','r3'], rl=['','1위 추천','2순위','3순위'], html='';
+  var results=parsed.results||[];
+  for (var i=0; i<results.length; i++) {
+    var r=results[i], tags=r.tags||[];
+    var cls='rcard '+(rc[r.rank]||'');
+    if (tags.indexOf('fallback')>-1) cls+=' fb';
+    var th='';
+    for (var j=0; j<tags.length; j++) {
+      var tmap={fallback:['','fallback'],warn:['warn','주의'],sparse:['','콜부족']};
+      var tm=tmap[tags[j]]||['',tags[j]];
+      th+='<span class="tag '+tm[0]+'">'+tm[1]+'</span>';
+    }
+    var fn=parseInt(String(r.fare).replace(/[^0-9]/g,''));
+    html+='<div class="'+cls+'"><div class="rank-row"><div class="rnum">'+r.rank+'</div><div class="rlbl">'+(rl[r.rank]||'')+'</div><div class="tags">'+th+'</div></div><div class="route">'+(r.from||'?')+'<span class="arrow">-&gt;</span>'+(r.to||'?')+'</div><div class="fare">'+(fn?fn.toLocaleString()+'원':r.fare)+'</div><div class="rsn">'+(r.reason||'')+'</div></div>';
+  }
+  if (parsed.notice) html+='<div style="font-size:12px;color:#6B7280;text-align:center;padding:8px">'+parsed.notice+'</div>';
+  if (!html) html='<div style="text-align:center;padding:40px;color:#6B7280;font-size:14px">추천 가능한 콜이 없습니다.</div>';
+  document.getElementById('cards').innerHTML=html;
+  document.getElementById('resultSec').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function toast(msg) {
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('on');
+  setTimeout(function(){ t.classList.remove('on'); },2500);
+}
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').then(function(reg) {
+    console.log('SW registered');
+  }).catch(function(e) {
+    console.log('SW error', e);
+  });
+
+  // 공유로 열린 경우 이미지 수신
+  navigator.serviceWorker.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'SHARE_IMAGE') {
+      var fileDataArray = e.data.files;
+      if (fileDataArray && fileDataArray.length > 0) {
+        // ArrayBuffer를 File 객체로 변환
+        var fileObjs = fileDataArray.map(function(fd) {
+          var blob = new Blob([fd.data], { type: fd.type || 'image/jpeg' });
+          return new File([blob], fd.name || 'shared.jpg', { type: fd.type || 'image/jpeg' });
+        });
+        // 캡처 탭으로 자동 전환
+        switchTab('img');
+        setTimeout(function() {
+          onFiles(fileObjs);
+          document.getElementById('upZone').scrollIntoView({behavior:'smooth'});
+        }, 500);
+      }
+    }
+  });
+}
+
+// URL에 ?shared=1 파라미터가 있으면 캡처 탭 활성화
+window.addEventListener('load', function() {
+  if (window.location.search.includes('shared=1')) {
+    switchTab('img');
+  }
+});
+</script>
+</body>
+</html>
