@@ -1,9 +1,11 @@
 package com.vita.ontheway
 
 import android.accessibilityservice.AccessibilityService
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import java.util.Locale
 
 class OnTheWayService : AccessibilityService() {
 
@@ -25,7 +27,10 @@ class OnTheWayService : AccessibilityService() {
         // 감지 대상 패키지
         private const val PKG_FLEXER = "com.kakaomobility.flexer"
         private const val PKG_DRIVER = "com.kakao.taxi.driver"
-        val TARGET_PACKAGES = setOf(PKG_FLEXER, PKG_DRIVER)
+        private const val PKG_COUPANG = "com.coupang.mobile.eats.courier"
+        private const val PKG_BAEMIN = "com.woowahan.bros"
+        val TARGET_PACKAGES = setOf(PKG_FLEXER, PKG_DRIVER, PKG_COUPANG, PKG_BAEMIN)
+        val DELIVERY_PACKAGES = setOf(PKG_COUPANG, PKG_BAEMIN)
 
         // UI 텍스트 필터
         val IGNORE_TEXTS = setOf(
@@ -52,11 +57,21 @@ class OnTheWayService : AccessibilityService() {
     private val callDetectedAt = mutableMapOf<String, Long>()
     private var lastSpeakTime: Long = 0
 
+    // 배달 필터용 TTS
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
         if (pkg !in TARGET_PACKAGES) return
         val root = rootInActiveWindow ?: return
+
+        // ── 배달 플랫폼 분기 (쿠팡이츠/배민커넥트) ──
+        if (pkg in DELIVERY_PACKAGES) {
+            handleDeliveryPlatform(root, pkg)
+            return
+        }
 
         val isDriverApp = (pkg == PKG_DRIVER)
 
@@ -330,9 +345,90 @@ class OnTheWayService : AccessibilityService() {
         }
     }
 
+    // ── 배달 플랫폼 처리 (쿠팡이츠/배민커넥트) ─────────
+    private fun handleDeliveryPlatform(root: AccessibilityNodeInfo, pkg: String) {
+        val texts = mutableListOf<String>()
+        extractText(root, texts)
+
+        val platformName = if (pkg == PKG_COUPANG) "coupang" else "baemin"
+        Log.d("DeliveryFilter", "[$platformName] rawText: ${texts.joinToString(" | ")}")
+
+        // 파싱
+        val calls = when (pkg) {
+            PKG_COUPANG -> CoupangParser.parse(texts)
+            PKG_BAEMIN  -> BaeminParser.parse(texts)
+            else        -> return
+        }
+
+        if (calls.isEmpty()) {
+            Log.d("DeliveryFilter", "[$platformName] 파싱 실패 - 무음")
+            return
+        }
+
+        val now = System.currentTimeMillis()
+
+        for (call in calls) {
+            val result = CallFilter.judge(call, this)
+            val callKey = "${call.platform}_${call.price}_${call.distance ?: 0}"
+
+            // 안전 조건: 1콜 1음성
+            if (callSpeakHistory.containsKey(callKey)) {
+                Log.d("DeliveryFilter", "중복 콜 건너뜀: $callKey")
+                continue
+            }
+
+            // 안전 조건: 3초 쿨다운
+            if (now - lastSpeakTime < 3000) {
+                Log.d("DeliveryFilter", "쿨다운 중 - 건너뜀")
+                continue
+            }
+
+            // 로그 기록
+            FilterLog.record(this, call, result)
+
+            // REJECT → TTS "넘겨라", ACCEPT → 무음
+            if (result.verdict == CallFilter.Verdict.REJECT) {
+                callSpeakHistory[callKey] = now
+                lastSpeakTime = now
+                speakTts("넘겨라")
+                Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
+            } else {
+                callSpeakHistory[callKey] = now
+                Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 무음")
+            }
+        }
+
+        // 오래된 히스토리 정리
+        val expireTime = now - 60000
+        callSpeakHistory.entries.removeIf { it.value < expireTime }
+        callDetectedAt.entries.removeIf { it.value < expireTime }
+    }
+
+    private fun speakTts(text: String) {
+        if (tts == null || !ttsReady) {
+            Log.w("DeliveryFilter", "TTS 미준비 - 음성 출력 건너뜀")
+            return
+        }
+        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "filter_${System.currentTimeMillis()}")
+    }
+
     override fun onInterrupt() { instance = null }
     override fun onServiceConnected() {
         instance = this
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.KOREAN
+                ttsReady = true
+                Log.d("OnTheWay", "TTS 초기화 완료")
+            }
+        }
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
+    }
+
+    override fun onDestroy() {
+        tts?.shutdown()
+        tts = null
+        ttsReady = false
+        super.onDestroy()
     }
 }

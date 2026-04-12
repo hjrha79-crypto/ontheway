@@ -36,7 +36,8 @@
       "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe\" install:*)",
       "Bash(\"C:/Users/hjrha/AppData/Local/Android/Sdk/platform-tools/adb.exe\" install:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

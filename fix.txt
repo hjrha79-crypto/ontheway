@@ -1,0 +1,50 @@
+OnTheWay v2 — 3플랫폼 똥콜 필터 구현
+
+현재 OnTheWayService.kt의 Accessibility Service에 쿠팡이츠/배민커넥트 감지를 추가한다.
+기존 카카오T 로직은 건드리지 않고, 패키지 분기만 추가.
+
+대상 패키지:
+- com.kakaomobility.flexer (기존)
+- com.coupang.mobile.eats.courier (신규)
+- com.woowahan.bros (신규)
+
+신규 파일:
+1. CoupangParser.kt — 쿠팡이츠 화면 텍스트 파싱
+2. BaeminParser.kt — 배민커넥트 화면 텍스트 파싱
+3. DeliveryCall.kt — 공통 데이터 클래스
+4. CallFilter.kt — 단가/최소금액 필터 로직
+5. FilterLog.kt — 필터 판정 로그 저장
+
+변경 파일:
+- OnTheWayService.kt — TARGET_PACKAGES에 2개 추가 + onAccessibilityEvent에 분기
+- SettingsActivity.kt — 필터 기준값 설정 UI 추가
+- accessibility_service_config.xml — 패키지 추가
+
+파싱 샘플:
+
+[쿠팡이츠]
+① "(조리완료) 3,000원 배달 거리 0.7km" → price=3000, distance=0.7, multi=false
+② "멀티 3,525원 거리할증 지원금 포함 배달 거리 2.1km" → price=3525, distance=2.1, multi=true
+③ "대량 주문, 멀티 11,948원 거리할증 지원금 포함 배달 거리 5.3km" → price=11948, distance=5.3, multi=true
+④ "멀티 8,300원 거래할증 포함 주문 두 건 배달 거리 5.5km" → price=8300, distance=5.5, multi=true
+
+[배민커넥트]
+⑤ "배달료 2,300원" → price=2300, distance=null
+⑥ "배달료 3,360원" → price=3360, distance=null
+
+[카카오T 픽커]
+⑦ "BHC-태전점 픽업 619m 오포자이오브제 배송 2.1km 4,350P" → price=4350, distance=2.1+0.619, multi=false
+
+필터 로직:
+- price < 3000 → REJECT
+- isMulti && price < 5000 → REJECT
+- distance != null && (price/distance) < 2000 → REJECT
+- else → ACCEPT
+
+TTS: REJECT → "넘겨라" / ACCEPT → 무음
+안전조건: 파싱 실패→무음, 1콜1음성, 3초 쿨다운
+
+기본 설정값: 최소배달료=3000, 최소단가=2000원/km, 멀티최소=5000
+SettingsActivity에서 조절 가능하게.
+
+먼저 현재 OnTheWayService.kt 구조를 분석하고 어디에 분기를 넣을지 설계안을 보여줘. 구현은 검토 후 시작.

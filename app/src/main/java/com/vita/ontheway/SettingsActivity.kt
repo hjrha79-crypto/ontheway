@@ -145,6 +145,37 @@ class SettingsActivity : AppCompatActivity() {
         vehicleCard.addView(vehicleRow)
         root.addView(vehicleCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
+        // ─── 배달 필터 설정 섹션 ───
+        root.addView(sectionTitle("배달 필터 (쿠팡이츠/배민커넥트)"))
+        val filterCard = card()
+
+        val minPriceInput = filterInput(filterCard, "최소 배달료 (원)", CallFilter.getMinPrice(this))
+        val minUnitInput = filterInput(filterCard, "최소 단가 (원/km)", CallFilter.getMinUnitPrice(this))
+        val multiMinInput = filterInput(filterCard, "멀티 최소금액 (원)", CallFilter.getMultiMinPrice(this))
+
+        filterCard.addView(TextView(this).apply {
+            text = "저장"
+            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#5B6ABF"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener {
+                CallFilter.setMinPrice(this@SettingsActivity, minPriceInput.text.toString().toIntOrNull() ?: 3000)
+                CallFilter.setMinUnitPrice(this@SettingsActivity, minUnitInput.text.toString().toIntOrNull() ?: 2000)
+                CallFilter.setMultiMinPrice(this@SettingsActivity, multiMinInput.text.toString().toIntOrNull() ?: 5000)
+                Toast.makeText(this@SettingsActivity, "필터 설정 저장됨", Toast.LENGTH_SHORT).show()
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(16)) })
+
+        // 오늘 필터 통계
+        filterCard.addView(TextView(this).apply {
+            text = FilterLog.getTodayStats(this@SettingsActivity)
+            textSize = 13f; setTextColor(Color.parseColor("#666666"))
+            setPadding(dp(16), dp(4), dp(16), dp(16))
+        })
+
+        root.addView(filterCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
         // ─── Shadow Mode KPI 섹션 ───
         root.addView(sectionTitle("Shadow Mode"))
         val shadowCard = card()
@@ -173,5 +204,22 @@ class SettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.WHITE)
         }
+    }
+
+    private fun filterInput(parent: LinearLayout, label: String, value: Int): EditText {
+        parent.addView(TextView(this).apply {
+            text = label
+            textSize = 13f; setTextColor(Color.parseColor("#666666"))
+            setPadding(dp(16), dp(14), dp(16), dp(4))
+        })
+        val input = EditText(this).apply {
+            setText(value.toString())
+            textSize = 16f; setTextColor(Color.BLACK)
+            setBackgroundColor(Color.parseColor("#F5F5F5"))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        parent.addView(input, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(4)) })
+        return input
     }
 }
