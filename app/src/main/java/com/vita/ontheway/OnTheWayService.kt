@@ -64,6 +64,7 @@ class OnTheWayService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
+        Log.d("OTW_DEBUG", "패키지: $pkg")
         if (pkg !in TARGET_PACKAGES) return
         val root = rootInActiveWindow ?: return
 
@@ -86,8 +87,8 @@ class OnTheWayService : AccessibilityService() {
         }
 
         // ── 금액 추출 ─────────────────────────────
-        val amtRange = if (isDriverApp) 5000..100000 else 5000..50000
-        val amountPattern = Regex("([\\d,]+)\\s*원?")
+        val amtRange = if (isDriverApp) 1000..100000 else 1000..50000
+        val amountPattern = Regex("([\\d,]+)\\s*[원P]?")
         val ignoreSet = if (isDriverApp) DRIVER_IGNORE_TEXTS + IGNORE_TEXTS else IGNORE_TEXTS
 
         val amounts = texts.mapNotNull { text ->
@@ -229,6 +230,30 @@ class OnTheWayService : AccessibilityService() {
 
         if (isDriverApp) Log.d("KakaoDriver", "파싱 완료: ${calls.map { "${it.from}→${it.to} ${it.amount}원 픽업${it.pickupKm}km" }}")
 
+        // ── CallFilter 판정 (카카오T에도 적용) ────
+        val now = System.currentTimeMillis()
+        for (callData in calls) {
+            val totalDist = callData.pickupKm + callData.deliveryKm
+            val deliveryCall = DeliveryCall(
+                price = callData.amount,
+                distance = if (totalDist > 0) totalDist else null,
+                isMulti = false,
+                platform = "kakaot"
+            )
+            val filterResult = CallFilter.judge(deliveryCall, this)
+            FilterLog.record(this, deliveryCall, filterResult)
+
+            if (filterResult.verdict == CallFilter.Verdict.REJECT) {
+                val fKey = "kakaot_${callData.amount}_${callData.pickupKm}"
+                if (!callSpeakHistory.containsKey(fKey) && now - lastSpeakTime >= 3000) {
+                    callSpeakHistory[fKey] = now
+                    lastSpeakTime = now
+                    speakTts("넘겨라")
+                    Log.d("OnTheWay", "CallFilter REJECT: ${callData.amount}원 - ${filterResult.reason}")
+                }
+            }
+        }
+
         // ── 추천 ────────────────────────────────
         val direction = if (currentDest.isNotEmpty()) currentDest else currentDir
         val result = CallRecommender.recommend(calls, direction) ?: return
@@ -240,7 +265,6 @@ class OnTheWayService : AccessibilityService() {
         }
 
         val callKey = "${result.call.amount}_${result.call.callType}_${result.call.pickupKm}"
-        val now = System.currentTimeMillis()
 
         // ── 안전 조건 2: 1콜 1음성 ──────────────
         if (callSpeakHistory.containsKey(callKey)) {
@@ -352,6 +376,7 @@ class OnTheWayService : AccessibilityService() {
 
         val platformName = if (pkg == PKG_COUPANG) "coupang" else "baemin"
         Log.d("DeliveryFilter", "[$platformName] rawText: ${texts.joinToString(" | ")}")
+        Log.d("OTW_DEBUG", "배달앱 감지: $pkg, 텍스트: ${texts.joinToString(" | ")}")
 
         // 파싱
         val calls = when (pkg) {
@@ -359,6 +384,7 @@ class OnTheWayService : AccessibilityService() {
             PKG_BAEMIN  -> BaeminParser.parse(texts)
             else        -> return
         }
+        Log.d("OTW_DEBUG", "파서 호출: 결과=$calls")
 
         if (calls.isEmpty()) {
             Log.d("DeliveryFilter", "[$platformName] 파싱 실패 - 무음")
