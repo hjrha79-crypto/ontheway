@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(export JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\")",
+      "Bash(./gradlew assembleDebug)",
+      "Bash(./gradlew installDebug)",
+      "Read(//c/Program Files/Android/Android Studio/jbr/**)",
+      "Read(//c/Program Files/Android/Android Studio/**)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew assembleDebug)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew installDebug)",
+      "Bash(adb devices:*)",
+      "Bash(ADB=\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe\")",
+      "Bash(\"$ADB\" logcat:*)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/hjrha/AndroidStudioProjects/OnTheWay/$LOCALAPPDATA/**)",
+      "Bash(reg query:*)",
+      "Bash(ADB=\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb\")",
+      "Bash(\"$ADB\" devices:*)",
+      "Bash(\"$ADB\" install:*)",
+      "Bash(\"$ADB\" shell:*)",
+      "Bash(grep -E \"e:|BUILD SUCCESSFUL|assembleDebug$\")",
+      "Bash(grep -E \"assembleDebug$|BUILD SUCCESSFUL\")",
+      "Bash(export JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\")",
+      "Bash(adb logcat:*)",
+      "Bash(\"C:/Users/hjrha/AppData/Local/Android/Sdk/platform-tools/adb.exe\" logcat:*)",
+      "Bash(grep -r \"지금\\\\|바로\\\\|잡아\\\\|넘겨\\\\|pass\\\\|skip\\\\|accept\\\\|reject\" /c/Users/hjrha/AndroidStudioProjects/OnTheWay/app/src/main/java/com/vita/ontheway/*.kt)",
+      "Bash(ls:*)",
+      "Bash(grep -r \"sendMessage\\\\|inputField\\\\|목적지\" /c/Users/hjrha/AndroidStudioProjects/OnTheWay/app/src/main/java/com/vita/ontheway/*.kt)",
+      "Bash(grep:*)",
+      "Read(//c/Users/hjrha/AppData/Local/Android/Sdk/platform-tools/**)",
+      "Read(//c/Android/sdk/platform-tools/**)",
+      "Bash(ADB=\"C:/Users/hjrha/AppData/Local/Android/Sdk/platform-tools/adb.exe\")",
+      "Bash(adb install:*)",
+      "Read(//c/Users/hjrha/AndroidStudioProjects/OnTheWay/$LOCALAPPDATA/Android/Sdk/platform-tools/**)",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe\" install:*)",
+      "Bash(\"C:/Users/hjrha/AppData/Local/Android/Sdk/platform-tools/adb.exe\" install:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

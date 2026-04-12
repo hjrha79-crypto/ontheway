@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">OnTheWay</string>
+    <string name="accessibility_service_description">OnTheWay가 카카오T 픽커 화면을 읽어 최적의 콜을 추천합니다</string>
+</resources>
