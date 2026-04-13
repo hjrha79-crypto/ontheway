@@ -37,6 +37,15 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var voiceManager: VoiceManager
     private lateinit var filterStatusText: TextView
     private lateinit var filterCountText: TextView
+    private lateinit var tabStatus: TextView
+    private lateinit var tabChat: TextView
+    private lateinit var tabIndicator: View
+    private lateinit var statusPanel: ScrollView
+    private lateinit var chatPanel: LinearLayout
+    private lateinit var lastCallText: TextView
+    private lateinit var recentCallList: LinearLayout
+    private lateinit var inputBar: LinearLayout
+    private var currentTab = "status"  // "status" or "chat"
 
     private var partialBubble: TextView? = null
     private val messages = mutableListOf<Pair<String, String>>()
@@ -103,6 +112,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         progressFill = findViewById(R.id.progressFill)
         filterStatusText = findViewById(R.id.filterStatusText)
         filterCountText = findViewById(R.id.filterCountText)
+        tabStatus = findViewById(R.id.tabStatus)
+        tabChat = findViewById(R.id.tabChat)
+        tabIndicator = findViewById(R.id.tabIndicator)
+        statusPanel = findViewById(R.id.statusPanel)
+        chatPanel = findViewById(R.id.chatPanel)
+        lastCallText = findViewById(R.id.lastCallText)
+        recentCallList = findViewById(R.id.recentCallList)
 
         val statsBtn = findViewById<TextView>(R.id.statsBtn)
         val favBtn   = findViewById<TextView>(R.id.favBtn)
@@ -157,6 +173,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
         svcBtn.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
 
+        // ── 탭 전환 ──
+        tabStatus.setOnClickListener { switchTab("status") }
+        tabChat.setOnClickListener { switchTab("chat") }
+        switchTab("status")  // 기본값: 상태 탭
+
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
             != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 200)
@@ -189,6 +210,38 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         mainHandler.postDelayed(filterRefresh, 5000)
     }
 
+    private fun switchTab(tab: String) {
+        currentTab = tab
+        val isStatus = tab == "status"
+
+        // 탭 스타일
+        tabStatus.setTextColor(if (isStatus) Color.parseColor("#5B6ABF") else Color.parseColor("#999999"))
+        tabStatus.setTypeface(null, if (isStatus) Typeface.BOLD else Typeface.NORMAL)
+        tabChat.setTextColor(if (!isStatus) Color.parseColor("#5B6ABF") else Color.parseColor("#999999"))
+        tabChat.setTypeface(null, if (!isStatus) Typeface.BOLD else Typeface.NORMAL)
+
+        // 인디케이터 위치 (왼쪽 절반 / 오른쪽 절반)
+        tabIndicator.post {
+            val parent = tabIndicator.parent as? FrameLayout ?: return@post
+            val totalWidth = parent.width
+            val halfWidth = totalWidth / 2
+            val lp = tabIndicator.layoutParams as FrameLayout.LayoutParams
+            lp.width = halfWidth
+            lp.marginStart = if (isStatus) 0 else halfWidth
+            tabIndicator.layoutParams = lp
+        }
+
+        // 패널 전환
+        statusPanel.visibility = if (isStatus) View.VISIBLE else View.GONE
+        chatPanel.visibility = if (!isStatus) View.VISIBLE else View.GONE
+
+        // 입력바: 상태탭에서는 숨김
+        val inputBarView = findViewById<LinearLayout>(R.id.inputBar)
+        inputBarView?.visibility = if (isStatus) View.GONE else View.VISIBLE
+
+        if (isStatus) refreshDashboard()
+    }
+
     private fun updateFilterStatus() {
         val lastDetect = OnTheWayService.instance?.lastCallDetectedTime ?: 0
         val ago = if (lastDetect > 0) {
@@ -208,6 +261,95 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             filterCountText.text = "오늘 ${detail.total}건 (넘기세요 ${detail.reject} · 괜찮습니다/잡으세요 ${detail.accept})"
         } else {
             filterCountText.text = ""
+        }
+
+        // 마지막 콜 정보
+        val recent = FilterLog.getRecent(this, 1)
+        if (recent.isNotEmpty()) {
+            val e = recent[0]
+            val platform = when (e.optString("platform")) {
+                "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오"; else -> e.optString("platform")
+            }
+            val price = e.optInt("price", 0)
+            val verdict = e.optString("verdict", "")
+            val verdictKr = when (verdict) {
+                "REJECT" -> "넘기세요"; "ACCEPT" -> {
+                    val up = e.optInt("unitPrice", 0)
+                    val dist = e.optDouble("distanceKm", -1.0)
+                    if (up >= 2500 && dist in 0.0..3.0) "잡으세요" else "괜찮습니다"
+                }; else -> verdict
+            }
+            lastCallText.text = "$platform ${fmt(price)}원 $verdictKr"
+        }
+
+        if (currentTab == "status") refreshDashboard()
+    }
+
+    private fun refreshDashboard() {
+        recentCallList.removeAllViews()
+        val logs = FilterLog.getRecent(this, 10)
+        if (logs.isEmpty()) {
+            recentCallList.addView(TextView(this).apply {
+                text = "기록 없음"
+                textSize = 13f; setTextColor(Color.parseColor("#999999"))
+                setPadding(dp(20), dp(12), dp(20), dp(12))
+            })
+            return
+        }
+
+        val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+        for (entry in logs) {
+            val ts = sdf.format(java.util.Date(entry.getLong("ts")))
+            val platform = when (entry.optString("platform")) {
+                "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오"; else -> "?"
+            }
+            val price = entry.optInt("price", 0)
+            val unitPrice = entry.optInt("unitPrice", 0)
+            val verdict = entry.optString("verdict", "")
+
+            // 3단계 판정 색상
+            val verdictKr: String
+            val verdictColor: Int
+            if (verdict == "REJECT") {
+                verdictKr = "넘기세요"
+                verdictColor = Color.parseColor("#E53935")
+            } else {
+                val dist = entry.optDouble("distanceKm", -1.0)
+                if (unitPrice >= 2500 && dist in 0.0..3.0) {
+                    verdictKr = "잡으세요"
+                    verdictColor = Color.parseColor("#4CAF50")
+                } else {
+                    verdictKr = "괜찮습니다"
+                    verdictColor = Color.parseColor("#FF9800")
+                }
+            }
+
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(20), dp(8), dp(20), dp(8))
+            }
+            row.addView(TextView(this).apply {
+                text = ts; textSize = 12f; setTextColor(Color.parseColor("#999999"))
+            }, lp(WC, WC).apply { marginEnd = dp(10) })
+            row.addView(TextView(this).apply {
+                text = platform; textSize = 12f; setTextColor(Color.parseColor("#5B6ABF"))
+                setTypeface(null, Typeface.BOLD)
+            }, lp(WC, WC).apply { marginEnd = dp(10) })
+            row.addView(TextView(this).apply {
+                text = "${fmt(price)}원"; textSize = 13f; setTextColor(Color.BLACK)
+            }, lp(0, WC, 1f))
+            row.addView(TextView(this).apply {
+                text = verdictKr; textSize = 13f; setTextColor(verdictColor)
+                setTypeface(null, Typeface.BOLD)
+            })
+
+            recentCallList.addView(row)
+
+            // 구분선
+            recentCallList.addView(View(this).apply {
+                setBackgroundColor(Color.parseColor("#F0F0F0"))
+            }, lp(MP, dp(1)).apply { setMargins(dp(20), 0, dp(20), 0) })
         }
     }
 
