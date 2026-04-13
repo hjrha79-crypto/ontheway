@@ -236,48 +236,9 @@ class OnTheWayService : AccessibilityService() {
 
         if (isDriverApp) Log.d("KakaoDriver", "파싱 완료: ${calls.map { "${it.from}→${it.to} ${it.amount}원 픽업${it.pickupKm}km" }}")
 
-        // ── CallFilter 판정 (카카오T에도 적용) ────
+        // ── 추천 (카카오T는 CallRecommender로만 처리) ──
         val now = System.currentTimeMillis()
-        for (callData in calls) {
-            val totalDist = callData.pickupKm + callData.deliveryKm
-            val deliveryCall = DeliveryCall(
-                price = callData.amount,
-                distance = if (totalDist > 0) totalDist else null,
-                isMulti = false,
-                platform = "kakaot"
-            )
-            val filterResult = CallFilter.judge(deliveryCall, this)
-            FilterLog.record(this, deliveryCall, filterResult)
-            lastCallDetectedTime = now
-
-            val fKey = "kakaot_${callData.amount}_${callData.pickupKm}"
-            if (!callSpeakHistory.containsKey(fKey) && now - lastSpeakTime >= 3000) {
-                val kakaotUnitPrice = if (totalDist > 0) (callData.amount / totalDist).toInt() else 0
-                val kPriceKr = toKoreanNumber(callData.amount)
-                val kUnitKr = toKoreanNumber(kakaotUnitPrice)
-
-                if (filterResult.verdict == CallFilter.Verdict.REJECT) {
-                    callSpeakHistory[fKey] = now
-                    lastSpeakTime = now
-                    speakTts("카카오, 넘기세요, ${kPriceKr}원")
-                    Log.d("OnTheWay", "CallFilter REJECT: ${callData.amount}원 - ${filterResult.reason}")
-                } else {
-                    val isTop = kakaotUnitPrice >= 2500 && totalDist > 0 && callData.deliveryKm <= 3.0
-                    if (isTop) {
-                        callSpeakHistory[fKey] = now
-                        lastSpeakTime = now
-                        speakTts("카카오, 잡으세요, 단가 $kUnitKr")
-                        Log.d("OnTheWay", "CallFilter ACCEPT(잡으세요): ${callData.amount}원")
-                    } else if (CallFilter.isOkVoiceEnabled(this)) {
-                        callSpeakHistory[fKey] = now
-                        lastSpeakTime = now
-                        var msg = "카카오, 괜찮습니다, 단가 $kUnitKr"
-                        speakTts(msg)
-                        Log.d("OnTheWay", "CallFilter ACCEPT(괜찮습니다): ${callData.amount}원")
-                    }
-                }
-            }
-        }
+        lastCallDetectedTime = now
 
         // ── 추천 ────────────────────────────────
         val direction = if (currentDest.isNotEmpty()) currentDest else currentDir
