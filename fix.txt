@@ -1,50 +1,63 @@
-OnTheWay v2 — 3플랫폼 똥콜 필터 구현
+OnTheWay v2 저녁 수정 — 9개 항목 일괄 구현
 
-현재 OnTheWayService.kt의 Accessibility Service에 쿠팡이츠/배민커넥트 감지를 추가한다.
-기존 카카오T 로직은 건드리지 않고, 패키지 분기만 추가.
+현재 상태: 3플랫폼(배민/쿠팡/카카오T) 감지 + "넘겨라" TTS 작동 확인됨
 
-대상 패키지:
-- com.kakaomobility.flexer (기존)
-- com.coupang.mobile.eats.courier (신규)
-- com.woowahan.bros (신규)
+═══ 수정 1: FilterLog 저장 연결 확인 ═══
+FilterLog.kt에 save 함수가 있는지, OnTheWayService에서 실제로 호출되는지 확인.
+안 되어 있으면 연결. 모든 콜(REJECT+ACCEPT)에서 저장 필수.
+저장 필드: timestamp, platform, rawText, price, distanceKm, unitPrice, isMulti, result, parseSuccess, storeName, destination
 
-신규 파일:
-1. CoupangParser.kt — 쿠팡이츠 화면 텍스트 파싱
-2. BaeminParser.kt — 배민커넥트 화면 텍스트 파싱
-3. DeliveryCall.kt — 공통 데이터 클래스
-4. CallFilter.kt — 단가/최소금액 필터 로직
-5. FilterLog.kt — 필터 판정 로그 저장
+═══ 수정 2: 카카오T "P" 금액 파싱 검증 ═══
+카카오T 픽커 콜은 "3,200P" "4,350P" 형태. 기존 amountPattern이 "원"만 매칭하면 "P"도 추가.
+카카오T는 픽업거리 + 배송거리 합산으로 단가 계산.
 
-변경 파일:
-- OnTheWayService.kt — TARGET_PACKAGES에 2개 추가 + onAccessibilityEvent에 분기
-- SettingsActivity.kt — 필터 기준값 설정 UI 추가
-- accessibility_service_config.xml — 패키지 추가
+═══ 수정 3: 대기 화면 무시 필터 ═══
+배민: "가상 배달을 체험해 보세요", "신규배차를 켜고 배달을 시작하세요" 포함 시 무시
+쿠팡: 텍스트가 비어있거나 앱 목록(NAVER, YouTube 등 나열) 포함 시 무시
+→ 파싱 시도 자체를 스킵하고 로그도 안 남김
 
-파싱 샘플:
+═══ 수정 4: TTS 3단계 판정 ═══
+REJECT: "넘기세요" → 조건: 최소금액 미달 또는 단가 미달
+ACCEPT 상위: "잡으세요" → 조건: 단가 2500원/km 이상 AND 거리 있는 플랫폼에서 배달거리 3km 이하
+ACCEPT 일반: "괜찮습니다" → 나머지 ACCEPT
 
-[쿠팡이츠]
-① "(조리완료) 3,000원 배달 거리 0.7km" → price=3000, distance=0.7, multi=false
-② "멀티 3,525원 거리할증 지원금 포함 배달 거리 2.1km" → price=3525, distance=2.1, multi=true
-③ "대량 주문, 멀티 11,948원 거리할증 지원금 포함 배달 거리 5.3km" → price=11948, distance=5.3, multi=true
-④ "멀티 8,300원 거래할증 포함 주문 두 건 배달 거리 5.5km" → price=8300, distance=5.5, multi=true
+TTS 형식:
+"배민, 넘기세요, 이천오백원"
+"쿠팡, 잡으세요, 단가 삼천이백"
+"쿠팡, 괜찮습니다, 단가 이천오백 픽업 멉니다"
+"카카오, 괜찮습니다, 단가 이천백"
 
-[배민커넥트]
-⑤ "배달료 2,300원" → price=2300, distance=null
-⑥ "배달료 3,360원" → price=3360, distance=null
+배민은 거리 없으므로 "잡으세요" 불가, 최대 "괜찮습니다"
+배민 포인트 25P 이상이면: "괜찮습니다, 먼 거리입니다"
 
-[카카오T 픽커]
-⑦ "BHC-태전점 픽업 619m 오포자이오브제 배송 2.1km 4,350P" → price=4350, distance=2.1+0.619, multi=false
+설정에서 "괜찮습니다" 음성 ON/OFF 가능
 
-필터 로직:
-- price < 3000 → REJECT
-- isMulti && price < 5000 → REJECT
-- distance != null && (price/distance) < 2000 → REJECT
-- else → ACCEPT
+═══ 수정 5: "잡아" 음성 수락 ═══
+VoiceManager 또는 SpeechRecognizer로 "잡아"/"수락"/"이거" 감지
+→ 현재 포그라운드 앱에서 수락 버튼 자동 클릭
+→ TTS "수락합니다"
 
-TTS: REJECT → "넘겨라" / ACCEPT → 무음
-안전조건: 파싱 실패→무음, 1콜1음성, 3초 쿨다운
+수락 버튼 텍스트 매칭: "배차수락", "배차 수락", "주문 수락", "주문수락", "수락하기", "모두 수락" (contains 매칭)
+2초 타임아웃: 마지막 콜 감지 후 30초 이내만 수락 가능
 
-기본 설정값: 최소배달료=3000, 최소단가=2000원/km, 멀티최소=5000
-SettingsActivity에서 조절 가능하게.
+═══ 수정 6: 메인 화면 상태 표시 ═══
+MainActivity 상단 (수익 영역 아래)에 상태 카드:
+"필터 작동 중 · 마지막 감지 N초 전"
+"오늘 N건 (넘기세요 X · 괜찮습니다 Y · 잡으세요 Z)"
+FilterLog에서 읽어서 표시. 5초마다 갱신.
 
-먼저 현재 OnTheWayService.kt 구조를 분석하고 어디에 분기를 넣을지 설계안을 보여줘. 구현은 검토 후 시작.
+═══ 수정 7: 설정 화면 추가 항목 ═══
+- 필터 기록: 최근 20건 리스트 (시간/플랫폼/금액/단가/판정)
+- 오늘 요약: REJECT 평균 금액 / ACCEPT 평균 금액
+- "괜찮습니다" 음성 ON/OFF 토글
+- 최대 픽업 거리 설정 (기본 5km) — 쿠팡/카카오T에서 배달거리 초과 시 REJECT
+
+═══ 수정 8: 배민 포인트 거리 경고 ═══
+배민커넥트 포인트 파싱 추가: "[\d.]+P" 매칭
+25P 이상이면 TTS에 "먼 거리입니다" 추가
+
+═══ 수정 9: FilterLog 필드 확장 ═══
+기존 필드 + storeName(가게명) + destination(전달지) 추가 저장
+향후 👍/👎 기능 대비
+
+먼저 수정 1(FilterLog 연결)부터 확인하고 결과 알려줘. 한 항목씩 순서대로 진행.

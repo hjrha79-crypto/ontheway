@@ -3,6 +3,7 @@ package com.vita.ontheway
 import android.os.Bundle
 import android.view.*
 import android.widget.*
+import java.text.SimpleDateFormat
 import android.graphics.*
 import android.graphics.drawable.ColorDrawable
 import androidx.appcompat.app.AppCompatActivity
@@ -153,6 +154,28 @@ class SettingsActivity : AppCompatActivity() {
         val minUnitInput = filterInput(filterCard, "최소 단가 (원/km)", CallFilter.getMinUnitPrice(this))
         val multiMinInput = filterInput(filterCard, "멀티 최소금액 (원)", CallFilter.getMultiMinPrice(this))
 
+        // "괜찮습니다" 음성 ON/OFF 토글
+        val okVoiceRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(4))
+        }
+        okVoiceRow.addView(TextView(this).apply {
+            text = "\"괜찮습니다\" 음성 안내"
+            textSize = 14f; setTextColor(Color.BLACK)
+        }, lp(0, WC, 1f))
+        val okToggle = Switch(this).apply {
+            isChecked = CallFilter.isOkVoiceEnabled(this@SettingsActivity)
+            setOnCheckedChangeListener { _, checked ->
+                CallFilter.setOkVoiceEnabled(this@SettingsActivity, checked)
+            }
+        }
+        okVoiceRow.addView(okToggle)
+        filterCard.addView(okVoiceRow)
+
+        // 최대 픽업 거리 설정
+        val maxPickupInput = filterInput(filterCard, "최대 픽업 거리 (km, 초과 시 REJECT)", CallFilter.getMaxPickupKm(this))
+
         filterCard.addView(TextView(this).apply {
             text = "저장"
             textSize = 15f; setTypeface(null, Typeface.BOLD)
@@ -163,18 +186,66 @@ class SettingsActivity : AppCompatActivity() {
                 CallFilter.setMinPrice(this@SettingsActivity, minPriceInput.text.toString().toIntOrNull() ?: 3000)
                 CallFilter.setMinUnitPrice(this@SettingsActivity, minUnitInput.text.toString().toIntOrNull() ?: 2000)
                 CallFilter.setMultiMinPrice(this@SettingsActivity, multiMinInput.text.toString().toIntOrNull() ?: 5000)
+                CallFilter.setMaxPickupKm(this@SettingsActivity, maxPickupInput.text.toString().toIntOrNull() ?: 5)
                 Toast.makeText(this@SettingsActivity, "필터 설정 저장됨", Toast.LENGTH_SHORT).show()
             }
         }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(16)) })
 
-        // 오늘 필터 통계
+        // 오늘 필터 요약
+        val detail = FilterLog.getTodayDetail(this)
         filterCard.addView(TextView(this).apply {
-            text = FilterLog.getTodayStats(this@SettingsActivity)
+            text = "오늘: ${detail.total}건 (REJECT ${detail.reject} / ACCEPT ${detail.accept})\n" +
+                "REJECT 평균 ${fmt(detail.rejectAvgPrice)}원 / ACCEPT 평균 ${fmt(detail.acceptAvgPrice)}원"
             textSize = 13f; setTextColor(Color.parseColor("#666666"))
             setPadding(dp(16), dp(4), dp(16), dp(16))
         })
 
         root.addView(filterCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── 필터 기록 (최근 20건) ───
+        root.addView(sectionTitle("필터 기록 (최근 20건)"))
+        val logCard = card()
+        val recentLogs = FilterLog.getRecent(this, 20)
+        if (recentLogs.isEmpty()) {
+            logCard.addView(TextView(this).apply {
+                text = "기록 없음"
+                textSize = 13f; setTextColor(Color.parseColor("#999999"))
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+            })
+        } else {
+            val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            for (entry in recentLogs) {
+                val ts = sdf.format(java.util.Date(entry.getLong("ts")))
+                val platform = entry.optString("platform", "?")
+                val price = entry.optInt("price", 0)
+                val unitPrice = entry.optInt("unitPrice", 0)
+                val verdict = entry.optString("verdict", "?")
+                val verdictColor = if (verdict == "REJECT") "#E53935" else "#4CAF50"
+
+                logCard.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(dp(16), dp(6), dp(16), dp(6))
+                    addView(TextView(this@SettingsActivity).apply {
+                        text = ts; textSize = 12f; setTextColor(Color.parseColor("#999999"))
+                    }, lp(WC, WC).apply { marginEnd = dp(8) })
+                    addView(TextView(this@SettingsActivity).apply {
+                        text = platform; textSize = 12f; setTextColor(Color.parseColor("#5B6ABF"))
+                    }, lp(WC, WC).apply { marginEnd = dp(8) })
+                    addView(TextView(this@SettingsActivity).apply {
+                        text = "${fmt(price)}원"; textSize = 12f; setTextColor(Color.BLACK)
+                    }, lp(WC, WC).apply { marginEnd = dp(8) })
+                    addView(TextView(this@SettingsActivity).apply {
+                        text = if (unitPrice > 0) "${fmt(unitPrice)}원/km" else "-"
+                        textSize = 12f; setTextColor(Color.parseColor("#666666"))
+                    }, lp(0, WC, 1f))
+                    addView(TextView(this@SettingsActivity).apply {
+                        text = verdict; textSize = 12f; setTextColor(Color.parseColor(verdictColor))
+                        setTypeface(null, Typeface.BOLD)
+                    })
+                })
+            }
+        }
+        root.addView(logCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── Shadow Mode KPI 섹션 ───
         root.addView(sectionTitle("Shadow Mode"))

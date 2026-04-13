@@ -111,6 +111,35 @@
         </FrameLayout>
     </LinearLayout>
 
+    <!-- ═══ 필터 상태 카드 ═══ -->
+    <LinearLayout
+        android:id="@+id/filterStatusCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#F0F4FF"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/filterStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="필터 대기 중"
+            android:textSize="12sp"
+            android:textColor="#5B6ABF" />
+
+        <TextView
+            android:id="@+id/filterCountText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="11sp"
+            android:textColor="#666666" />
+    </LinearLayout>
+
     <!-- 즐겨찾기 -->
     <HorizontalScrollView
         android:layout_width="match_parent"

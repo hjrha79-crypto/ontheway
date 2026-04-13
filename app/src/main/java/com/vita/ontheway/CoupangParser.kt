@@ -12,12 +12,21 @@ object CoupangParser {
     private val DISTANCE_PATTERN = Regex("배달\\s*거리\\s*(\\d+\\.?\\d*)\\s*km", RegexOption.IGNORE_CASE)
     private val MULTI_PATTERN = Regex("멀티|주문\\s*두\\s*건|대량", RegexOption.IGNORE_CASE)
 
+    private val STORE_PATTERN = Regex("^[가-힣a-zA-Z0-9\\s]{2,20}$")
+
     fun parse(texts: List<String>): List<DeliveryCall> {
         val results = mutableListOf<DeliveryCall>()
-
-        // 쿠팡이츠는 콜 정보가 하나의 텍스트 블록에 담김
-        // 여러 텍스트를 합쳐서 파싱 시도
         val joined = texts.joinToString(" ")
+
+        // 가게명 추출: 금액/거리/키워드가 아닌 짧은 한글 텍스트
+        val storeName = texts.firstOrNull { t ->
+            t.length in 2..20 &&
+            !PRICE_PATTERN.containsMatchIn(t) &&
+            !DISTANCE_PATTERN.containsMatchIn(t) &&
+            !MULTI_PATTERN.containsMatchIn(t) &&
+            !t.contains("km") && !t.contains("원") &&
+            STORE_PATTERN.matches(t.trim())
+        }?.trim() ?: ""
 
         val priceMatch = PRICE_PATTERN.find(joined)
         if (priceMatch != null) {
@@ -31,7 +40,9 @@ object CoupangParser {
                     price = price,
                     distance = distance,
                     isMulti = isMulti,
-                    platform = "coupang"
+                    platform = "coupang",
+                    rawText = joined,
+                    storeName = storeName
                 ))
                 Log.d("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti")
             }
@@ -49,7 +60,7 @@ object CoupangParser {
 
             val d = DISTANCE_PATTERN.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
             val m = MULTI_PATTERN.containsMatchIn(text)
-            results.add(DeliveryCall(price = p, distance = d, isMulti = m, platform = "coupang"))
+            results.add(DeliveryCall(price = p, distance = d, isMulti = m, platform = "coupang", rawText = text, storeName = storeName))
             Log.d("CoupangParser", "추가 파싱: ${p}원, ${d}km, multi=$m")
         }
 

@@ -37,7 +37,8 @@
       "Bash(\"C:/Users/hjrha/AppData/Local/Android/Sdk/platform-tools/adb.exe\" install:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(export JAVA_HOME=\"c:/Program Files/Android/Android Studio/jbr\")"
     ]
   }
 }

@@ -12,14 +12,21 @@ object FilterLog {
     private const val MAX_ENTRIES = 200
 
     fun record(ctx: Context, call: DeliveryCall, result: CallFilter.FilterResult) {
+        val unitPrice = if (call.distance != null && call.distance > 0)
+            (call.price / call.distance).toInt() else 0
         val entry = JSONObject().apply {
             put("ts", System.currentTimeMillis())
             put("platform", call.platform)
+            put("rawText", call.rawText)
             put("price", call.price)
-            put("distance", call.distance ?: -1.0)
+            put("distanceKm", call.distance ?: -1.0)
+            put("unitPrice", unitPrice)
             put("multi", call.isMulti)
             put("verdict", result.verdict.name)
             put("reason", result.reason)
+            put("parseSuccess", call.parseSuccess)
+            put("storeName", call.storeName)
+            put("destination", call.destination)
         }
 
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -65,5 +72,47 @@ object FilterLog {
             if (e.getString("verdict") == "REJECT") rejected++ else accepted++
         }
         return "오늘: ${total}건 (통과 ${accepted} / 필터 ${rejected})"
+    }
+
+    /** 오늘 통계 상세: total, reject, accept 카운트 + REJECT/ACCEPT 평균금액 */
+    data class TodayDetail(
+        val total: Int, val reject: Int, val accept: Int,
+        val rejectAvgPrice: Int, val acceptAvgPrice: Int
+    )
+
+    fun getTodayDetail(ctx: Context): TodayDetail {
+        val entries = getAll(ctx)
+        val todayStart = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+        }.timeInMillis
+
+        var total = 0; var reject = 0; var accept = 0
+        var rejectSum = 0L; var acceptSum = 0L
+        for (i in 0 until entries.length()) {
+            val e = entries.getJSONObject(i)
+            if (e.getLong("ts") < todayStart) continue
+            total++
+            val price = e.optInt("price", 0)
+            if (e.getString("verdict") == "REJECT") { reject++; rejectSum += price }
+            else { accept++; acceptSum += price }
+        }
+        return TodayDetail(
+            total, reject, accept,
+            if (reject > 0) (rejectSum / reject).toInt() else 0,
+            if (accept > 0) (acceptSum / accept).toInt() else 0
+        )
+    }
+
+    /** 최근 N건 반환 (최신순) */
+    fun getRecent(ctx: Context, count: Int = 20): List<JSONObject> {
+        val entries = getAll(ctx)
+        val result = mutableListOf<JSONObject>()
+        val start = maxOf(0, entries.length() - count)
+        for (i in entries.length() - 1 downTo start) {
+            result.add(entries.getJSONObject(i))
+        }
+        return result
     }
 }

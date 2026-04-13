@@ -35,6 +35,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var earningMeta: TextView
     private lateinit var progressFill: View
     private lateinit var voiceManager: VoiceManager
+    private lateinit var filterStatusText: TextView
+    private lateinit var filterCountText: TextView
 
     private var partialBubble: TextView? = null
     private val messages = mutableListOf<Pair<String, String>>()
@@ -99,6 +101,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         earningText  = findViewById(R.id.earningText)
         earningMeta  = findViewById(R.id.earningMeta)
         progressFill = findViewById(R.id.progressFill)
+        filterStatusText = findViewById(R.id.filterStatusText)
+        filterCountText = findViewById(R.id.filterCountText)
 
         val statsBtn = findViewById<TextView>(R.id.statsBtn)
         val favBtn   = findViewById<TextView>(R.id.favBtn)
@@ -123,7 +127,15 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             context = this,
             onReady  = { micBtn.text = "\uD83D\uDD34" },
             onPartial = { text -> showPartialBubble(text) },
-            onResult  = { text -> clearPartialBubble(); sendMessage(text) }
+            onResult  = { text ->
+                clearPartialBubble()
+                // 음성 수락 명령 감지
+                if (OnTheWayService.instance?.tryVoiceAccept(text) == true) {
+                    // 수락 처리됨 - 채팅에 보내지 않음
+                } else {
+                    sendMessage(text)
+                }
+            }
         )
 
         statsBtn.setOnClickListener { startActivity(Intent(this, StatsActivity::class.java)) }
@@ -164,6 +176,38 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         OnTheWayService.resultCallback = { from, to, amount, reason ->
             runOnUiThread { showResult(from, to, amount, reason) }
+        }
+
+        // 필터 상태 5초마다 갱신
+        updateFilterStatus()
+        val filterRefresh = object : Runnable {
+            override fun run() {
+                updateFilterStatus()
+                mainHandler.postDelayed(this, 5000)
+            }
+        }
+        mainHandler.postDelayed(filterRefresh, 5000)
+    }
+
+    private fun updateFilterStatus() {
+        val lastDetect = OnTheWayService.instance?.lastCallDetectedTime ?: 0
+        val ago = if (lastDetect > 0) {
+            val sec = (System.currentTimeMillis() - lastDetect) / 1000
+            when {
+                sec < 60 -> "${sec}초 전"
+                sec < 3600 -> "${sec / 60}분 전"
+                else -> "${sec / 3600}시간 전"
+            }
+        } else null
+
+        val statusMsg = if (ago != null) "필터 작동 중 · 마지막 감지 $ago" else "필터 대기 중"
+        filterStatusText.text = statusMsg
+
+        val detail = FilterLog.getTodayDetail(this)
+        if (detail.total > 0) {
+            filterCountText.text = "오늘 ${detail.total}건 (넘기세요 ${detail.reject} · 괜찮습니다/잡으세요 ${detail.accept})"
+        } else {
+            filterCountText.text = ""
         }
     }
 
