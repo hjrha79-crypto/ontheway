@@ -452,7 +452,11 @@ class OnTheWayService : AccessibilityService() {
             // 마지막 감지 시각 기록 (상태 표시용)
             lastCallDetectedTime = now
 
-            // ── TTS 3단계 판정 ──
+            // ── TTS 3단계 판정 (중복 방지) ──
+            if (!TtsDeduplicator.shouldSpeak(call.platform, call.price)) {
+                Log.d("DeliveryFilter", "TtsDeduplicator 중복 스킵: ${call.platform} ${call.price}원")
+                continue
+            }
             val unitPrice = if (call.distance != null && call.distance > 0)
                 (call.price / call.distance).toInt() else 0
             val pName = if (call.platform == "coupang") "쿠팡" else "배민"

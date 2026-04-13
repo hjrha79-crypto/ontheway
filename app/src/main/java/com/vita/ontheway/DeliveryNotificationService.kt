@@ -95,6 +95,11 @@ class DeliveryNotificationService : NotificationListenerService() {
             // OnTheWayService의 lastCallDetectedTime도 갱신
             OnTheWayService.instance?.lastCallDetectedTime = now
 
+            if (!TtsDeduplicator.shouldSpeak(call.platform, call.price)) {
+                Log.d("DeliveryNoti", "TtsDeduplicator 중복 스킵: ${call.platform} ${call.price}원")
+                continue
+            }
+
             val unitPrice = if (call.distance != null && call.distance > 0)
                 (call.price / call.distance).toInt() else 0
             val pName = if (call.platform == "coupang") "쿠팡" else "배민"
