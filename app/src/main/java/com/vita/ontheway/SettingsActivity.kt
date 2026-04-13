@@ -202,6 +202,45 @@ class SettingsActivity : AppCompatActivity() {
 
         root.addView(filterCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
+        // ─── 음성 수락 ON/OFF ───
+        val voiceAcceptRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        voiceAcceptRow.addView(TextView(this).apply {
+            text = "\"잡아\" 음성 수락 (OFF=테스트, ON=실제 수락)"
+            textSize = 14f; setTextColor(Color.BLACK)
+        }, lp(0, WC, 1f))
+        val voiceAcceptToggle = Switch(this).apply {
+            isChecked = CallFilter.isVoiceAcceptEnabled(this@SettingsActivity)
+            setOnCheckedChangeListener { _, checked ->
+                CallFilter.setVoiceAcceptEnabled(this@SettingsActivity, checked)
+                Toast.makeText(this@SettingsActivity,
+                    if (checked) "음성 수락 활성화" else "음성 수락 테스트 모드",
+                    Toast.LENGTH_SHORT).show()
+            }
+        }
+        voiceAcceptRow.addView(voiceAcceptToggle)
+        filterCard.addView(voiceAcceptRow)
+
+        // ─── 데이터 내보내기 버튼 ───
+        filterCard.addView(TextView(this).apply {
+            text = "데이터 내보내기 (CSV)"
+            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#5B6ABF")); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F0F0F0"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener {
+                val path = FilterLog.exportCsv(this@SettingsActivity)
+                if (path != null) {
+                    Toast.makeText(this@SettingsActivity, "저장됨: $path", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this@SettingsActivity, "내보낼 데이터 없음", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(16)) })
+
         // ─── 필터 기록 (최근 20건) ───
         root.addView(sectionTitle("필터 기록 (최근 20건)"))
         val logCard = card()

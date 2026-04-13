@@ -10,6 +10,7 @@ object CallFilter {
     private const val KEY_MULTI_MIN_PRICE = "multi_min_price"
     private const val KEY_OK_VOICE_ENABLED = "ok_voice_enabled"
     private const val KEY_MAX_PICKUP_KM = "max_pickup_km"
+    private const val KEY_VOICE_ACCEPT_ENABLED = "voice_accept_enabled"
 
     enum class Verdict { ACCEPT, REJECT }
 
@@ -75,4 +76,10 @@ object CallFilter {
 
     fun setMaxPickupKm(ctx: Context, value: Int) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(KEY_MAX_PICKUP_KM, value).apply()
+
+    fun isVoiceAcceptEnabled(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_VOICE_ACCEPT_ENABLED, false)
+
+    fun setVoiceAcceptEnabled(ctx: Context, value: Boolean) =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_VOICE_ACCEPT_ENABLED, value).apply()
 }

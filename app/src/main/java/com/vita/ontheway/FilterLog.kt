@@ -105,6 +105,43 @@ object FilterLog {
         )
     }
 
+    /** CSV 내보내기 → 내부저장소에 저장, 파일 경로 반환 */
+    fun exportCsv(ctx: Context): String? {
+        val entries = getAll(ctx)
+        if (entries.length() == 0) return null
+
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+        val fileSdf = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+        val fileName = "filter_log_${fileSdf.format(java.util.Date())}.csv"
+        val file = java.io.File(ctx.filesDir, fileName)
+
+        file.bufferedWriter().use { w ->
+            w.write("timestamp,platform,price,distanceKm,unitPrice,isMulti,verdict,reason,parseSuccess,storeName,destination")
+            w.newLine()
+            for (i in 0 until entries.length()) {
+                val e = entries.getJSONObject(i)
+                val ts = sdf.format(java.util.Date(e.optLong("ts", 0)))
+                val line = listOf(
+                    ts,
+                    e.optString("platform", ""),
+                    e.optInt("price", 0).toString(),
+                    e.optDouble("distanceKm", -1.0).toString(),
+                    e.optInt("unitPrice", 0).toString(),
+                    e.optBoolean("multi", false).toString(),
+                    e.optString("verdict", ""),
+                    "\"${e.optString("reason", "").replace("\"", "\"\"")}\"",
+                    e.optBoolean("parseSuccess", true).toString(),
+                    "\"${e.optString("storeName", "").replace("\"", "\"\"")}\"",
+                    "\"${e.optString("destination", "").replace("\"", "\"\"")}\"",
+                ).joinToString(",")
+                w.write(line)
+                w.newLine()
+            }
+        }
+        Log.d("FilterLog", "CSV 내보내기: ${file.absolutePath} (${entries.length()}건)")
+        return file.absolutePath
+    }
+
     /** 최근 N건 반환 (최신순) */
     fun getRecent(ctx: Context, count: Int = 20): List<JSONObject> {
         val entries = getAll(ctx)

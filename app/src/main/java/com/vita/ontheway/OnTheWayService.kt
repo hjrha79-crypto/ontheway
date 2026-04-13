@@ -80,6 +80,8 @@ class OnTheWayService : AccessibilityService() {
             return
         }
 
+        // 카카오T → CallRecommender 경로 (CallFilter 미사용)
+        Log.d("OTW_ROUTE", "카카오T 경로: $pkg → CallRecommender (CallFilter 미사용)")
         val isDriverApp = (pkg == PKG_DRIVER)
 
         val session = SearchSessionStore.ensureActiveSession(this)
@@ -352,7 +354,14 @@ class OnTheWayService : AccessibilityService() {
     /** 음성 명령으로 수락 시도 (외부 호출용) */
     fun tryVoiceAccept(command: String): Boolean {
         if (VOICE_ACCEPT_COMMANDS.any { command.contains(it) }) {
-            acceptCurrentCall()
+            if (CallFilter.isVoiceAcceptEnabled(this)) {
+                // 실제 수락
+                acceptCurrentCall()
+            } else {
+                // 테스트 모드: TTS만, 실제 클릭 안 함
+                speakTts("수락하시겠습니까?")
+                Log.d("OnTheWay", "음성 수락 테스트 모드 - 실제 클릭 안 함")
+            }
             return true
         }
         return false
@@ -380,24 +389,22 @@ class OnTheWayService : AccessibilityService() {
         extractText(root, texts)
 
         val platformName = if (pkg == PKG_COUPANG) "coupang" else "baemin"
-        Log.d("DeliveryFilter", "[$platformName] rawText: ${texts.joinToString(" | ")}")
-        Log.d("OTW_DEBUG", "배달앱 감지: $pkg, 텍스트: ${texts.joinToString(" | ")}")
 
-        // 대기 화면 무시 필터 (파싱 자체를 스킵, 로그 안 남김)
+        // 대기 화면 무시 필터 — 파싱/로그/TTS 전부 스킵 (최우선 체크)
         val joined = texts.joinToString(" ")
         if (pkg == PKG_BAEMIN) {
-            if (joined.contains("가상 배달을 체험해 보세요") || joined.contains("신규배차를 켜고 배달을 시작하세요")) {
-                Log.d("DeliveryFilter", "[baemin] 대기 화면 감지 - 무시")
+            if (joined.contains("가상 배달을 체험해 보세요") || joined.contains("신규배차를 켜고 배달을 시작하세요")
+                || joined.contains("배달을 시작해") || joined.contains("배차 대기")) {
                 return
             }
         }
         if (pkg == PKG_COUPANG) {
-            val appListPattern = Regex("(NAVER|YouTube|Chrome|카카오톡|Samsung)")
-            if (joined.isBlank() || appListPattern.containsMatchIn(joined)) {
-                Log.d("DeliveryFilter", "[coupang] 대기/홈 화면 감지 - 무시")
+            if (joined.isBlank() || Regex("(NAVER|YouTube|Chrome|카카오톡|Samsung|배달 현황|출근하기)").containsMatchIn(joined)) {
                 return
             }
         }
+
+        Log.d("DeliveryFilter", "[$platformName] rawText: ${texts.joinToString(" | ")}")
 
         // 파싱
         val calls = when (pkg) {
@@ -427,8 +434,8 @@ class OnTheWayService : AccessibilityService() {
                 continue
             }
 
-            // 안전 조건: 3초 쿨다운
-            if (now - lastSpeakTime < 3000) {
+            // 안전 조건: 2초 쿨다운
+            if (now - lastSpeakTime < 2000) {
                 Log.d("DeliveryFilter", "쿨다운 중 - 건너뜀")
                 continue
             }
