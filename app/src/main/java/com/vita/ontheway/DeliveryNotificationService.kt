@@ -3,7 +3,10 @@ package com.vita.ontheway
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.speech.tts.TextToSpeech
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import java.util.Locale
 
 /**
@@ -43,6 +46,12 @@ class DeliveryNotificationService : NotificationListenerService() {
         super.onDestroy()
     }
 
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "알림 서비스 연결됨", Toast.LENGTH_LONG).show() }
+        Log.d("DeliveryNoti", "onListenerConnected")
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
         val pkg = sbn.packageName ?: return
@@ -61,8 +70,9 @@ class DeliveryNotificationService : NotificationListenerService() {
         val bigText = extras.getCharSequence("android.bigText")?.toString() ?: ""
         val combined = "$title $text $bigText".trim()
 
+        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "알림 수신: pkg=$pkg, title=$title, text=$text", Toast.LENGTH_LONG).show() }
+
         if (combined.isBlank()) return
-        Log.d("DeliveryNoti", "[$pkg] 알림: $combined")
 
         // 플랫폼별 파싱
         val calls = when (pkg) {
@@ -79,6 +89,7 @@ class DeliveryNotificationService : NotificationListenerService() {
         // 판정 + TTS
         for (call in calls) {
             val result = CallFilter.judge(call, this)
+            Handler(Looper.getMainLooper()).post { Toast.makeText(this, "파싱 결과: price=${call.price}, result=${result.verdict} (${result.reason})", Toast.LENGTH_LONG).show() }
             FilterLog.record(this, call, result)
 
             // OnTheWayService의 lastCallDetectedTime도 갱신
@@ -145,6 +156,7 @@ class DeliveryNotificationService : NotificationListenerService() {
     private fun speakTts(text: String) {
         if (tts == null || !ttsReady) {
             Log.w("DeliveryNoti", "TTS 미준비")
+            Handler(Looper.getMainLooper()).post { Toast.makeText(this, "TTS 미준비 - 스킵됨", Toast.LENGTH_LONG).show() }
             return
         }
         tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "noti_${System.currentTimeMillis()}")

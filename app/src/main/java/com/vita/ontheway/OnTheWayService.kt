@@ -1,10 +1,13 @@
 package com.vita.ontheway
 
 import android.accessibilityservice.AccessibilityService
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Toast
 import java.util.Locale
 
 class OnTheWayService : AccessibilityService() {
@@ -90,6 +93,9 @@ class OnTheWayService : AccessibilityService() {
         val texts = mutableListOf<String>()
         extractText(root, texts)
 
+        val previewText = texts.joinToString(" ").take(50)
+        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "카카오T 감지: $previewText", Toast.LENGTH_LONG).show() }
+
         if (isDriverApp) {
             Log.d("KakaoDriver", "rawText: ${texts.joinToString(" | ")}")
         }
@@ -112,6 +118,7 @@ class OnTheWayService : AccessibilityService() {
             return
         }
 
+        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "카카오T 금액: $amounts", Toast.LENGTH_LONG).show() }
         if (isDriverApp) Log.d("KakaoDriver", "대리 콜 감지: ${amounts.size}건 $amounts")
 
         activeSearchSessionId?.let { sid ->
