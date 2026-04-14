@@ -1,15 +1,14 @@
-OnTheWay 프로젝트에서 다음 기능을 추가해줘:
+OnTheWay 프로젝트에서 다음 4가지를 수정해줘:
 
-1. FilterLog에 판정 사유(reason) 필드를 추가해줘. 예: "단가 1,639원/km < 2,000원 기준 미달", "금액 5,450원 ≥ 3,500원 기준 충족", "묶음 2건 합산 7,020원" 등 구체적인 판정 근거를 저장.
+1. CallFilter.judge()에서 ACCEPT일 때 reason을 구체적으로 변경:
+   - 거리 있을 때: "금액 N,NNN원, 거리 N.Nkm, 단가 N,NNN원/km ≥ 2,000원 기준 충족"
+   - 거리 없을 때: "금액 N,NNN원 ≥ 최소기준 3,000원 충족"
+   - REJECT일 때도: "단가 N,NNN원/km < 2,000원 기준 미달" 또는 "금액 N,NNN원 < 최소기준 3,000원 미달"
 
-2. CallFilter.judge()가 반환하는 result에 reason 문자열이 포함되도록 수정. 단가 기준이면 "단가 N,NNN원/km (기준 2,000원)", 금액 기준이면 "금액 N,NNN원 (기준 3,500원)", 거리 정보가 있으면 "거리 N.Nkm" 도 포함.
+2. 고액 콜 보호: CallFilter.judge()에서 금액이 7,000원 이상이면 단가와 무관하게 ACCEPT 처리. reason: "고액 콜 N,NNN원 ≥ 7,000원 (단가 무관 통과)"
 
-3. MainActivity의 최근 콜 리스트에서 항목을 클릭하면 AlertDialog로 상세 정보를 표시:
-   - 플랫폼, 금액, 거리, 단가
-   - 판정 결과 (넘기세요/괜찮습니다/잡으세요)
-   - 판정 사유 (위에서 저장한 reason)
-   - 감지 시각
+3. 콜 상세 다이얼로그에서 "가게: 배민배달", "목적지: 지도앱으로 검색하기" 같은 의미 없는 텍스트는 표시하지 않기. 가게명이 플랫폼명과 같거나, 목적지에 "검색하기"가 포함되면 해당 줄 숨기기.
 
-4. DeliveryNotificationService.kt에 남아있는 Toast.makeText를 모두 Log.d로 교체하고 Toast import 제거.
+4. DeliveryNotificationService.kt에서 Toast.makeText가 포함된 모든 줄을 Log.d로 완전히 교체. Handler(Looper.getMainLooper()).post { Toast... } 패턴도 포함. android.widget.Toast import 제거.
 
-수정 후 git add -A && git commit -m "v2 1.7: 콜 상세보기 다이얼로그 + 판정사유 표시 + Toast 완전제거" && git push 해줘.
+수정 후 git add -A && git commit -m "v2 1.8: 판정사유 구체화, 고액콜 보호 7000원, 상세보기 정리, Toast완전제거" && git push 해줘.

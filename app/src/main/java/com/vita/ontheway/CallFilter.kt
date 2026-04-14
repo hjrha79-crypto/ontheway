@@ -19,45 +19,49 @@ object CallFilter {
         val reason: String
     )
 
+    private const val HIGH_PRICE_THRESHOLD = 7000
+
     fun judge(call: DeliveryCall, ctx: Context): FilterResult {
         val minPrice = getMinPrice(ctx)
         val minUnitPrice = getMinUnitPrice(ctx)
         val multiMinPrice = getMultiMinPrice(ctx)
         val fmt = java.text.NumberFormat.getNumberInstance()
 
-        val distInfo = if (call.distance != null && call.distance > 0)
-            " | 거리 ${"%.1f".format(call.distance)}km" else ""
-        val unitPrice = if (call.distance != null && call.distance > 0)
-            (call.price / call.distance).toInt() else 0
+        val hasDist = call.distance != null && call.distance > 0
+        val unitPrice = if (hasDist) (call.price / call.distance!!).toInt() else 0
+
+        // 고액 콜 보호: 7,000원 이상이면 단가 무관 통과
+        if (call.price >= HIGH_PRICE_THRESHOLD) {
+            return FilterResult(Verdict.ACCEPT,
+                "고액 콜 ${fmt.format(call.price)}원 ≥ ${fmt.format(HIGH_PRICE_THRESHOLD)}원 (단가 무관 통과)")
+        }
 
         // 최소 배달료 미달
         if (call.price < minPrice) {
             return FilterResult(Verdict.REJECT,
-                "금액 ${fmt.format(call.price)}원 < 기준 ${fmt.format(minPrice)}원$distInfo")
+                "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달")
         }
 
         // 멀티 최소금액 미달
         if (call.isMulti && call.price < multiMinPrice) {
             return FilterResult(Verdict.REJECT,
-                "묶음 금액 ${fmt.format(call.price)}원 < 기준 ${fmt.format(multiMinPrice)}원$distInfo")
+                "묶음 금액 ${fmt.format(call.price)}원 < 기준 ${fmt.format(multiMinPrice)}원 미달")
         }
 
         // 단가 미달 (거리 정보가 있을 때만)
-        if (call.distance != null && call.distance > 0) {
-            if (unitPrice < minUnitPrice) {
-                return FilterResult(Verdict.REJECT,
-                    "단가 ${fmt.format(unitPrice)}원/km < 기준 ${fmt.format(minUnitPrice)}원$distInfo")
-            }
+        if (hasDist && unitPrice < minUnitPrice) {
+            return FilterResult(Verdict.REJECT,
+                "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달")
         }
 
-        // ACCEPT 사유 구성
-        val reasonParts = mutableListOf<String>()
-        reasonParts.add("금액 ${fmt.format(call.price)}원 ≥ 기준 ${fmt.format(minPrice)}원")
-        if (call.isMulti) reasonParts.add("묶음 ${fmt.format(call.price)}원")
-        if (unitPrice > 0) reasonParts.add("단가 ${fmt.format(unitPrice)}원/km")
-        if (distInfo.isNotEmpty()) reasonParts.add("거리 ${"%.1f".format(call.distance)}km")
-
-        return FilterResult(Verdict.ACCEPT, reasonParts.joinToString(" | "))
+        // ACCEPT 사유
+        return if (hasDist) {
+            FilterResult(Verdict.ACCEPT,
+                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원 기준 충족")
+        } else {
+            FilterResult(Verdict.ACCEPT,
+                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원 충족")
+        }
     }
 
     // ── 설정값 getter/setter ──
