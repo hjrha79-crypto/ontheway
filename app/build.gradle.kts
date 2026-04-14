@@ -1,5 +1,12 @@
-﻿plugins {
+﻿import java.util.Properties
+
+plugins {
     alias(libs.plugins.android.application)
+}
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) load(file.inputStream())
 }
 
 android {
@@ -18,6 +25,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "ANTHROPIC_API_KEY",
+            "\"${localProperties.getProperty("ANTHROPIC_API_KEY", "")}\"")
     }
 
     buildTypes {
@@ -28,6 +38,9 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+    buildFeatures {
+        buildConfig = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

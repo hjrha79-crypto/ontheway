@@ -63,6 +63,9 @@ class DeliveryNotificationService : NotificationListenerService() {
         if (processedNotifs[notiKey]?.let { now - it < 10_000 } == true) return
         processedNotifs[notiKey] = now
 
+        // 디버그: extras 체크 전 알림 내용 확인
+        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "알림: pkg=${sbn.packageName}, title=${sbn.notification?.extras?.getCharSequence("android.title")}, text=${sbn.notification?.extras?.getCharSequence("android.text")}", Toast.LENGTH_LONG).show() }
+
         // 알림 텍스트 추출
         val extras = sbn.notification?.extras ?: return
         val title = extras.getCharSequence("android.title")?.toString() ?: ""
