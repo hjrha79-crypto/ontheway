@@ -19,4 +19,11 @@ object TtsDeduplicator {
         history[key] = now
         return true
     }
+
+    /** 지정 시간(ms) 이내에 해당 키가 발화된 적 있는지 확인 (기록하지 않음) */
+    fun wasSpokenWithin(platform: String, price: Int, windowMs: Long): Boolean {
+        val key = "${platform}_${price}"
+        val last = history[key] ?: return false
+        return System.currentTimeMillis() - last < windowMs
+    }
 }

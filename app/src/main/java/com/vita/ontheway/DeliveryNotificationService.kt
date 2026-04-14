@@ -95,6 +95,11 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         // 판정 + TTS
         for (call in calls) {
+            // 쿠팡: Accessibility가 10초 이내 처리했으면 NotificationListener는 스킵
+            if (pkg == PKG_COUPANG && TtsDeduplicator.wasSpokenWithin("coupang", call.price, 10_000)) {
+                Log.d("DeliveryNoti", "쿠팡 Accessibility 우선 - 알림 스킵: ${call.price}원")
+                continue
+            }
             val result = CallFilter.judge(call, this)
             Log.d("DeliveryNoti", "파싱 결과: price=${call.price}, result=${result.verdict} (${result.reason})")
             FilterLog.record(this, call, result)
