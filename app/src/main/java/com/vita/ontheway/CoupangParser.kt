@@ -14,9 +14,23 @@ object CoupangParser {
 
     private val STORE_PATTERN = Regex("^[가-힣a-zA-Z0-9\\s]{2,20}$")
 
+    // 비콜 화면 키워드 (이 텍스트가 포함되면 콜이 아닌 UI 화면)
+    private val NON_CALL_KEYWORDS = setOf(
+        "배달 현황", "출근하기", "퇴근하기", "배달 완료",
+        "고객에게 전달", "픽업 완료", "가게 도착", "고객 도착",
+        "배달 중", "픽업 중", "주문 현황", "정산", "공지사항",
+        "배달 내역", "수입 현황", "내 정보", "설정"
+    )
+
     fun parse(texts: List<String>): List<DeliveryCall> {
         val results = mutableListOf<DeliveryCall>()
         val joined = texts.joinToString(" ")
+
+        // 비콜 필터링: 배달 진행/완료/메뉴 화면이면 빈 리스트 반환
+        if (NON_CALL_KEYWORDS.any { joined.contains(it) }) {
+            Log.d("CoupangParser", "비콜 화면 감지 - 스킵: ${joined.take(50)}")
+            return results
+        }
 
         // 가게명 추출: 금액/거리/키워드가 아닌 짧은 한글 텍스트
         val storeName = texts.firstOrNull { t ->

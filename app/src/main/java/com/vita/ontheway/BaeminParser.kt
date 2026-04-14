@@ -9,6 +9,8 @@ object BaeminParser {
     private val POINT_PATTERN = Regex("([\\d.]+)\\s*P", RegexOption.IGNORE_CASE)
     private val STORE_PATTERN = Regex("^[가-힣a-zA-Z0-9\\s]{2,20}$")
     private val DEST_PATTERN = Regex("^[가-힣]+(구|동|시|면|로|길).*")
+    // 묶음배달 패턴: "묶음배달", "2건", "3건 묶음" 등
+    private val BUNDLE_PATTERN = Regex("묶음|\\d+건", RegexOption.IGNORE_CASE)
 
     fun parse(texts: List<String>): List<DeliveryCall> {
         val results = mutableListOf<DeliveryCall>()
@@ -73,6 +75,23 @@ object BaeminParser {
                     Log.d("BaeminParser", "파싱(join): ${price}원")
                 }
             }
+        }
+
+        // ── 묶음배달 합산 판정 ──
+        // 여러 배달료가 감지되면 묶음배달로 판정, 합산하여 단일 콜로 반환
+        val isBundle = BUNDLE_PATTERN.containsMatchIn(joined) || results.size >= 2
+        if (isBundle && results.size >= 2) {
+            val totalPrice = results.sumOf { it.price }
+            Log.d("BaeminParser", "묶음배달 감지: ${results.size}건 합산 ${totalPrice}원")
+            return listOf(DeliveryCall(
+                price = totalPrice,
+                distance = null,
+                isMulti = true,
+                platform = "baemin",
+                rawText = joined,
+                storeName = results.map { it.storeName }.filter { it.isNotEmpty() }.joinToString("+"),
+                destination = destination
+            ))
         }
 
         return results

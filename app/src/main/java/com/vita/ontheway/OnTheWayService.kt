@@ -1,13 +1,10 @@
 package com.vita.ontheway
 
 import android.accessibilityservice.AccessibilityService
-import android.os.Handler
-import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Toast
 import java.util.Locale
 
 class OnTheWayService : AccessibilityService() {
@@ -75,7 +72,7 @@ class OnTheWayService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         Log.d("OTW_DEBUG", "패키지: $pkg")
         if (pkg !in TARGET_PACKAGES) return
-        val root = rootInActiveWindow ?: return
+        val root = rootInActiveWindow ?: event.source ?: return
 
         // ── 배달 플랫폼 분기 (쿠팡이츠/배민커넥트) ──
         if (pkg in DELIVERY_PACKAGES) {
@@ -93,8 +90,8 @@ class OnTheWayService : AccessibilityService() {
         val texts = mutableListOf<String>()
         extractText(root, texts)
 
-        val previewText = texts.joinToString(" ").take(50)
-        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "카카오T 감지: $previewText", Toast.LENGTH_LONG).show() }
+        // 카카오T 감지 로그
+        Log.d("OTW_ROUTE", "카카오T 텍스트: ${texts.joinToString(" ").take(50)}")
 
         if (isDriverApp) {
             Log.d("KakaoDriver", "rawText: ${texts.joinToString(" | ")}")
@@ -118,7 +115,7 @@ class OnTheWayService : AccessibilityService() {
             return
         }
 
-        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "카카오T 금액: $amounts", Toast.LENGTH_LONG).show() }
+        Log.d("OTW_ROUTE", "카카오T 금액: $amounts")
         if (isDriverApp) Log.d("KakaoDriver", "대리 콜 감지: ${amounts.size}건 $amounts")
 
         activeSearchSessionId?.let { sid ->
@@ -401,7 +398,11 @@ class OnTheWayService : AccessibilityService() {
         val joined = texts.joinToString(" ")
         if (pkg == PKG_BAEMIN) {
             if (joined.contains("가상 배달을 체험해 보세요") || joined.contains("신규배차를 켜고 배달을 시작하세요")
-                || joined.contains("배달을 시작해") || joined.contains("배차 대기")) {
+                || joined.contains("배달을 시작해") || joined.contains("배차 대기")
+                || joined.contains("배달 완료") || joined.contains("배달 중")
+                || joined.contains("가게 도착") || joined.contains("고객에게 전달")
+                || joined.contains("배달 내역") || joined.contains("정산")
+                || joined.contains("공지사항") || joined.contains("내 정보")) {
                 return
             }
         }

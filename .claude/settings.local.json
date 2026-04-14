@@ -40,7 +40,9 @@
       "Bash(git commit:*)",
       "Bash(export JAVA_HOME=\"c:/Program Files/Android/Android Studio/jbr\")",
       "Bash(git push:*)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" git log --oneline --all)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" git show 06304f2 -- app/src/main/java/com/vita/ontheway/Config.kt)"
     ]
   }
 }
