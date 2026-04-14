@@ -10,6 +10,7 @@ import android.speech.tts.UtteranceProgressListener
 import android.speech.RecognizerIntent
 import android.widget.*
 import android.view.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import android.graphics.*
 import android.graphics.drawable.*
@@ -344,6 +345,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 setTypeface(null, Typeface.BOLD)
             })
 
+            // 클릭 시 상세 다이얼로그
+            row.isClickable = true
+            row.isFocusable = true
+            row.setOnClickListener { showCallDetail(entry) }
+
             recentCallList.addView(row)
 
             // 구분선
@@ -351,6 +357,47 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 setBackgroundColor(Color.parseColor("#F0F0F0"))
             }, lp(MP, dp(1)).apply { setMargins(dp(20), 0, dp(20), 0) })
         }
+    }
+
+    private fun showCallDetail(entry: org.json.JSONObject) {
+        val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+        val nf = java.text.NumberFormat.getNumberInstance()
+        val ts = sdf.format(java.util.Date(entry.getLong("ts")))
+        val platform = when (entry.optString("platform")) {
+            "coupang" -> "쿠팡이츠"; "baemin" -> "배민커넥트"; "kakaot" -> "카카오T"; else -> "?"
+        }
+        val price = entry.optInt("price", 0)
+        val dist = entry.optDouble("distanceKm", -1.0)
+        val unitPrice = entry.optInt("unitPrice", 0)
+        val verdict = entry.optString("verdict", "")
+        val reason = entry.optString("reason", "")
+        val storeName = entry.optString("storeName", "")
+        val destination = entry.optString("destination", "")
+        val isMulti = entry.optBoolean("multi", false)
+
+        val verdictKr = if (verdict == "REJECT") "넘기세요"
+        else if (unitPrice >= 2500 && dist in 0.0..3.0) "잡으세요"
+        else "괜찮습니다"
+
+        val sb = StringBuilder()
+        sb.appendLine("플랫폼: $platform")
+        sb.appendLine("금액: ${nf.format(price)}원")
+        if (dist >= 0) sb.appendLine("거리: ${"%.1f".format(dist)}km")
+        if (unitPrice > 0) sb.appendLine("단가: ${nf.format(unitPrice)}원/km")
+        if (isMulti) sb.appendLine("묶음배달: 예")
+        if (storeName.isNotEmpty()) sb.appendLine("가게: $storeName")
+        if (destination.isNotEmpty()) sb.appendLine("목적지: $destination")
+        sb.appendLine()
+        sb.appendLine("판정: $verdictKr")
+        sb.appendLine("사유: $reason")
+        sb.appendLine()
+        sb.appendLine("감지 시각: $ts")
+
+        AlertDialog.Builder(this)
+            .setTitle("콜 상세 정보")
+            .setMessage(sb.toString())
+            .setPositiveButton("확인", null)
+            .show()
     }
 
     // ═══ 수익 (콤팩트 1줄 헤더 + 서브라인) ═══

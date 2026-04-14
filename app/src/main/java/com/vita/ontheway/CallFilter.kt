@@ -23,26 +23,41 @@ object CallFilter {
         val minPrice = getMinPrice(ctx)
         val minUnitPrice = getMinUnitPrice(ctx)
         val multiMinPrice = getMultiMinPrice(ctx)
+        val fmt = java.text.NumberFormat.getNumberInstance()
+
+        val distInfo = if (call.distance != null && call.distance > 0)
+            " | 거리 ${"%.1f".format(call.distance)}km" else ""
+        val unitPrice = if (call.distance != null && call.distance > 0)
+            (call.price / call.distance).toInt() else 0
 
         // 최소 배달료 미달
         if (call.price < minPrice) {
-            return FilterResult(Verdict.REJECT, "최소배달료 미달 (${call.price} < $minPrice)")
+            return FilterResult(Verdict.REJECT,
+                "금액 ${fmt.format(call.price)}원 < 기준 ${fmt.format(minPrice)}원$distInfo")
         }
 
         // 멀티 최소금액 미달
         if (call.isMulti && call.price < multiMinPrice) {
-            return FilterResult(Verdict.REJECT, "멀티 최소금액 미달 (${call.price} < $multiMinPrice)")
+            return FilterResult(Verdict.REJECT,
+                "묶음 금액 ${fmt.format(call.price)}원 < 기준 ${fmt.format(multiMinPrice)}원$distInfo")
         }
 
         // 단가 미달 (거리 정보가 있을 때만)
         if (call.distance != null && call.distance > 0) {
-            val unitPrice = (call.price / call.distance).toInt()
             if (unitPrice < minUnitPrice) {
-                return FilterResult(Verdict.REJECT, "단가 미달 (${unitPrice}원/km < ${minUnitPrice})")
+                return FilterResult(Verdict.REJECT,
+                    "단가 ${fmt.format(unitPrice)}원/km < 기준 ${fmt.format(minUnitPrice)}원$distInfo")
             }
         }
 
-        return FilterResult(Verdict.ACCEPT, "통과")
+        // ACCEPT 사유 구성
+        val reasonParts = mutableListOf<String>()
+        reasonParts.add("금액 ${fmt.format(call.price)}원 ≥ 기준 ${fmt.format(minPrice)}원")
+        if (call.isMulti) reasonParts.add("묶음 ${fmt.format(call.price)}원")
+        if (unitPrice > 0) reasonParts.add("단가 ${fmt.format(unitPrice)}원/km")
+        if (distInfo.isNotEmpty()) reasonParts.add("거리 ${"%.1f".format(call.distance)}km")
+
+        return FilterResult(Verdict.ACCEPT, reasonParts.joinToString(" | "))
     }
 
     // ── 설정값 getter/setter ──
