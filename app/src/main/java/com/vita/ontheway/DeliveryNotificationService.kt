@@ -73,6 +73,14 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         if (combined.isBlank()) return
 
+        // 쿠팡: [N건 단일] 또는 [N건 묶음] 패턴이 아니면 비콜 → 무시
+        if (pkg == PKG_COUPANG) {
+            if (!Regex("^\\[\\d+건\\s*(단일|묶음)]").containsMatchIn(title)) {
+                Log.d("DeliveryNoti", "쿠팡 비콜 알림 스킵: title=$title")
+                return
+            }
+        }
+
         // 플랫폼별 파싱
         val calls = when (pkg) {
             PKG_COUPANG -> parseCoupangNotification(combined)
