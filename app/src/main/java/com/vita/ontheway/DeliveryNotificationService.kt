@@ -3,10 +3,7 @@ package com.vita.ontheway
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.speech.tts.TextToSpeech
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
-import android.widget.Toast
 import java.util.Locale
 
 /**
@@ -48,7 +45,7 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "알림 서비스 연결됨", Toast.LENGTH_LONG).show() }
+        Log.d("DeliveryNoti", "알림 서비스 연결됨")
         Log.d("DeliveryNoti", "onListenerConnected")
     }
 
@@ -63,8 +60,7 @@ class DeliveryNotificationService : NotificationListenerService() {
         if (processedNotifs[notiKey]?.let { now - it < 10_000 } == true) return
         processedNotifs[notiKey] = now
 
-        // 디버그: extras 체크 전 알림 내용 확인
-        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "알림: pkg=${sbn.packageName}, title=${sbn.notification?.extras?.getCharSequence("android.title")}, text=${sbn.notification?.extras?.getCharSequence("android.text")}", Toast.LENGTH_LONG).show() }
+        Log.d("DeliveryNoti", "알림: pkg=${sbn.packageName}, title=${sbn.notification?.extras?.getCharSequence("android.title")}, text=${sbn.notification?.extras?.getCharSequence("android.text")}")
 
         // 알림 텍스트 추출
         val extras = sbn.notification?.extras ?: return
@@ -73,7 +69,7 @@ class DeliveryNotificationService : NotificationListenerService() {
         val bigText = extras.getCharSequence("android.bigText")?.toString() ?: ""
         val combined = "$title $text $bigText".trim()
 
-        Handler(Looper.getMainLooper()).post { Toast.makeText(this, "알림 수신: pkg=$pkg, title=$title, text=$text", Toast.LENGTH_LONG).show() }
+        Log.d("DeliveryNoti", "알림 수신: pkg=$pkg, title=$title, text=$text")
 
         if (combined.isBlank()) return
 
@@ -92,7 +88,7 @@ class DeliveryNotificationService : NotificationListenerService() {
         // 판정 + TTS
         for (call in calls) {
             val result = CallFilter.judge(call, this)
-            Handler(Looper.getMainLooper()).post { Toast.makeText(this, "파싱 결과: price=${call.price}, result=${result.verdict} (${result.reason})", Toast.LENGTH_LONG).show() }
+            Log.d("DeliveryNoti", "파싱 결과: price=${call.price}, result=${result.verdict} (${result.reason})")
             FilterLog.record(this, call, result)
 
             // OnTheWayService의 lastCallDetectedTime도 갱신
@@ -163,8 +159,7 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     private fun speakTts(text: String) {
         if (tts == null || !ttsReady) {
-            Log.w("DeliveryNoti", "TTS 미준비")
-            Handler(Looper.getMainLooper()).post { Toast.makeText(this, "TTS 미준비 - 스킵됨", Toast.LENGTH_LONG).show() }
+            Log.w("DeliveryNoti", "TTS 미준비 - 스킵됨")
             return
         }
         tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "noti_${System.currentTimeMillis()}")
