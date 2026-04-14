@@ -55,12 +55,16 @@ object CallFilter {
         }
 
         // ACCEPT 사유
-        return if (hasDist) {
+        return if (hasDist && unitPrice >= 2500 && call.distance!! <= 3.0) {
+            // 잡으세요 판정
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원 기준 충족")
+                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km")
+        } else if (hasDist) {
+            FilterResult(Verdict.ACCEPT,
+                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원")
         } else {
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원 충족")
+                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원")
         }
     }
 
