@@ -47,4 +47,16 @@ object TtsPrefs {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt("high_price", 7000)
     fun setHighPriceThreshold(ctx: Context, v: Int) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt("high_price", v).apply()
+
+    // v3.2: 진동 알림 (기본 ON)
+    fun isVibrationEnabled(ctx: Context) =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("vibration", true)
+    fun setVibration(ctx: Context, v: Boolean) =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("vibration", v).apply()
+
+    // v3.2: 다크 모드 ("auto", "on", "off")
+    fun getDarkMode(ctx: Context): String =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("dark_mode", "auto") ?: "auto"
+    fun setDarkMode(ctx: Context, v: String) =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("dark_mode", v).apply()
 }

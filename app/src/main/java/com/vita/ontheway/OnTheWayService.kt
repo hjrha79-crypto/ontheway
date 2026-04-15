@@ -1,10 +1,19 @@
 package com.vita.ontheway
 
 import android.accessibilityservice.AccessibilityService
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.app.NotificationCompat
 import java.util.Locale
 
 class OnTheWayService : AccessibilityService() {
@@ -55,6 +64,8 @@ class OnTheWayService : AccessibilityService() {
         val VOICE_ACCEPT_COMMANDS = setOf("잡아", "수락", "이거")
         const val ACCEPT_TIMEOUT_MS = 30_000L
         const val AUTO_ACCEPT_COOLDOWN_MS = 60_000L
+        const val NOTIF_CHANNEL_ID = "otw_service"
+        const val NOTIF_ID = 1001
 
         // v2.2: 진단 모드 — 패키지별 이벤트 카운트
         val packageEventCount = mutableMapOf<String, Int>()
@@ -638,6 +649,10 @@ class OnTheWayService : AccessibilityService() {
                 }
             }
 
+            // v3.2: 진동 + 알림 업데이트
+            vibrate(lastDeliveryVerdict)
+            updateNotification()
+
             // v3.0: 일별 리포트 타이머 갱신
             DailyReport.onCallDetected(this)
         }
@@ -714,7 +729,82 @@ class OnTheWayService : AccessibilityService() {
                 Log.d("OnTheWay", "TTS 초기화 완료")
             }
         }
+        // v3.2: Foreground notification
+        startForegroundNotification()
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
+    }
+
+    private fun startForegroundNotification() {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = NotificationChannel(NOTIF_CHANNEL_ID, "OnTheWay 서비스", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "OnTheWay 작동 상태"
+                setShowBadge(false)
+            }
+            nm.createNotificationChannel(ch)
+        }
+        val notif = buildStatusNotification("OnTheWay 작동 중 | 대기")
+        try {
+            startForeground(NOTIF_ID, notif)
+        } catch (e: Exception) {
+            Log.w("OnTheWay", "startForeground 실패: ${e.message}")
+        }
+    }
+
+    /** v3.2: 콜 감지 시 알림 업데이트 */
+    fun updateNotification() {
+        try {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(NOTIF_ID, buildStatusNotification(null))
+        } catch (e: Exception) { /* ignore */ }
+    }
+
+    private fun buildStatusNotification(customText: String?): android.app.Notification {
+        val fmt = java.text.NumberFormat.getNumberInstance()
+        val detail = FilterLog.getTodayDetail(this)
+        val earnings = EarningsTracker.getToday(this)
+        val count = if (earnings.acceptedCount > 0) earnings.acceptedCount else detail.total
+        val revenue = earnings.totalRevenue
+        val hourly = earnings.hourlyRate
+        val hourlyStr = if (hourly > 0) "${fmt.format(hourly)}원/h" else "0원/h"
+        val text = customText ?: "OnTheWay 작동 중 | 오늘 ${count}건 | 매출 ${fmt.format(revenue)}원 | 시급 $hourlyStr"
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        return NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
+            .setContentTitle("OnTheWay")
+            .setContentText(text)
+            .setOngoing(true)
+            .setContentIntent(pi)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+    }
+
+    /** v3.2: 진동 발생 */
+    private fun vibrate(verdict: String) {
+        if (!TtsPrefs.isVibrationEnabled(this)) return
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(VIBRATOR_SERVICE) as Vibrator
+        }
+        when (verdict) {
+            "잡으세요" -> {
+                // 강한 진동 500ms x 3회
+                val pattern = longArrayOf(0, 500, 200, 500, 200, 500)
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+            }
+            "괜찮습니다" -> {
+                // 보통 진동 300ms x 1회
+                vibrator.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
+            }
+            // 넘기세요: 진동 없음
+        }
     }
 
     override fun onDestroy() {

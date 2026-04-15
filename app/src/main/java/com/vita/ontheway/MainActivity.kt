@@ -334,9 +334,67 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (currentTab == "status") refreshDashboard()
     }
 
+    // v3.2: 필터 상태
+    private var dashFilterPlatform = "전체"
+    private var dashFilterVerdict = "전체"
+
     private fun refreshDashboard() {
         recentCallList.removeAllViews()
-        val logs = FilterLog.getRecent(this, 10)
+
+        // v3.2: 플랫폼 필터 탭
+        val platRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(16), dp(6), dp(16), dp(2))
+        }
+        listOf("전체", "배민", "쿠팡", "카카오T").forEach { label ->
+            platRow.addView(TextView(this).apply {
+                text = label; textSize = 11f; gravity = Gravity.CENTER
+                val sel = label == dashFilterPlatform
+                setTextColor(if (sel) Color.WHITE else Color.parseColor("#5B6ABF"))
+                setBackgroundColor(if (sel) Color.parseColor("#5B6ABF") else Color.parseColor("#F0F0F0"))
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                setOnClickListener { dashFilterPlatform = label; refreshDashboard() }
+            }, lp(0, WC, 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
+        }
+        recentCallList.addView(platRow)
+
+        // v3.2: 판정 필터 탭
+        val verdRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(16), dp(2), dp(16), dp(6))
+        }
+        listOf("전체", "잡으세요", "괜찮습니다", "넘기세요").forEach { label ->
+            verdRow.addView(TextView(this).apply {
+                text = label; textSize = 11f; gravity = Gravity.CENTER
+                val sel = label == dashFilterVerdict
+                setTextColor(if (sel) Color.WHITE else Color.parseColor("#666666"))
+                setBackgroundColor(if (sel) Color.parseColor("#666666") else Color.parseColor("#F0F0F0"))
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                setOnClickListener { dashFilterVerdict = label; refreshDashboard() }
+            }, lp(0, WC, 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
+        }
+        recentCallList.addView(verdRow)
+
+        var logs = FilterLog.getRecent(this, 30)
+
+        // v3.2: 플랫폼 필터
+        if (dashFilterPlatform != "전체") {
+            val platKey = when (dashFilterPlatform) {
+                "배민" -> "baemin"; "쿠팡" -> "coupang"; "카카오T" -> "kakaot"; else -> ""
+            }
+            logs = logs.filter { it.optString("platform") == platKey }
+        }
+
+        // v3.2: 판정 필터
+        if (dashFilterVerdict != "전체") {
+            logs = logs.filter { entry ->
+                val v = getVerdictKr(entry)
+                v == dashFilterVerdict
+            }
+        }
+
+        logs = logs.take(15)
+
         if (logs.isEmpty()) {
             recentCallList.addView(TextView(this).apply {
                 text = "기록 없음"
@@ -353,35 +411,44 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오"; else -> "?"
             }
             val price = entry.optInt("price", 0)
-            val unitPrice = entry.optInt("unitPrice", 0)
-            val verdict = entry.optString("verdict", "")
+            val isMulti = entry.optBoolean("multi", false)
 
-            // 3단계 판정 색상 (v2 2.0 확장)
-            val verdictKr: String
+            val verdictKr = getVerdictKr(entry)
             val verdictColor: Int
-            if (verdict == "REJECT") {
-                verdictKr = "넘기세요"
-                verdictColor = Color.parseColor("#E53935")
-            } else {
-                val dist = entry.optDouble("distanceKm", -1.0)
-                val ptVal = entry.optDouble("point", -1.0)
-                val isGrab = price >= 10000 ||
-                    (price >= 7000 && ((dist in 0.0..3.0) || (ptVal in 0.0..15.0))) ||
-                    (unitPrice >= 2500 && dist in 0.0..3.0)
-                if (isGrab) {
-                    verdictKr = "잡으세요"
-                    verdictColor = Color.parseColor("#4CAF50")
-                } else {
-                    verdictKr = "괜찮습니다"
-                    verdictColor = Color.parseColor("#FF9800")
+            val bgColor: Int
+            when (verdictKr) {
+                "잡으세요" -> {
+                    verdictColor = Color.parseColor("#1976D2")
+                    bgColor = Color.parseColor("#E3F2FD")  // 연한 파란색
+                }
+                "괜찮습니다" -> {
+                    verdictColor = Color.parseColor("#388E3C")
+                    bgColor = Color.parseColor("#E8F5E9")  // 연한 초록색
+                }
+                "넘기세요" -> {
+                    verdictColor = Color.parseColor("#E53935")
+                    bgColor = Color.parseColor("#FFEBEE")  // 연한 빨간색
+                }
+                else -> {
+                    verdictColor = Color.parseColor("#999999")
+                    bgColor = Color.WHITE
                 }
             }
 
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(20), dp(8), dp(20), dp(8))
+                setBackgroundColor(bgColor)
+                setPadding(dp(if (isMulti) 24 else 20), dp(8), dp(20), dp(8))
             }
+
+            // 묶음배달: 왼쪽 보라색 세로 바
+            if (isMulti) {
+                row.addView(View(this).apply {
+                    setBackgroundColor(Color.parseColor("#7B1FA2"))
+                }, lp(dp(3), dp(28)).apply { marginEnd = dp(6) })
+            }
+
             row.addView(TextView(this).apply {
                 text = ts; textSize = 12f; setTextColor(Color.parseColor("#999999"))
             }, lp(WC, WC).apply { marginEnd = dp(10) })
@@ -397,18 +464,30 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 setTypeface(null, Typeface.BOLD)
             })
 
-            // 클릭 시 상세 다이얼로그
             row.isClickable = true
             row.isFocusable = true
             row.setOnClickListener { showCallDetail(entry) }
 
             recentCallList.addView(row)
 
-            // 구분선
             recentCallList.addView(View(this).apply {
                 setBackgroundColor(Color.parseColor("#F0F0F0"))
             }, lp(MP, dp(1)).apply { setMargins(dp(20), 0, dp(20), 0) })
         }
+    }
+
+    private fun getVerdictKr(entry: org.json.JSONObject): String {
+        val verdict = entry.optString("verdict", "")
+        if (verdict == "REJECT") return "넘기세요"
+        if (verdict == "ACCEPTED") return "수락됨"
+        val price = entry.optInt("price", 0)
+        val unitPrice = entry.optInt("unitPrice", 0)
+        val dist = entry.optDouble("distanceKm", -1.0)
+        val pt = entry.optDouble("point", -1.0)
+        val isGrab = price >= 10000 ||
+            (price >= 7000 && ((dist in 0.0..3.0) || (pt in 0.0..15.0))) ||
+            (unitPrice >= 2500 && dist in 0.0..3.0)
+        return if (isGrab) "잡으세요" else "괜찮습니다"
     }
 
     private fun showCallDetail(entry: org.json.JSONObject) {

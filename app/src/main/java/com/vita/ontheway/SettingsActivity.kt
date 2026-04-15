@@ -279,7 +279,43 @@ class SettingsActivity : AppCompatActivity() {
             }
         }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(16)) })
 
+        // v3.2: 진동 알림
+        ttsCard.addView(advancedToggle(
+            "진동 알림",
+            "잡으세요: 강한 진동, 괜찮습니다: 보통 진동, 넘기세요: 없음",
+            TtsPrefs.isVibrationEnabled(this)
+        ) { checked -> TtsPrefs.setVibration(this, checked) })
+
         root.addView(ttsCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── v3.2: 다크 모드 ───
+        root.addView(sectionTitle("화면"))
+        val displayCard = card()
+        val darkRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        val curDark = TtsPrefs.getDarkMode(this)
+        listOf("자동" to "auto", "항상 켜기" to "on", "항상 끄기" to "off").forEach { (label, value) ->
+            darkRow.addView(TextView(this).apply {
+                text = label; textSize = 13f; gravity = Gravity.CENTER
+                val isSelected = value == curDark
+                setTextColor(if (isSelected) Color.WHITE else Color.parseColor("#5B6ABF"))
+                setBackgroundColor(if (isSelected) Color.parseColor("#5B6ABF") else Color.parseColor("#F0F0F0"))
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                setOnClickListener {
+                    TtsPrefs.setDarkMode(this@SettingsActivity, value)
+                    applyDarkMode(value)
+                    recreate()
+                }
+            }, lp(0, WC, 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+        }
+        displayCard.addView(TextView(this).apply {
+            text = "다크 모드"; textSize = 14f; setTextColor(Color.BLACK)
+            setPadding(dp(16), dp(12), dp(16), dp(4))
+        })
+        displayCard.addView(darkRow)
+        root.addView(displayCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── 음성 수락 ON/OFF ───
         val voiceAcceptRow = LinearLayout(this).apply {
@@ -303,22 +339,24 @@ class SettingsActivity : AppCompatActivity() {
         voiceAcceptRow.addView(voiceAcceptToggle)
         filterCard.addView(voiceAcceptRow)
 
-        // ─── 데이터 내보내기 버튼 ───
+        // ─── v3.2: 데이터 내보내기 (공유 가능) ───
         filterCard.addView(TextView(this).apply {
-            text = "데이터 내보내기 (CSV)"
-            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            text = "전체 데이터 내보내기 (CSV)"
+            textSize = 14f; setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#5B6ABF")); gravity = Gravity.CENTER
             setBackgroundColor(Color.parseColor("#F0F0F0"))
-            setPadding(0, dp(14), 0, dp(14))
-            setOnClickListener {
-                val path = FilterLog.exportCsv(this@SettingsActivity)
-                if (path != null) {
-                    Toast.makeText(this@SettingsActivity, "저장됨: $path", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(this@SettingsActivity, "내보낼 데이터 없음", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(16)) })
+            setPadding(0, dp(12), 0, dp(12))
+            setOnClickListener { exportAndShare(false) }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(4)) })
+
+        filterCard.addView(TextView(this).apply {
+            text = "오늘만 내보내기 (CSV)"
+            textSize = 14f
+            setTextColor(Color.parseColor("#5B6ABF")); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F0F0F0"))
+            setPadding(0, dp(12), 0, dp(12))
+            setOnClickListener { exportAndShare(true) }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(16)) })
 
         // ─── 필터 기록 (최근 20건) ───
         root.addView(sectionTitle("필터 기록 (최근 20건)"))
@@ -480,6 +518,38 @@ class SettingsActivity : AppCompatActivity() {
 
         scrollView.addView(root)
         setContentView(scrollView)
+    }
+
+    private fun applyDarkMode(mode: String) {
+        val nightMode = when (mode) {
+            "on" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+            "off" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+            else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(nightMode)
+    }
+
+    private fun exportAndShare(todayOnly: Boolean) {
+        val path = FilterLog.exportCsv(this)
+        if (path == null) {
+            Toast.makeText(this, "내보낼 데이터 없음", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val file = java.io.File(path)
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this, "${packageName}.fileprovider", file
+            )
+            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(android.content.Intent.createChooser(shareIntent, "CSV 내보내기"))
+        } catch (e: Exception) {
+            // FileProvider 미설정 시 경로만 표시
+            Toast.makeText(this, "저장됨: $path", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showDiagnosticDialog() {
