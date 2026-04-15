@@ -49,6 +49,9 @@ object EarningsTracker {
         // FilterLog에도 수락 기록 추가
         FilterLog.recordAccepted(ctx, price, platform)
         Log.d(TAG, "수락 기록: ${price}원 ($platform), 오늘 누적 ${getToday(ctx).totalRevenue}원")
+
+        // 위젯 업데이트
+        try { OnTheWayWidget.updateAll(ctx) } catch (e: Exception) { /* 위젯 없으면 무시 */ }
     }
 
     /** 오늘 수익 통계 */

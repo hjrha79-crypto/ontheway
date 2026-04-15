@@ -584,7 +584,7 @@ class OnTheWayService : AccessibilityService() {
             val unitPrice = if (effectiveDist != null && effectiveDist > 0)
                 (call.price / effectiveDist).toInt() else 0
             val pName = if (call.platform == "coupang") "쿠팡" else "배민"
-            val priceKorean = toKoreanNumber(call.price)
+            val priceStr = formatPrice(call.price)
             val unitKorean = toKoreanNumber(unitPrice)
 
             if (result.verdict == CallFilter.Verdict.REJECT) {
@@ -594,21 +594,22 @@ class OnTheWayService : AccessibilityService() {
                 lastDeliveryCall = call
                 lastDeliveryVerdict = "넘기세요"
                 lastDeliveryPlatform = platformName
-                speakTts("$pName, 넘기세요, ${priceKorean}원")
+                // v3.1: 잡으세요만 모드면 REJECT 음성 스킵
+                if (!TtsPrefs.isGrabOnlyEnabled(this)) {
+                    speakTts("$pName, 넘기세요, ${priceStr}원")
+                }
                 Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
             } else {
                 callSpeakHistory[callKey] = now
 
                 // ── "잡으세요" 확장 판정 (v2 2.0) ──
+                val grabThreshold = TtsPrefs.getGrabThreshold(this)
                 val isTopAccept = when {
-                    // 10,000원 이상 무조건 잡으세요
-                    call.price >= 10000 -> true
-                    // 7,000원 이상 + (거리 ≤ 3km 또는 포인트 ≤ 15P)
-                    call.price >= 7000 && (
+                    call.price >= grabThreshold -> true
+                    call.price >= TtsPrefs.getHighPriceThreshold(this) && (
                         (call.distance != null && call.distance <= 3.0) ||
                         (baeminPoint != null && baeminPoint <= 15.0)
                     ) -> true
-                    // 기존: 단가 ≥ 2,500원/km + 거리 ≤ 3km
                     unitPrice >= 2500 && effectiveDist != null && effectiveDist <= 3.0 -> true
                     else -> false
                 }
@@ -620,11 +621,11 @@ class OnTheWayService : AccessibilityService() {
 
                 if (isTopAccept) {
                     lastSpeakTime = now
-                    speakTts("$pName, 잡으세요, ${priceKorean}원")
+                    speakTts("$pName, 잡으세요, ${priceStr}원")
                     Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
-                    // v3.0: 자동 수락 시도
                     tryAutoAccept()
-                } else if (CallFilter.isOkVoiceEnabled(this)) {
+                } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
+                    && CallFilter.isOkVoiceEnabled(this)) {
                     lastSpeakTime = now
                     var ttsMsg = "$pName, 괜찮습니다"
                     if (unitPrice > 0) ttsMsg += ", 단가 $unitKorean"
@@ -633,7 +634,7 @@ class OnTheWayService : AccessibilityService() {
                     speakTts(ttsMsg)
                     Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
                 } else {
-                    Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 괜찮습니다 음성 OFF")
+                    Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
                 }
             }
 
@@ -672,12 +673,35 @@ class OnTheWayService : AccessibilityService() {
         return sb.toString()
     }
 
+    /** v3.1: TTS 설정 반영 (속도, 볼륨 부스트) */
     private fun speakTts(text: String) {
         if (tts == null || !ttsReady) {
             Log.w("DeliveryFilter", "TTS 미준비 - 음성 출력 건너뜀")
             return
         }
+        // TTS 속도 설정
+        tts?.setSpeechRate(TtsPrefs.getSpeed(this))
+
+        // 볼륨 부스트
+        if (TtsPrefs.isVolBoostEnabled(this)) {
+            try {
+                val am = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC,
+                    am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC), 0)
+            } catch (e: Exception) {
+                Log.w("DeliveryFilter", "볼륨 부스트 실패: ${e.message}")
+            }
+        }
         tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "filter_${System.currentTimeMillis()}")
+    }
+
+    /** v3.1: 금액 읽기 방식 (한국어 / 숫자) */
+    private fun formatPrice(price: Int): String {
+        return if (TtsPrefs.getPriceReadMode(this) == "number") {
+            String.format("%,d", price)
+        } else {
+            toKoreanNumber(price)
+        }
     }
 
     override fun onInterrupt() { instance = null }

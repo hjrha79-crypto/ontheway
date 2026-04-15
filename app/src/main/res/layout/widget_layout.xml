@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="#FF5B6ABF"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/widget_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="OnTheWay"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:layout_marginEnd="8dp" />
+
+    <TextView
+        android:id="@+id/widget_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0건"
+        android:textColor="#CCFFFFFF"
+        android:textSize="12sp"
+        android:layout_marginEnd="8dp" />
+
+    <TextView
+        android:id="@+id/widget_revenue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0원"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:layout_marginEnd="8dp" />
+
+    <TextView
+        android:id="@+id/widget_hourly"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0원/h"
+        android:textColor="#CCFFFFFF"
+        android:textSize="12sp" />
+
+</LinearLayout>

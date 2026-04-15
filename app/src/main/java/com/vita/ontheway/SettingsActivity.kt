@@ -146,13 +146,15 @@ class SettingsActivity : AppCompatActivity() {
         vehicleCard.addView(vehicleRow)
         root.addView(vehicleCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
-        // ─── 배달 필터 설정 섹션 ───
-        root.addView(sectionTitle("배달 필터 (쿠팡이츠/배민커넥트)"))
+        // ─── 필터 기준 설정 (SeekBar) ───
+        root.addView(sectionTitle("필터 기준"))
         val filterCard = card()
 
-        val minPriceInput = filterInput(filterCard, "최소 배달료 (원)", CallFilter.getMinPrice(this))
-        val minUnitInput = filterInput(filterCard, "최소 단가 (원/km)", CallFilter.getMinUnitPrice(this))
-        val multiMinInput = filterInput(filterCard, "멀티 최소금액 (원)", CallFilter.getMultiMinPrice(this))
+        val minPriceBar = filterSeekBar(filterCard, "최소 배달료", CallFilter.getMinPrice(this), 1000, 5000, 500, "원")
+        val minUnitBar = filterSeekBar(filterCard, "최소 단가", CallFilter.getMinUnitPrice(this), 1000, 3000, 100, "원/km")
+        val highPriceBar = filterSeekBar(filterCard, "고액 콜 기준", TtsPrefs.getHighPriceThreshold(this), 5000, 15000, 1000, "원")
+        val grabBar = filterSeekBar(filterCard, "잡으세요 기준", TtsPrefs.getGrabThreshold(this), 7000, 20000, 1000, "원")
+        val multiMinBar = filterSeekBar(filterCard, "묶음 2건 최소", CallFilter.getMultiMinPrice(this), 3000, 8000, 500, "원")
 
         // "괜찮습니다" 음성 ON/OFF 토글
         val okVoiceRow = LinearLayout(this).apply {
@@ -173,9 +175,6 @@ class SettingsActivity : AppCompatActivity() {
         okVoiceRow.addView(okToggle)
         filterCard.addView(okVoiceRow)
 
-        // 최대 픽업 거리 설정
-        val maxPickupInput = filterInput(filterCard, "최대 픽업 거리 (km, 초과 시 REJECT)", CallFilter.getMaxPickupKm(this))
-
         filterCard.addView(TextView(this).apply {
             text = "저장"
             textSize = 15f; setTypeface(null, Typeface.BOLD)
@@ -183,13 +182,29 @@ class SettingsActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#5B6ABF"))
             setPadding(0, dp(14), 0, dp(14))
             setOnClickListener {
-                CallFilter.setMinPrice(this@SettingsActivity, minPriceInput.text.toString().toIntOrNull() ?: 3000)
-                CallFilter.setMinUnitPrice(this@SettingsActivity, minUnitInput.text.toString().toIntOrNull() ?: 2000)
-                CallFilter.setMultiMinPrice(this@SettingsActivity, multiMinInput.text.toString().toIntOrNull() ?: 5000)
-                CallFilter.setMaxPickupKm(this@SettingsActivity, maxPickupInput.text.toString().toIntOrNull() ?: 5)
+                CallFilter.setMinPrice(this@SettingsActivity, minPriceBar.second())
+                CallFilter.setMinUnitPrice(this@SettingsActivity, minUnitBar.second())
+                CallFilter.setMultiMinPrice(this@SettingsActivity, multiMinBar.second())
+                TtsPrefs.setHighPriceThreshold(this@SettingsActivity, highPriceBar.second())
+                TtsPrefs.setGrabThreshold(this@SettingsActivity, grabBar.second())
                 Toast.makeText(this@SettingsActivity, "필터 설정 저장됨", Toast.LENGTH_SHORT).show()
             }
-        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(16)) })
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(4)) })
+
+        filterCard.addView(TextView(this).apply {
+            text = "기본값 복원"
+            textSize = 13f; setTextColor(Color.parseColor("#E53935")); gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, dp(14))
+            setOnClickListener {
+                CallFilter.setMinPrice(this@SettingsActivity, 3000)
+                CallFilter.setMinUnitPrice(this@SettingsActivity, 2000)
+                CallFilter.setMultiMinPrice(this@SettingsActivity, 5000)
+                TtsPrefs.setHighPriceThreshold(this@SettingsActivity, 7000)
+                TtsPrefs.setGrabThreshold(this@SettingsActivity, 10000)
+                Toast.makeText(this@SettingsActivity, "기본값 복원됨", Toast.LENGTH_SHORT).show()
+                recreate()
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // 오늘 필터 요약
         val detail = FilterLog.getTodayDetail(this)
@@ -201,6 +216,70 @@ class SettingsActivity : AppCompatActivity() {
         })
 
         root.addView(filterCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── 음성 안내 (TTS) 설정 ───
+        root.addView(sectionTitle("음성 안내"))
+        val ttsCard = card()
+
+        ttsCard.addView(advancedToggle(
+            "넘기세요만 안내",
+            "ON이면 ACCEPT 콜은 음성 없이 로그만 기록",
+            TtsPrefs.isRejectOnlyEnabled(this)
+        ) { checked -> TtsPrefs.setRejectOnly(this, checked) })
+
+        ttsCard.addView(advancedToggle(
+            "잡으세요만 안내",
+            "ON이면 잡으세요 판정만 음성 출력",
+            TtsPrefs.isGrabOnlyEnabled(this)
+        ) { checked -> TtsPrefs.setGrabOnly(this, checked) })
+
+        // TTS 속도 SeekBar
+        val speedBar = filterSeekBar(ttsCard, "TTS 속도", (TtsPrefs.getSpeed(this) * 10).toInt(), 5, 20, 1, "x0.1")
+
+        ttsCard.addView(advancedToggle(
+            "볼륨 부스트",
+            "ON이면 TTS 발화 시 미디어 볼륨 최대",
+            TtsPrefs.isVolBoostEnabled(this)
+        ) { checked -> TtsPrefs.setVolBoost(this, checked) })
+
+        // 금액 읽기 방식
+        val priceReadRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(16), dp(8), dp(16), dp(12))
+        }
+        val curMode = TtsPrefs.getPriceReadMode(this)
+        listOf("한국어" to "korean", "숫자" to "number").forEach { (label, value) ->
+            priceReadRow.addView(TextView(this).apply {
+                text = label; textSize = 14f; gravity = Gravity.CENTER
+                val isSelected = value == curMode
+                setTextColor(if (isSelected) Color.WHITE else Color.parseColor("#5B6ABF"))
+                setBackgroundColor(if (isSelected) Color.parseColor("#5B6ABF") else Color.parseColor("#F0F0F0"))
+                setPadding(dp(16), dp(10), dp(16), dp(10))
+                setOnClickListener {
+                    TtsPrefs.setPriceReadMode(this@SettingsActivity, value)
+                    recreate()
+                }
+            }, lp(0, WC, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
+        }
+        ttsCard.addView(TextView(this).apply {
+            text = "금액 읽기 방식"; textSize = 13f; setTextColor(Color.parseColor("#666666"))
+            setPadding(dp(16), dp(8), dp(16), dp(2))
+        })
+        ttsCard.addView(priceReadRow)
+
+        ttsCard.addView(TextView(this).apply {
+            text = "TTS 설정 저장"
+            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#5B6ABF"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener {
+                TtsPrefs.setSpeed(this@SettingsActivity, speedBar.second() / 10f)
+                Toast.makeText(this@SettingsActivity, "TTS 설정 저장됨", Toast.LENGTH_SHORT).show()
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(16)) })
+
+        root.addView(ttsCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── 음성 수락 ON/OFF ───
         val voiceAcceptRow = LinearLayout(this).apply {
@@ -530,5 +609,44 @@ class SettingsActivity : AppCompatActivity() {
         }
         parent.addView(input, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(4)) })
         return input
+    }
+
+    /** SeekBar + 실시간 값 표시. Pair(SeekBar, getValue 람다) 반환 */
+    private fun filterSeekBar(
+        parent: LinearLayout, label: String, current: Int,
+        min: Int, max: Int, step: Int, unit: String
+    ): Pair<SeekBar, () -> Int> {
+        val valueText = TextView(this).apply {
+            text = "${fmt(current)}$unit"
+            textSize = 14f; setTextColor(Color.parseColor("#5B6ABF"))
+            setTypeface(null, Typeface.BOLD)
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(0))
+        }
+        row.addView(TextView(this).apply {
+            text = label; textSize = 13f; setTextColor(Color.parseColor("#666666"))
+        }, lp(0, WC, 1f))
+        row.addView(valueText)
+        parent.addView(row)
+
+        val steps = (max - min) / step
+        val seekBar = SeekBar(this).apply {
+            this.max = steps
+            progress = ((current - min) / step).coerceIn(0, steps)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                    val v = min + progress * step
+                    valueText.text = "${fmt(v)}$unit"
+                }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+        }
+        parent.addView(seekBar, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(8)) })
+
+        return Pair(seekBar) { min + seekBar.progress * step }
     }
 }

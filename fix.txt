@@ -1,17 +1,43 @@
-OnTheWay 프로젝트에서 카카오T 감지 진단 기능을 추가해줘:
+OnTheWay 프로젝트에서 v3.2 추가 기능을 모두 구현해줘:
 
-1. OnTheWayService.kt의 onAccessibilityEvent 최상단에서 모든 패키지의 이벤트를 카운트하는 진단 모드 추가:
-   - packageEventCount라는 HashMap<String, Int>을 만들어서, 수신되는 모든 패키지별 이벤트 수를 카운트
-   - 카카오 관련 패키지(kakaomobility, flexer, kakao)는 별도로 Log.w 출력
+1. 상단 알림바 실시간 표시 (Foreground Service Notification):
+   - OnTheWayService가 실행 중일 때 상단 알림바에 항상 표시
+   - 알림 내용: "OnTheWay 작동 중 | 오늘 N건 | 매출 N원 | 시급 N원/h"
+   - 콜 감지될 때마다 알림 업데이트
+   - 알림 탭하면 앱 실행
+   - 알림 삭제 불가 (ongoing notification)
 
-2. 설정 화면에 "진단 모드" 버튼 추가:
-   - 버튼 누르면 AlertDialog로 현재까지 수신된 패키지별 이벤트 수 표시
-   - "com.woowahan.bros: 342건, com.coupang.mobile.eats.courier: 128건, com.kakaomobility.flexer: 0건" 형태
-   - 카카오T가 0건이면 Accessibility 이벤트 자체가 안 오는 것 확정
+2. 콜 리스트 색상 구분:
+   - 최근 콜 리스트에서 판정별 배경색 추가
+   - 잡으세요: 연한 파란색 배경
+   - 괜찮습니다: 연한 초록색 배경  
+   - 넘기세요: 연한 빨간색 배경
+   - 묶음배달: 왼쪽에 세로 바 표시 (보라색)
 
-3. 카카오T가 0건일 경우를 대비한 대안:
-   - DeliveryNotificationService.kt에서 카카오T 픽커(com.kakaomobility.flexer) 알림도 수신하도록 추가
-   - 카카오T 알림 title/text 구조를 로깅하여 금액 파싱 가능 여부 확인
-   - 알림에 금액이 있으면 NotificationListener로 처리
+3. 콜 히스토리 검색/필터:
+   - 최근 콜 리스트 상단에 검색 아이콘 추가
+   - 플랫폼 필터: 전체/배민/쿠팡/카카오T 탭
+   - 판정 필터: 전체/잡으세요/괜찮습니다/넘기세요
+   - 금액 범위 필터: 최소~최대
+   - 검색: 가게명, 주소 텍스트 검색
 
-수정 후 git add -A && git commit -m "v2.2: 카카오T 진단모드 + NotificationListener 대안 경로 추가" && git push 해줘.
+4. 데이터 내보내기:
+   - 설정에 "데이터 내보내기" 버튼 추가
+   - FilterLog 전체를 CSV 파일로 저장 (Downloads 폴더)
+   - CSV 컬럼: 시각, 플랫폼, 금액, 거리, 단가, 포인트, 판정, 사유, 묶음여부, 가게명
+   - 공유 Intent로 카카오톡/이메일 등으로 바로 전송 가능
+   - "오늘만 내보내기" / "전체 내보내기" 선택
+
+5. 진동 알림 추가:
+   - 잡으세요: 강한 진동 (500ms x 3회)
+   - 괜찮습니다: 보통 진동 (300ms x 1회)
+   - 넘기세요: 진동 없음
+   - 설정에 "진동 알림" 토글 (기본 ON)
+
+6. 다크 모드:
+   - 시스템 다크 모드 따라가기
+   - 다크 모드 시 배경 #1A1A2E, 텍스트 흰색, 카드 배경 #16213E
+   - 판정 색상은 유지 (넘기세요 빨강, 괜찮습니다 주황, 잡으세요 파랑)
+   - 설정에 "다크 모드" 선택 (자동/항상 켜기/항상 끄기)
+
+수정 후 git add -A && git commit -m "v3.2: 상단알림바 + 색상구분 + 검색필터 + CSV내보내기 + 진동 + 다크모드" && git push 해줘.

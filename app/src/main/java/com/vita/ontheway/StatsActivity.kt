@@ -6,6 +6,7 @@ import android.view.*
 import androidx.appcompat.app.AppCompatActivity
 import android.graphics.*
 import android.graphics.drawable.*
+import org.json.JSONObject
 
 class StatsActivity : AppCompatActivity() {
 
@@ -16,6 +17,7 @@ class StatsActivity : AppCompatActivity() {
     private val C_SUB     = Color.parseColor("#999999")
     private val C_GREEN   = Color.parseColor("#2EAA5E")
     private val C_RED     = Color.parseColor("#E04040")
+    private val C_ORANGE  = Color.parseColor("#FF9800")
 
     private fun pill(color: Int, r: Float = 16f) =
         GradientDrawable().apply { setColor(color); cornerRadius = r }
@@ -24,6 +26,9 @@ class StatsActivity : AppCompatActivity() {
     private val WC = ViewGroup.LayoutParams.WRAP_CONTENT
     private fun lp(w: Int, h: Int, wt: Float = 0f) = LinearLayout.LayoutParams(w, h, wt)
     private fun fmt(n: Int) = String.format("%,d", n)
+
+    private lateinit var contentLayout: LinearLayout
+    private var currentTab = "today"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,192 +56,162 @@ class StatsActivity : AppCompatActivity() {
             setOnClickListener { finish() }
         })
         headerRow.addView(TextView(this).apply {
-            text = "수익 통계"; textSize = 18f
+            text = "통계"; textSize = 18f
             setTypeface(null, Typeface.BOLD); setTextColor(C_TEXT)
         })
-        layout.addView(headerRow, lp(MP, WC).apply { setMargins(dp(-16), 0, dp(-16), dp(16)) })
+        layout.addView(headerRow, lp(MP, WC).apply { setMargins(dp(-16), 0, dp(-16), dp(8)) })
 
-        // 오늘 수익 카드
-        val todayEarning = EarningManager.getTodayEarning(this)
-        val todayGoal = EarningManager.getGoal(this)
-        val fuelCost = if (todayEarning > 0) EarningManager.getFuelCost(this, 50.0) else 0
-        val netEarning = todayEarning - fuelCost
-        val vehicle = EarningManager.getVehicleType(this)
-
-        layout.addView(makeCard(
-            "오늘 수익",
-            listOf(
-                "총 수익" to "${fmt(todayEarning)}원",
-                "연료비 예상 ($vehicle)" to if (fuelCost > 0) "-${fmt(fuelCost)}원" else "0원",
-                "실수익 예상" to "${fmt(netEarning)}원",
-                "목표 대비" to "${if (todayGoal > 0) (todayEarning * 100 / todayGoal) else 0}%"
-            ),
-            highlight = "${fmt(netEarning)}원"
-        ))
-
-        // 결과 비교 카드
-        val entries = ShadowLog.getAll(this)
-        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-        val todayEntries = entries.filter { it.timestamp.startsWith(todayStr) }
-        val todayTotalLoss = todayEntries.sumOf { it.lossWon }
-        val aiEarning = todayEarning + todayTotalLoss
-        layout.addView(makeCompareCard(todayEarning, aiEarning, todayTotalLoss))
-
-        // Shadow Mode 통계
-        val totalRec = todayEntries.size
-        val top1Hits = todayEntries.count { it.top1Hit }
-        val top3Hits = todayEntries.count { it.top3Hit }
-        val top1Rate = if (totalRec > 0) (top1Hits * 100 / totalRec) else 0
-        val avgLoss = if (totalRec > 0) todayEntries.sumOf { it.lossWon } / totalRec else 0
-
-        layout.addView(makeCard(
-            "오늘 AI 추천 통계",
-            listOf(
-                "총 추천" to "${totalRec}콜",
-                "Top1 적중" to "${top1Hits}콜",
-                "Top3 포함" to "${top3Hits}콜",
-                "Top1 적중률" to "${top1Rate}%",
-                "평균 손실" to "${fmt(avgLoss)}원"
-            ),
-            highlight = "${top1Rate}%"
-        ))
-
-        // 전체 누적
-        val allTotal = entries.size
-        val allTop1Hits = entries.count { it.top1Hit }
-        val allTop1Rate = if (allTotal > 0) (allTop1Hits * 100 / allTotal) else 0
-        val totalLoss = entries.sumOf { it.lossWon }
-
-        layout.addView(makeCard(
-            "전체 누적 통계",
-            listOf(
-                "총 추천" to "${allTotal}콜",
-                "Top1 적중률" to "${allTop1Rate}%",
-                "AI 따랐으면" to "+${fmt(totalLoss)}원"
-            ),
-            highlight = "${allTop1Rate}%"
-        ))
-
-        // 최근 추천 기록
-        layout.addView(TextView(this).apply {
-            text = "최근 추천 기록"
-            textSize = 13f; setTextColor(C_SUB)
-            setPadding(dp(4), dp(16), 0, dp(10))
-        })
-
-        if (entries.isEmpty()) {
-            layout.addView(TextView(this).apply {
-                text = "아직 데이터가 없습니다\n카카오T 픽커를 켜주세요"
-                textSize = 14f; setTextColor(C_SUB); gravity = Gravity.CENTER
-                setPadding(0, dp(20), 0, 0)
-            })
-        } else {
-            entries.reversed().take(20).forEach { e ->
-                val actionColor = when {
-                    e.top1Hit -> C_GREEN
-                    e.missedCall -> C_RED
-                    else -> C_SUB
-                }
-                val actionText = when {
-                    e.top1Hit -> "✔ 적중"
-                    e.top3Hit -> "○ Top3"
-                    e.missedCall -> "✖ 미스"
-                    else -> "- 미확인"
-                }
-                val bestCall = e.availableCalls.firstOrNull { it.id == e.bestCallId }
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    background = pill(C_CARD, 12f)
-                    setPadding(dp(16), dp(12), dp(16), dp(12))
-                }
-                row.addView(LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = lp(0, WC, 1f)
-                    addView(TextView(this@StatsActivity).apply {
-                        text = "${e.location} | ${bestCall?.direction ?: ""}"
-                        textSize = 14f; setTypeface(null, Typeface.BOLD); setTextColor(C_TEXT)
-                    })
-                    addView(TextView(this@StatsActivity).apply {
-                        text = "${fmt(e.bestCallPrice)}원  |  손실 ${fmt(e.lossWon)}원"
-                        textSize = 12f; setTextColor(C_SUB)
-                    })
-                })
-                row.addView(TextView(this).apply {
-                    text = actionText; textSize = 13f
-                    setTypeface(null, Typeface.BOLD); setTextColor(actionColor)
-                })
-                layout.addView(row, lp(MP, WC).apply { setMargins(0, 0, 0, dp(6)) })
-            }
+        // 탭 전환
+        val tabRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(4), 0, dp(12))
         }
+        listOf("오늘" to "today", "이번주" to "week", "이번달" to "month").forEach { (label, key) ->
+            tabRow.addView(TextView(this).apply {
+                text = label; textSize = 14f; gravity = Gravity.CENTER
+                setPadding(dp(4), dp(10), dp(4), dp(10))
+                setOnClickListener { switchTab(key) }
+            }, lp(0, WC, 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+        }
+        layout.addView(tabRow)
+
+        contentLayout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        layout.addView(contentLayout, lp(MP, WC))
 
         setContentView(root)
+        switchTab("today")
     }
 
-    private fun makeCompareCard(actual: Int, aiFollow: Int, diff: Int): LinearLayout {
-        val isPositive = diff > 0
-        val diffColor  = if (isPositive) C_GREEN else if (diff < 0) C_RED else C_SUB
-        val diffStr    = if (diff == 0) "데이터 없음" else if (isPositive) "+${fmt(diff)}원" else "${fmt(diff)}원"
-        val hasData    = actual > 0
+    private fun switchTab(tab: String) {
+        currentTab = tab
+        contentLayout.removeAllViews()
 
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), if (isPositive) C_GREEN else Color.parseColor("#E0E0E0"))
+        // 탭 하이라이트 업데이트
+        val tabRow = (contentLayout.parent as LinearLayout).getChildAt(2) as? LinearLayout
+        tabRow?.let { row ->
+            for (i in 0 until row.childCount) {
+                val tv = row.getChildAt(i) as? TextView ?: continue
+                val key = listOf("today", "week", "month")[i]
+                val selected = key == tab
+                tv.setTextColor(if (selected) Color.WHITE else C_ACCENT)
+                tv.setBackgroundColor(if (selected) C_ACCENT else Color.parseColor("#F0F0F0"))
+                tv.setTypeface(null, if (selected) Typeface.BOLD else Typeface.NORMAL)
             }
-            setPadding(dp(20), dp(18), dp(20), dp(18))
         }
-        card.layoutParams = LinearLayout.LayoutParams(MP, WC).apply { setMargins(0, 0, 0, dp(12)) }
 
-        card.addView(TextView(this).apply {
-            text = "AI 따랐다면?"; textSize = 12f; setTextColor(C_SUB)
-            setPadding(0, 0, 0, dp(10))
-        })
+        val entries = getFilteredEntries(tab)
+        buildStats(entries)
+    }
 
-        if (!hasData) {
-            card.addView(TextView(this).apply {
-                text = "오늘 운행 후 결과가 여기에 표시됩니다"
-                textSize = 13f; setTextColor(C_SUB); gravity = Gravity.CENTER
-                setPadding(0, dp(12), 0, dp(12))
-            })
-        } else {
-            card.addView(TextView(this).apply {
-                text = diffStr; textSize = 36f
-                setTypeface(null, Typeface.BOLD); setTextColor(diffColor)
-                setPadding(0, 0, 0, dp(12))
-            })
-            listOf(
-                "실제 수익" to "${fmt(actual)}원",
-                "AI 추천 따랐을 때" to "${fmt(aiFollow)}원"
-            ).forEach { (label, value) ->
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    setPadding(0, dp(3), 0, dp(3))
-                }
-                row.addView(TextView(this).apply {
-                    text = label; textSize = 13f; setTextColor(C_SUB)
-                    layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
-                })
-                row.addView(TextView(this).apply {
-                    text = value; textSize = 13f
-                    setTypeface(null, Typeface.BOLD); setTextColor(C_TEXT)
-                })
-                card.addView(row)
+    private fun getFilteredEntries(tab: String): List<JSONObject> {
+        val all = FilterLog.getAll(this)
+        val cal = java.util.Calendar.getInstance()
+        val cutoff = when (tab) {
+            "today" -> {
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                cal.set(java.util.Calendar.MINUTE, 0)
+                cal.set(java.util.Calendar.SECOND, 0)
+                cal.timeInMillis
             }
-            val msg = when {
-                diff > 5000  -> "AI 추천을 더 믿어보세요 👍"
-                diff > 0     -> "AI가 조금 더 좋은 콜을 잡았습니다"
-                diff == 0    -> "AI와 동일한 선택을 했습니다"
-                else         -> "오늘은 직접 판단이 더 나았습니다"
+            "week" -> {
+                cal.set(java.util.Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                cal.set(java.util.Calendar.MINUTE, 0)
+                cal.set(java.util.Calendar.SECOND, 0)
+                cal.timeInMillis
             }
-            card.addView(TextView(this).apply {
-                text = msg; textSize = 12f; setTextColor(C_SUB)
-                setPadding(0, dp(10), 0, 0)
-            })
+            "month" -> {
+                cal.set(java.util.Calendar.DAY_OF_MONTH, 1)
+                cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                cal.set(java.util.Calendar.MINUTE, 0)
+                cal.set(java.util.Calendar.SECOND, 0)
+                cal.timeInMillis
+            }
+            else -> 0L
         }
-        return card
+        val result = mutableListOf<JSONObject>()
+        for (i in 0 until all.length()) {
+            val e = all.getJSONObject(i)
+            if (e.optLong("ts", 0) >= cutoff) result.add(e)
+        }
+        return result
+    }
+
+    private fun buildStats(entries: List<JSONObject>) {
+        val total = entries.size
+        val accepted = entries.count { it.optString("verdict") == "ACCEPT" }
+        val rejected = entries.count { it.optString("verdict") == "REJECT" }
+        val acceptedCalls = entries.filter { it.optString("verdict") == "ACCEPTED" }
+        val totalRevenue = acceptedCalls.sumOf { it.optInt("price", 0) }
+        val avgPrice = if (total > 0) entries.sumOf { it.optInt("price", 0) } / total else 0
+        val avgUnit = entries.filter { it.optInt("unitPrice", 0) > 0 }.let { filtered ->
+            if (filtered.isNotEmpty()) filtered.sumOf { it.optInt("unitPrice", 0) } / filtered.size else 0
+        }
+
+        // 시급
+        val earnings = EarningsTracker.getToday(this)
+        val hourly = earnings.hourlyRate
+
+        // 총합 카드
+        contentLayout.addView(makeCard("총합", listOf(
+            "감지 건수" to "${total}건",
+            "ACCEPT" to "${accepted}건 (${if (total > 0) accepted * 100 / total else 0}%)",
+            "REJECT" to "${rejected}건 (${if (total > 0) rejected * 100 / total else 0}%)",
+            "수락" to "${acceptedCalls.size}건",
+            "평균 금액" to "${fmt(avgPrice)}원",
+            "평균 단가" to if (avgUnit > 0) "${fmt(avgUnit)}원/km" else "-",
+            "총 매출" to "${fmt(totalRevenue)}원",
+            "시급 환산" to if (hourly > 0) "${fmt(hourly)}원/h" else "-"
+        ), highlight = "${fmt(totalRevenue)}원"))
+
+        // 플랫폼별
+        val platforms = entries.groupBy { it.optString("platform", "?") }
+        val platformItems = platforms.map { (platform, list) ->
+            val pName = when (platform) { "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> platform }
+            val pAvg = if (list.isNotEmpty()) list.sumOf { it.optInt("price", 0) } / list.size else 0
+            "$pName ${list.size}건 (평균 ${fmt(pAvg)}원)"
+        }
+        if (platformItems.isNotEmpty()) {
+            contentLayout.addView(makeSimpleCard("플랫폼별", platformItems))
+        }
+
+        // 시간대별
+        val timeSlots = mapOf(
+            "오전 (6~12시)" to (6..11),
+            "점심 (12~14시)" to (12..13),
+            "오후 (14~18시)" to (14..17),
+            "저녁 (18~22시)" to (18..21),
+            "야간 (22~6시)" to (22..29) // 22~5 (29=5+24)
+        )
+        val cal = java.util.Calendar.getInstance()
+        val timeItems = timeSlots.map { (label, range) ->
+            val inSlot = entries.filter { e ->
+                cal.timeInMillis = e.optLong("ts", 0)
+                val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
+                val adjusted = if (range.last > 23) { if (h < 6) h + 24 else h } else h
+                adjusted in range
+            }
+            val slotAvgUnit = inSlot.filter { it.optInt("unitPrice", 0) > 0 }.let {
+                if (it.isNotEmpty()) it.sumOf { e -> e.optInt("unitPrice", 0) } / it.size else 0
+            }
+            "$label: ${inSlot.size}건" + if (slotAvgUnit > 0) " (단가 ${fmt(slotAvgUnit)}원/km)" else ""
+        }
+        contentLayout.addView(makeSimpleCard("시간대별 분포", timeItems))
+
+        // 아쉬운 콜 TOP 3
+        val regrettable = entries
+            .filter { it.optString("verdict") == "REJECT" }
+            .sortedByDescending { it.optInt("unitPrice", 0).takeIf { u -> u > 0 } ?: it.optInt("price", 0) }
+            .take(3)
+        if (regrettable.isNotEmpty()) {
+            val regretItems = regrettable.mapIndexed { i, e ->
+                val p = e.optInt("price", 0)
+                val u = e.optInt("unitPrice", 0)
+                val platform = when (e.optString("platform")) { "coupang" -> "쿠팡"; "baemin" -> "배민"; else -> "?" }
+                "#${i + 1} $platform ${fmt(p)}원" + if (u > 0) " (단가 ${fmt(u)}원/km)" else ""
+            }
+            contentLayout.addView(makeSimpleCard("넘긴 콜 중 아쉬운 TOP 3", regretItems))
+        }
     }
 
     private fun makeCard(title: String, items: List<Pair<String, String>>, highlight: String): LinearLayout {
@@ -268,6 +243,26 @@ class StatsActivity : AppCompatActivity() {
                 setTypeface(null, Typeface.BOLD); setTextColor(C_TEXT)
             })
             card.addView(row)
+        }
+        card.layoutParams = LinearLayout.LayoutParams(MP, WC).apply { setMargins(0, 0, 0, dp(12)) }
+        return card
+    }
+
+    private fun makeSimpleCard(title: String, items: List<String>): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = pill(C_CARD, 16f)
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+        }
+        card.addView(TextView(this).apply {
+            text = title; textSize = 12f; setTextColor(C_SUB)
+            letterSpacing = 0.05f; setPadding(0, 0, 0, dp(10))
+        })
+        items.forEach { item ->
+            card.addView(TextView(this).apply {
+                text = item; textSize = 13f; setTextColor(C_TEXT)
+                setPadding(0, dp(3), 0, dp(3))
+            })
         }
         card.layoutParams = LinearLayout.LayoutParams(MP, WC).apply { setMargins(0, 0, 0, dp(12)) }
         return card
