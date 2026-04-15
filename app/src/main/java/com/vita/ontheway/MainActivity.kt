@@ -1282,6 +1282,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun speak(text: String) {
+        if (!::tts.isInitialized || !::voiceManager.isInitialized) return
         val clean = text.replace(Regex("[\\p{So}\\p{Cn}]+"), "").trim()
         isSpeaking = true; voiceManager.isSpeaking = true; voiceManager.stop()
         tts.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "utt")
@@ -1335,10 +1336,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
-        voiceManager.stop(); tts.stop(); tts.shutdown(); super.onDestroy()
+        if (::voiceManager.isInitialized) voiceManager.stop()
+        if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
+        super.onDestroy()
     }
 
     override fun onInit(status: Int) {
+        if (!::tts.isInitialized) return
         if (status == TextToSpeech.SUCCESS) {
             tts.language = Locale.KOREAN
             mainHandler.postDelayed({ speak("어디로 가세요?") }, 500)

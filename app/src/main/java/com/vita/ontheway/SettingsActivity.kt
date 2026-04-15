@@ -657,21 +657,7 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, "내보낼 데이터 없음", Toast.LENGTH_SHORT).show()
             return
         }
-        val file = java.io.File(path)
-        try {
-            val uri = androidx.core.content.FileProvider.getUriForFile(
-                this, "${packageName}.fileprovider", file
-            )
-            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                type = "text/csv"
-                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(android.content.Intent.createChooser(shareIntent, "CSV 내보내기"))
-        } catch (e: Exception) {
-            // FileProvider 미설정 시 경로만 표시
-            Toast.makeText(this, "저장됨: $path", Toast.LENGTH_LONG).show()
-        }
+        Toast.makeText(this, "저장됨: $path", Toast.LENGTH_LONG).show()
     }
 
     private fun showDiagnosticDialog() {

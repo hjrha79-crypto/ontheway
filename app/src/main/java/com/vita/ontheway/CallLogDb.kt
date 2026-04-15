@@ -71,14 +71,25 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 1) {
     }
 
     fun markAccepted(price: Int, platform: String) {
-        val cv = ContentValues().apply { put("accepted", 1) }
-        writableDatabase.update(TABLE, cv, "price=? AND platform=? AND accepted=0 ORDER BY timestamp DESC LIMIT 1",
-            arrayOf(price.toString(), platform))
+        try {
+            writableDatabase.execSQL(
+                "UPDATE $TABLE SET accepted=1 WHERE id=(SELECT id FROM $TABLE WHERE price=? AND platform=? AND accepted=0 ORDER BY timestamp DESC LIMIT 1)",
+                arrayOf(price.toString(), platform)
+            )
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "markAccepted 실패: ${e.message}")
+        }
     }
 
     fun markCompleted(deliveryTimeMin: Int) {
-        val cv = ContentValues().apply { put("completed", 1); put("deliveryTimeMin", deliveryTimeMin) }
-        writableDatabase.update(TABLE, cv, "accepted=1 AND completed=0 ORDER BY timestamp DESC LIMIT 1", null)
+        try {
+            writableDatabase.execSQL(
+                "UPDATE $TABLE SET completed=1, deliveryTimeMin=? WHERE id=(SELECT id FROM $TABLE WHERE accepted=1 AND completed=0 ORDER BY timestamp DESC LIMIT 1)",
+                arrayOf(deliveryTimeMin.toString())
+            )
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "markCompleted 실패: ${e.message}")
+        }
     }
 
     /** 90일 이상 오래된 데이터 정리 */

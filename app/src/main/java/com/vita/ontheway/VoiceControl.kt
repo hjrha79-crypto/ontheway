@@ -23,11 +23,17 @@ object VoiceControl {
     fun start(ctx: Context) {
         if (!isEnabled(ctx)) return
         if (isListening) return
-        if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
-            Log.w(TAG, "음성 인식 사용 불가")
+        try {
+            if (!SpeechRecognizer.isRecognitionAvailable(ctx)) {
+                Log.w(TAG, "음성 인식 사용 불가")
+                return
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "음성 인식 체크 실패: ${e.message}")
             return
         }
 
+        try {
         recognizer = SpeechRecognizer.createSpeechRecognizer(ctx)
         recognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onResults(results: Bundle?) {
@@ -53,6 +59,10 @@ object VoiceControl {
 
         isListening = true
         startListening(ctx)
+        } catch (e: Exception) {
+            Log.w(TAG, "음성 제어 시작 실패: ${e.message}")
+            isListening = false
+        }
     }
 
     private fun startListening(ctx: Context) {

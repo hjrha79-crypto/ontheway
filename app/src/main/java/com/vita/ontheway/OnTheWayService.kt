@@ -873,14 +873,11 @@ class OnTheWayService : AccessibilityService() {
                 Log.d("OnTheWay", "TTS 초기화 완료")
             }
         }
-        // v3.2: Foreground notification
-        startForegroundNotification()
-        // v3.4: GPS 시작
-        startGps()
-        // v3.5: 음성 제어 시작
-        VoiceControl.start(this)
-        // v3.5: DB 오래된 데이터 정리
-        try { CallLogDb.get(this).cleanup() } catch (e: Exception) {}
+        // 각 모듈 초기화는 개별 try-catch (하나 실패해도 서비스 계속)
+        try { startForegroundNotification() } catch (e: Exception) { Log.w("OnTheWay", "알림 초기화 실패: ${e.message}") }
+        try { startGps() } catch (e: Exception) { Log.w("OnTheWay", "GPS 초기화 실패: ${e.message}") }
+        try { VoiceControl.start(this) } catch (e: Exception) { Log.w("OnTheWay", "음성제어 초기화 실패: ${e.message}") }
+        try { CallLogDb.get(this).cleanup() } catch (e: Exception) { Log.w("OnTheWay", "DB 정리 실패: ${e.message}") }
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
     }
 
@@ -924,19 +921,20 @@ class OnTheWayService : AccessibilityService() {
     }
 
     private fun startForegroundNotification() {
-        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(NOTIF_CHANNEL_ID, "OnTheWay 서비스", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "OnTheWay 작동 상태"
-                setShowBadge(false)
-            }
-            nm.createNotificationChannel(ch)
-        }
-        val notif = buildStatusNotification("OnTheWay 작동 중 | 대기")
         try {
-            startForeground(NOTIF_ID, notif)
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val ch = NotificationChannel(NOTIF_CHANNEL_ID, "OnTheWay 서비스", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "OnTheWay 작동 상태"
+                    setShowBadge(false)
+                }
+                nm.createNotificationChannel(ch)
+            }
+            // AccessibilityService는 startForeground 불가 → 일반 알림 사용
+            val notif = buildStatusNotification("OnTheWay 작동 중 | 대기")
+            nm.notify(NOTIF_ID, notif)
         } catch (e: Exception) {
-            Log.w("OnTheWay", "startForeground 실패: ${e.message}")
+            Log.w("OnTheWay", "알림 표시 실패: ${e.message}")
         }
     }
 
@@ -976,34 +974,35 @@ class OnTheWayService : AccessibilityService() {
     /** v3.2: 진동 발생 */
     private fun vibrate(verdict: String) {
         if (!TtsPrefs.isVibrationEnabled(this)) return
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            getSystemService(VIBRATOR_SERVICE) as Vibrator
-        }
-        when (verdict) {
-            "잡으세요" -> {
-                // 강한 진동 500ms x 3회
-                val pattern = longArrayOf(0, 500, 200, 500, 200, 500)
-                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+        try {
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(VIBRATOR_SERVICE) as Vibrator
             }
-            "괜찮습니다" -> {
-                // 보통 진동 300ms x 1회
-                vibrator.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
+            when (verdict) {
+                "잡으세요" -> {
+                    val pattern = longArrayOf(0, 500, 200, 500, 200, 500)
+                    vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
+                }
+                "괜찮습니다" -> {
+                    vibrator.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
+                }
             }
-            // 넘기세요: 진동 없음
+        } catch (e: Exception) {
+            Log.w("OnTheWay", "진동 실패: ${e.message}")
         }
     }
 
     override fun onDestroy() {
-        tts?.shutdown()
+        try { tts?.shutdown() } catch (e: Exception) {}
         tts = null
         ttsReady = false
         try { locationManager?.removeUpdates(locationListener) } catch (e: Exception) {}
         gpsActive = false
-        VoiceControl.stop()
-        FloatingOverlay.hide()
+        try { VoiceControl.stop() } catch (e: Exception) {}
+        try { FloatingOverlay.hide() } catch (e: Exception) {}
         super.onDestroy()
     }
 }
