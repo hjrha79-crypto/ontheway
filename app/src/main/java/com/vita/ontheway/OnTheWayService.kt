@@ -712,6 +712,25 @@ class OnTheWayService : AccessibilityService() {
                 speakTts("단골 가게입니다")
             }
 
+            // v3.5: 플로팅 오버레이 업데이트
+            val overlayText = "$lastDeliveryVerdict ${java.text.NumberFormat.getNumberInstance().format(call.price)}원"
+            FloatingOverlay.show(this, overlayText)
+
+            // v3.5: DB 영구 저장
+            try {
+                val db = CallLogDb.get(this)
+                val up = if (enrichedCall.distance != null && enrichedCall.distance > 0)
+                    (enrichedCall.price / enrichedCall.distance).toInt() else 0
+                db.insert(
+                    platform = call.platform, price = call.price,
+                    distance = enrichedCall.distance, unitPrice = up,
+                    point = baeminPoint, verdict = result.verdict.name,
+                    reason = result.reason, bundleCount = call.bundleCount,
+                    isMultiPickup = call.isMultiPickup, storeName = call.storeName,
+                    destination = call.destination, pickupKm = pickupDistKm
+                )
+            } catch (e: Exception) { Log.w("DeliveryFilter", "DB 저장 실패: ${e.message}") }
+
             // v3.3: 콜 알림음
             playCallSound(lastDeliveryVerdict)
 
@@ -756,6 +775,9 @@ class OnTheWayService : AccessibilityService() {
         else if (n < 10) sb.append(digits[n])
         return sb.toString()
     }
+
+    /** 외부에서 TTS 호출 (VoiceControl 등) */
+    fun speakTtsPublic(text: String) = speakTts(text)
 
     /** v3.1: TTS 설정 반영 (속도, 볼륨 부스트) */
     private fun speakTts(text: String) {
@@ -855,6 +877,10 @@ class OnTheWayService : AccessibilityService() {
         startForegroundNotification()
         // v3.4: GPS 시작
         startGps()
+        // v3.5: 음성 제어 시작
+        VoiceControl.start(this)
+        // v3.5: DB 오래된 데이터 정리
+        try { CallLogDb.get(this).cleanup() } catch (e: Exception) {}
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
     }
 
@@ -976,6 +1002,8 @@ class OnTheWayService : AccessibilityService() {
         ttsReady = false
         try { locationManager?.removeUpdates(locationListener) } catch (e: Exception) {}
         gpsActive = false
+        VoiceControl.stop()
+        FloatingOverlay.hide()
         super.onDestroy()
     }
 }

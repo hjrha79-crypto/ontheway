@@ -88,6 +88,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // v3.5: 온보딩 체크
+        if (OnboardingActivity.isFirstRun(this)) {
+            startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
+
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.WHITE
         // 라이트 테마: 상태바 아이콘 어둡게

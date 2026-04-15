@@ -1,5 +1,6 @@
 package com.vita.ontheway
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.*
 import android.widget.*
@@ -499,6 +500,27 @@ class SettingsActivity : AppCompatActivity() {
             PeakDetector.isPeakAutoEnabled(this)
         ) { checked -> PeakDetector.setPeakAuto(this, checked) })
 
+        // v3.5: 플로팅 오버레이
+        advCard.addView(advancedToggle(
+            "플로팅 오버레이",
+            "다른 앱 위에 판정 결과 버블 표시 (오버레이 권한 필요)",
+            FloatingOverlay.isEnabled(this)
+        ) { checked -> FloatingOverlay.setEnabled(this, checked) })
+
+        // v3.5: 음성 제어
+        advCard.addView(advancedToggle(
+            "음성 제어",
+            "잡아/넘겨/오늘얼마/기준올려/기준내려 음성 명령",
+            VoiceControl.isEnabled(this)
+        ) { checked -> VoiceControl.setEnabled(this, checked) })
+
+        // v3.5: 배터리 절약 모드
+        advCard.addView(advancedToggle(
+            "배터리 절약 모드",
+            "GPS 빈도 자동 조절 (대기 60초, 배달 중 15초, 화면 OFF 120초)",
+            AdvancedPrefs.isBatterySaverEnabled(this)
+        ) { checked -> AdvancedPrefs.setBatterySaver(this, checked) })
+
         // v3.3: 연속 넘김 경고
         advCard.addView(advancedToggle(
             "연속 넘김 경고",
@@ -549,6 +571,43 @@ class SettingsActivity : AppCompatActivity() {
             }
         }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(16)) })
         root.addView(goalSettCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── v3.5: 백업/복원 ───
+        root.addView(sectionTitle("백업/복원"))
+        val backupCard = card()
+        backupCard.addView(TextView(this).apply {
+            text = "백업 (설정 + 즐겨찾기 + 통계)"
+            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#5B6ABF"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener {
+                val path = BackupManager.backup(this@SettingsActivity)
+                if (path != null) Toast.makeText(this@SettingsActivity, "백업 완료: $path", Toast.LENGTH_LONG).show()
+                else Toast.makeText(this@SettingsActivity, "백업 실패", Toast.LENGTH_SHORT).show()
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(12), dp(16), dp(4)) })
+        backupCard.addView(TextView(this).apply {
+            text = "복원 (JSON 파일에서)"
+            textSize = 15f
+            setTextColor(Color.parseColor("#5B6ABF")); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F0F0F0"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener {
+                Toast.makeText(this@SettingsActivity, "백업 파일을 앱 내부 저장소에 넣어주세요", Toast.LENGTH_LONG).show()
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(4)) })
+        backupCard.addView(TextView(this).apply {
+            text = "튜토리얼 다시보기"
+            textSize = 14f
+            setTextColor(Color.parseColor("#999999")); gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(12))
+            setOnClickListener {
+                OnboardingActivity.reset(this@SettingsActivity)
+                startActivity(Intent(this@SettingsActivity, OnboardingActivity::class.java))
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(12)) })
+        root.addView(backupCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── v2.2 진단 모드 섹션 ───
         root.addView(sectionTitle("진단"))

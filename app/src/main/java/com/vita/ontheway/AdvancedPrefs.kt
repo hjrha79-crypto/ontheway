@@ -52,6 +52,10 @@ object AdvancedPrefs {
     fun isDeliveryCompleteEnabled(ctx: Context) = prefs(ctx).getBoolean("delivery_complete", false)
     fun setDeliveryComplete(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("delivery_complete", v).apply()
 
+    // v3.5: 배터리 절약 모드 (기본 ON)
+    fun isBatterySaverEnabled(ctx: Context) = prefs(ctx).getBoolean("battery_saver", true)
+    fun setBatterySaver(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("battery_saver", v).apply()
+
     // v3.4: GPS 위치 사용 (기본 OFF)
     fun isGpsEnabled(ctx: Context) = prefs(ctx).getBoolean("gps_enabled", false)
     fun setGpsEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("gps_enabled", v).apply()
