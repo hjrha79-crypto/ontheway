@@ -52,6 +52,10 @@ object AdvancedPrefs {
     fun isDeliveryCompleteEnabled(ctx: Context) = prefs(ctx).getBoolean("delivery_complete", false)
     fun setDeliveryComplete(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("delivery_complete", v).apply()
 
+    // 쿠팡 진단 모드 (기본 OFF)
+    fun isCoupangDebugEnabled(ctx: Context) = prefs(ctx).getBoolean("coupang_debug_mode", false)
+    fun setCoupangDebug(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("coupang_debug_mode", v).apply()
+
     // v3.5: 배터리 절약 모드 (기본 ON)
     fun isBatterySaverEnabled(ctx: Context) = prefs(ctx).getBoolean("battery_saver", true)
     fun setBatterySaver(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("battery_saver", v).apply()

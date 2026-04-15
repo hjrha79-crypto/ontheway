@@ -500,6 +500,13 @@ class SettingsActivity : AppCompatActivity() {
             PeakDetector.isPeakAutoEnabled(this)
         ) { checked -> PeakDetector.setPeakAuto(this, checked) })
 
+        // 쿠팡 진단 모드
+        advCard.addView(advancedToggle(
+            "쿠팡 진단 모드",
+            "쿠팡 Accessibility 이벤트를 FilterLog에 기록 (디버그용)",
+            AdvancedPrefs.isCoupangDebugEnabled(this)
+        ) { checked -> AdvancedPrefs.setCoupangDebug(this, checked) })
+
         // v3.5: 플로팅 오버레이
         advCard.addView(advancedToggle(
             "플로팅 오버레이",

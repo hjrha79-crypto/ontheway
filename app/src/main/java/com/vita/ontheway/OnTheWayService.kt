@@ -101,6 +101,13 @@ class OnTheWayService : AccessibilityService() {
     // v3.3: 마지막 수락 시각 (배달 완료 소요시간)
     private var lastAcceptTime: Long = 0
 
+    // 배민 묶음 debounce (2초 윈도우)
+    private data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?)
+    private val baeminBuffer = mutableListOf<PendingCall>()
+    private var baeminDebounceRunnable: Runnable? = null
+    private val debounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val BAEMIN_DEBOUNCE_MS = 2000L
+
     // 배달 필터용 TTS
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -111,6 +118,33 @@ class OnTheWayService : AccessibilityService() {
 
         // v2.2: 진단 모드 — 모든 패키지별 이벤트 카운트
         packageEventCount[pkg] = (packageEventCount[pkg] ?: 0) + 1
+
+        // 쿠팡 진단 모드
+        if (pkg == PKG_COUPANG && AdvancedPrefs.isCoupangDebugEnabled(this)) {
+            val evTexts = event.text?.joinToString(" ") ?: ""
+            val className = event.className?.toString() ?: ""
+            val reason = "eventType=${event.eventType} pkg=$pkg text=[$evTexts] class=[$className]"
+            Log.w("OTW_COUPANG_DEBUG", reason)
+            FilterLog.record(this, DeliveryCall(
+                price = 0, distance = null, isMulti = false, platform = "쿠팡진단",
+                rawText = reason, parseSuccess = false
+            ), CallFilter.FilterResult(CallFilter.Verdict.REJECT, reason))
+
+            // getWindows() 패키지 로그 (10초에 1회)
+            val now = System.currentTimeMillis()
+            if (now - (callDetectedAt["coupang_win_log"] ?: 0) > 10000) {
+                callDetectedAt["coupang_win_log"] = now
+                try {
+                    val winPkgs = windows?.mapNotNull { w -> w.root?.packageName?.toString() } ?: emptyList()
+                    val winReason = "WINDOWS: $winPkgs"
+                    Log.w("OTW_COUPANG_DEBUG", winReason)
+                    FilterLog.record(this, DeliveryCall(
+                        price = 0, distance = null, isMulti = false, platform = "쿠팡진단",
+                        rawText = winReason, parseSuccess = false
+                    ), CallFilter.FilterResult(CallFilter.Verdict.REJECT, winReason))
+                } catch (e: Exception) {}
+            }
+        }
 
         // 카카오 관련 패키지는 별도 경고 로그
         if (pkg.contains("kakaomobility") || pkg.contains("flexer") || pkg.contains("kakao")) {
@@ -580,13 +614,12 @@ class OnTheWayService : AccessibilityService() {
         // 포인트 기반 환산거리 (1P = 0.25km, 보수적 환산)
         val pointDistKm = if (baeminPoint != null) baeminPoint * 0.25 else null
 
-        for (call in calls) {
-            // 포인트 환산 정보를 CallFilter에 전달하기 위해 enriched call 생성
+        // 콜별 enrichment + 판정
+        val pendingCalls = calls.map { call ->
             var enrichedCall = if (call.platform == "baemin" && call.distance == null && pointDistKm != null) {
                 call.copy(distance = pointDistKm)
             } else call
 
-            // v3.4: GPS 기반 픽업 거리 계산
             var pickupDistKm: Double? = null
             if (gpsActive && currentLat != 0.0) {
                 val storeAddr = call.storeName.ifEmpty { call.destination }
@@ -595,160 +628,199 @@ class OnTheWayService : AccessibilityService() {
                     enrichedCall = enrichedCall.copy(pickupDistanceKm = pickupDistKm)
                 }
             }
-
             val result = CallFilter.judge(enrichedCall, this)
-            val callKey = "${call.platform}_${call.price}_${call.distance ?: 0}"
+            PendingCall(call, enrichedCall, result, baeminPoint, pickupDistKm)
+        }
 
-            // 안전 조건: 1콜 1음성
-            if (callSpeakHistory.containsKey(callKey)) {
-                Log.d("DeliveryFilter", "중복 콜 건너뜀: $callKey")
-                continue
+        // ── 배민: 2초 debounce (묶음 중복 방지) ──
+        if (pkg == PKG_BAEMIN) {
+            synchronized(baeminBuffer) {
+                baeminBuffer.addAll(pendingCalls)
             }
+            baeminDebounceRunnable?.let { debounceHandler.removeCallbacks(it) }
+            baeminDebounceRunnable = Runnable { processBaeminBuffer() }
+            debounceHandler.postDelayed(baeminDebounceRunnable!!, BAEMIN_DEBOUNCE_MS)
+            return
+        }
 
-            // 안전 조건: 2초 쿨다운
-            if (now - lastSpeakTime < 2000) {
-                Log.d("DeliveryFilter", "쿨다운 중 - 건너뜀")
-                continue
-            }
-
-            // 묶음 총액 기록 (부분 파싱 중복 방지)
-            if (call.isMulti) {
-                TtsDeduplicator.recordBundleTotal(call.platform, call.price)
-            }
-
-            // 로그 기록 (enriched call로 기록하여 포인트 환산거리 포함)
-            FilterLog.record(this, enrichedCall, result, baeminPoint)
-            // 마지막 감지 시각 기록 (상태 표시용)
-            lastCallDetectedTime = now
-
-            // ── TTS 3단계 판정 (중복 방지) ──
-            if (!TtsDeduplicator.shouldSpeak(call.platform, call.price)) {
-                Log.d("DeliveryFilter", "TtsDeduplicator 중복 스킵: ${call.platform} ${call.price}원")
-                continue
-            }
-
-            // 단가 계산: 포인트 환산거리 우선, 없으면 실거리
-            val effectiveDist = pointDistKm ?: call.distance
-            val unitPrice = if (effectiveDist != null && effectiveDist > 0)
-                (call.price / effectiveDist).toInt() else 0
-            val pName = if (call.platform == "coupang") "쿠팡" else "배민"
-            val priceStr = formatPrice(call.price)
-            val unitKorean = toKoreanNumber(unitPrice)
-
-            // v3.4: 픽업 예상 시간
-            val pickupEtaMin = if (pickupDistKm != null && pickupDistKm > 0) {
-                val speedKmh = if (currentSpeed > 1f) currentSpeed * 3.6 else 30.0 // 정지 시 30km/h 가정
-                (pickupDistKm / speedKmh * 60).toInt().coerceAtLeast(1)
-            } else null
-            val pickupTtsExtra = if (pickupEtaMin != null) ", 픽업 ${pickupEtaMin}분 거리" else ""
-
-            if (result.verdict == CallFilter.Verdict.REJECT) {
-                // REJECT → "넘기세요"
-                callSpeakHistory[callKey] = now
-                lastSpeakTime = now
-                lastDeliveryCall = call
-                lastDeliveryVerdict = "넘기세요"
-                lastDeliveryPlatform = platformName
-                // v3.1: 잡으세요만 모드면 REJECT 음성 스킵
-                if (!TtsPrefs.isGrabOnlyEnabled(this)) {
-                    speakTts("$pName, 넘기세요, ${priceStr}원")
-                }
-                Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
-            } else {
-                callSpeakHistory[callKey] = now
-
-                // ── "잡으세요" 확장 판정 (v2 2.0) ──
-                val grabThreshold = TtsPrefs.getGrabThreshold(this)
-                val isTopAccept = when {
-                    call.price >= grabThreshold -> true
-                    call.price >= TtsPrefs.getHighPriceThreshold(this) && (
-                        (call.distance != null && call.distance <= 3.0) ||
-                        (baeminPoint != null && baeminPoint <= 15.0)
-                    ) -> true
-                    unitPrice >= 2500 && effectiveDist != null && effectiveDist <= 3.0 -> true
-                    else -> false
-                }
-
-                // v3.0: 마지막 판정 기록
-                lastDeliveryCall = call
-                lastDeliveryPlatform = platformName
-                lastDeliveryVerdict = if (isTopAccept) "잡으세요" else "괜찮습니다"
-
-                if (isTopAccept) {
-                    lastSpeakTime = now
-                    speakTts("$pName, 잡으세요, ${priceStr}원$pickupTtsExtra")
-                    Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
-                    tryAutoAccept()
-                } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
-                    && CallFilter.isOkVoiceEnabled(this)) {
-                    lastSpeakTime = now
-                    var ttsMsg = "$pName, 괜찮습니다"
-                    if (unitPrice > 0) ttsMsg += ", 단가 $unitKorean"
-                    if (call.distance != null && call.distance > 3.0) ttsMsg += " 픽업 멉니다"
-                    if (baeminPoint != null && baeminPoint >= 25.0) ttsMsg += ", 먼 거리입니다"
-                    speakTts(ttsMsg)
-                    Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
-                } else {
-                    Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
-                }
-            }
-
-            // v3.3: 연속 REJECT 추적
-            if (result.verdict == CallFilter.Verdict.REJECT) {
-                consecutiveRejectCount++
-                if (AdvancedPrefs.isRejectWarningEnabled(this)) {
-                    if (consecutiveRejectCount == 5) {
-                        speakTts("5건 연속 넘기고 있습니다. 기준을 낮춰볼까요?")
-                    } else if (consecutiveRejectCount == 10) {
-                        speakTts("콜이 계속 안 맞습니다. 이동을 추천합니다.")
-                    }
-                }
-            } else {
-                consecutiveRejectCount = 0
-            }
-
-            // v3.3: 즐겨찾기 가게 TTS 추가
-            if (call.storeName.isNotEmpty() && StoreManager.isFavorite(this, call.storeName)) {
-                speakTts("단골 가게입니다")
-            }
-
-            // v3.5: 플로팅 오버레이 업데이트
-            val overlayText = "$lastDeliveryVerdict ${java.text.NumberFormat.getNumberInstance().format(call.price)}원"
-            FloatingOverlay.show(this, overlayText)
-
-            // v3.5: DB 영구 저장
-            try {
-                val db = CallLogDb.get(this)
-                val up = if (enrichedCall.distance != null && enrichedCall.distance > 0)
-                    (enrichedCall.price / enrichedCall.distance).toInt() else 0
-                db.insert(
-                    platform = call.platform, price = call.price,
-                    distance = enrichedCall.distance, unitPrice = up,
-                    point = baeminPoint, verdict = result.verdict.name,
-                    reason = result.reason, bundleCount = call.bundleCount,
-                    isMultiPickup = call.isMultiPickup, storeName = call.storeName,
-                    destination = call.destination, pickupKm = pickupDistKm
-                )
-            } catch (e: Exception) { Log.w("DeliveryFilter", "DB 저장 실패: ${e.message}") }
-
-            // v3.3: 콜 알림음
-            playCallSound(lastDeliveryVerdict)
-
-            // v3.2: 진동 + 알림 업데이트
-            vibrate(lastDeliveryVerdict)
-            updateNotification()
-
-            // v3.3: 목표 달성 알림
-            checkGoalProgress()
-
-            // v3.0: 일별 리포트 타이머 갱신
-            DailyReport.onCallDetected(this)
+        // ── 쿠팡: 즉시 처리 (debounce 없음) ──
+        for (pending in pendingCalls) {
+            processDeliveryCall(pending, now)
         }
 
         // 오래된 히스토리 정리
         val expireTime = now - 60000
         callSpeakHistory.entries.removeIf { it.value < expireTime }
         callDetectedAt.entries.removeIf { it.value < expireTime }
+    }
+
+    /** 배민 debounce 버퍼 처리: 2초 후 실행 */
+    private fun processBaeminBuffer() {
+        val buffered: List<PendingCall>
+        synchronized(baeminBuffer) {
+            buffered = baeminBuffer.toList()
+            baeminBuffer.clear()
+        }
+        if (buffered.isEmpty()) return
+
+        val now = System.currentTimeMillis()
+
+        // bundleCount > 1인 콜이 있으면 그것만 TTS
+        val bundleCall = buffered.firstOrNull { it.call.bundleCount > 1 || it.call.isMulti }
+        val ttsCall = bundleCall ?: buffered.last()
+
+        for (pending in buffered) {
+            if (pending === ttsCall) {
+                processDeliveryCall(pending, now)
+            } else {
+                // TTS 없이 로그만 저장 (묶음 중복 제거)
+                val silentResult = CallFilter.FilterResult(pending.result.verdict, pending.result.reason + " (묶음 중복 제거)")
+                FilterLog.record(this, pending.enrichedCall, silentResult, pending.baeminPoint)
+                Log.d("DeliveryFilter", "배민 debounce 로그만: ${pending.call.price}원 (묶음 중복 제거)")
+            }
+        }
+
+        val expireTime = now - 60000
+        callSpeakHistory.entries.removeIf { it.value < expireTime }
+        callDetectedAt.entries.removeIf { it.value < expireTime }
+    }
+
+    /** 개별 콜 처리 (TTS + 로그 + 진동 등) */
+    private fun processDeliveryCall(pending: PendingCall, now: Long) {
+        val call = pending.call
+        val enrichedCall = pending.enrichedCall
+        val result = pending.result
+        val baeminPoint = pending.baeminPoint
+        val pickupDistKm = pending.pickupDistKm
+        val platformName = call.platform
+
+        val callKey = "${call.platform}_${call.price}_${call.distance ?: 0}"
+
+        // 안전 조건: 1콜 1음성
+        if (callSpeakHistory.containsKey(callKey)) {
+            Log.d("DeliveryFilter", "중복 콜 건너뜀: $callKey")
+            return
+        }
+
+        // 안전 조건: 2초 쿨다운
+        if (now - lastSpeakTime < 2000) {
+            Log.d("DeliveryFilter", "쿨다운 중 - 건너뜀")
+            return
+        }
+
+        // 묶음 총액 기록 (부분 파싱 중복 방지)
+        if (call.isMulti) {
+            TtsDeduplicator.recordBundleTotal(call.platform, call.price)
+        }
+
+        // 로그 기록 (enriched call로 기록하여 포인트 환산거리 포함)
+        FilterLog.record(this, enrichedCall, result, baeminPoint)
+        // 마지막 감지 시각 기록 (상태 표시용)
+        lastCallDetectedTime = now
+
+        // ── TTS 3단계 판정 (중복 방지) ──
+        if (!TtsDeduplicator.shouldSpeak(call.platform, call.price)) {
+            Log.d("DeliveryFilter", "TtsDeduplicator 중복 스킵: ${call.platform} ${call.price}원")
+            return
+        }
+
+        // 단가 계산
+        val effectiveDist = enrichedCall.distance
+            val unitPrice = if (effectiveDist != null && effectiveDist > 0)
+                (call.price / effectiveDist).toInt() else 0
+        val pName = if (call.platform == "coupang") "쿠팡" else "배민"
+        val priceStr = formatPrice(call.price)
+        val unitKorean = toKoreanNumber(unitPrice)
+
+        // 픽업 예상 시간
+        val pickupEtaMin = if (pickupDistKm != null && pickupDistKm > 0) {
+            val speedKmh = if (currentSpeed > 1f) currentSpeed * 3.6 else 30.0
+            (pickupDistKm / speedKmh * 60).toInt().coerceAtLeast(1)
+        } else null
+        val pickupTtsExtra = if (pickupEtaMin != null) ", 픽업 ${pickupEtaMin}분 거리" else ""
+
+        if (result.verdict == CallFilter.Verdict.REJECT) {
+            callSpeakHistory[callKey] = now
+            lastSpeakTime = now
+            lastDeliveryCall = call
+            lastDeliveryVerdict = "넘기세요"
+            lastDeliveryPlatform = platformName
+            if (!TtsPrefs.isGrabOnlyEnabled(this)) {
+                speakTts("$pName, 넘기세요, ${priceStr}원")
+            }
+            Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
+        } else {
+            callSpeakHistory[callKey] = now
+            val grabThreshold = TtsPrefs.getGrabThreshold(this)
+            val isTopAccept = when {
+                call.price >= grabThreshold -> true
+                call.price >= TtsPrefs.getHighPriceThreshold(this) && (
+                    (call.distance != null && call.distance <= 3.0) ||
+                    (baeminPoint != null && baeminPoint <= 15.0)
+                ) -> true
+                unitPrice >= 2500 && effectiveDist != null && effectiveDist <= 3.0 -> true
+                else -> false
+            }
+            lastDeliveryCall = call
+            lastDeliveryPlatform = platformName
+            lastDeliveryVerdict = if (isTopAccept) "잡으세요" else "괜찮습니다"
+
+            if (isTopAccept) {
+                lastSpeakTime = now
+                speakTts("$pName, 잡으세요, ${priceStr}원$pickupTtsExtra")
+                Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
+                tryAutoAccept()
+            } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
+                && CallFilter.isOkVoiceEnabled(this)) {
+                lastSpeakTime = now
+                var ttsMsg = "$pName, 괜찮습니다"
+                if (unitPrice > 0) ttsMsg += ", 단가 $unitKorean"
+                if (call.distance != null && call.distance > 3.0) ttsMsg += " 픽업 멉니다"
+                if (baeminPoint != null && baeminPoint >= 25.0) ttsMsg += ", 먼 거리입니다"
+                speakTts(ttsMsg)
+                Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
+            } else {
+                Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
+            }
+        }
+
+        // v3.3: 연속 REJECT 추적
+        if (result.verdict == CallFilter.Verdict.REJECT) {
+                consecutiveRejectCount++
+            if (AdvancedPrefs.isRejectWarningEnabled(this)) {
+                if (consecutiveRejectCount == 5) speakTts("5건 연속 넘기고 있습니다. 기준을 낮춰볼까요?")
+                else if (consecutiveRejectCount == 10) speakTts("콜이 계속 안 맞습니다. 이동을 추천합니다.")
+            }
+        } else {
+            consecutiveRejectCount = 0
+        }
+
+        if (call.storeName.isNotEmpty() && StoreManager.isFavorite(this, call.storeName)) {
+            speakTts("단골 가게입니다")
+        }
+
+        val overlayText = "$lastDeliveryVerdict ${java.text.NumberFormat.getNumberInstance().format(call.price)}원"
+        FloatingOverlay.show(this, overlayText)
+
+        try {
+            val db = CallLogDb.get(this)
+            val up = if (enrichedCall.distance != null && enrichedCall.distance > 0)
+                (enrichedCall.price / enrichedCall.distance).toInt() else 0
+            db.insert(
+                platform = call.platform, price = call.price,
+                distance = enrichedCall.distance, unitPrice = up,
+                point = baeminPoint, verdict = result.verdict.name,
+                reason = result.reason, bundleCount = call.bundleCount,
+                isMultiPickup = call.isMultiPickup, storeName = call.storeName,
+                destination = call.destination, pickupKm = pickupDistKm
+            )
+        } catch (e: Exception) { Log.w("DeliveryFilter", "DB 저장 실패: ${e.message}") }
+
+        playCallSound(lastDeliveryVerdict)
+        vibrate(lastDeliveryVerdict)
+        updateNotification()
+        checkGoalProgress()
+        DailyReport.onCallDetected(this)
     }
 
     /** 숫자를 한국어 TTS용으로 변환: 3200 → "삼천이백" */

@@ -1,48 +1,36 @@
-OnTheWay 프로젝트에서 v3.5 최종 로컬 기능을 구현해줘:
+OnTheWay v2 수정 2건. 프로젝트 경로: C:\Users\hjrha\AndroidStudioProjects\OnTheWay
 
-1. 플로팅 오버레이 (다른 앱 위에 표시):
-   - SYSTEM_ALERT_WINDOW 권한 사용
-   - 배민/쿠팡 앱 위에 작은 플로팅 버블 표시
-   - 버블에 마지막 판정 결과 표시 ("잡으세요 8,500원" 등)
-   - 버블 드래그로 위치 이동 가능
-   - 버블 탭하면 OnTheWay 앱 실행
-   - 설정: "플로팅 오버레이" 토글 (기본 OFF)
+===== 이슈 1: 배민 묶음배달 중복 TTS 방지 =====
 
-2. 음성 제어:
-   - Android SpeechRecognizer로 음성 인식 (Remember Me와 동일 방식)
-   - "잡아" → 현재 콜 수락 (acceptCurrentCall)
-   - "넘겨" → 아무 동작 안 함 (확인 용도)
-   - "오늘 얼마" → TTS로 "오늘 N건, 매출 N원, 시급 N원" 응답
-   - "기준 올려" → 최소금액 +500원 조정
-   - "기준 내려" → 최소금액 -500원 조정
-   - 블루투스 이어폰 버튼으로 음성 인식 시작
-   - 설정: "음성 제어" 토글 (기본 OFF)
+현상: 묶음 2건 콜이 들어오면 개별(6,420원) + 합산(8,720원) + 개별(2,300원) 3번 TTS됨.
+원인: 배민 화면 스와이프 시 개별/합산이 각각 Accessibility 이벤트로 들어옴.
 
-3. Room 데이터베이스 영구 저장:
-   - 현재 FilterLog가 메모리/파일 기반이면 Room DB로 마이그레이션
-   - call_logs 테이블: id, timestamp, platform, price, distance, unitPrice, point, verdict, reason, bundleCount, isMultiPickup, storeName, accepted, completed, deliveryTime
-   - 앱 재시작해도 데이터 유지
-   - 이번달/지난달/전체 조회 가능
-   - 오래된 데이터 자동 정리 (90일 이상)
+수정:
+1. OnTheWayService에 배민 전용 debounce 로직 추가
+2. 배민 콜 감지 시 즉시 TTS 하지 않고 2초 대기
+3. 2초 윈도우 내 같은 플랫폼(배민) 콜을 리스트에 모음
+4. 2초 후 판정:
+   - 리스트 중 bundleCount > 1인 콜이 있으면 → 그 콜만 TTS + FilterLog 저장
+   - bundleCount > 1인 콜이 없으면 → 마지막 콜만 TTS + FilterLog 저장
+   - 나머지 콜은 FilterLog에만 저장 (TTS 없음, reason에 "묶음 중복 제거" 표기)
+5. Handler + postDelayed 패턴 사용
+6. 쿠팡은 debounce 적용 안 함 (기존 즉시 TTS 유지)
 
-4. 배터리 최적화:
-   - GPS 업데이트 빈도 자동 조절: 콜 대기 중 60초, 배달 중 15초
-   - 화면 꺼져있을 때 GPS 빈도 낮추기 (120초)
-   - Doze 모드 대응: WakeLock 또는 ForegroundService 유지
-   - 배터리 사용량 최소화하면서 감지 누락 방지
-   - 설정에 "배터리 절약 모드" 토글 (기본 ON)
+===== 이슈 2: 쿠팡이츠 Accessibility 진단 로그 =====
 
-5. 백업/복원:
-   - 설정에 "백업" 버튼 → 모든 설정 + 즐겨찾기 + 통계 데이터를 JSON 파일로 내보내기
-   - "복원" 버튼 → JSON 파일에서 복원
-   - 폰 교체 시 데이터 이전 용도
+현상: 쿠팡이츠 앱 출근 상태, 콜 알림 울리는데 OnTheWay 완전 무반응. 접근성 서비스 ON 상태. 배민은 정상 감지됨.
+의심: 쿠팡 앱 업데이트로 Accessibility 이벤트 패턴 변경 또는 getWindows()에서 패키지 못 잡음.
 
-6. 온보딩 튜토리얼:
-   - 앱 첫 실행 시 튜토리얼 화면 3장 표시
-   - 1장: "OnTheWay가 배달 콜을 자동으로 분석합니다"
-   - 2장: "넘기세요/괜찮습니다/잡으세요로 알려드립니다"  
-   - 3장: "접근성 서비스와 알림 권한을 켜주세요" + 바로가기 버튼
-   - SharedPreferences로 첫 실행 여부 체크
-   - 설정에 "튜토리얼 다시보기" 버튼
+수정:
+1. SettingsActivity에 "쿠팡 진단 모드" Switch 추가 (SharedPreferences 키: "coupang_debug_mode", 기본 OFF)
+2. OnTheWayService.onAccessibilityEvent()에서:
+   - 쿠팡 진단 모드 ON일 때
+   - 모든 이벤트(패키지 무관)에서 packageName이 "com.coupang.mobile.eats.courier"이면:
+     → FilterLog에 기록: platform="쿠팡진단", price="0", judgment="DEBUG",
+        reason="eventType=[타입] pkg=[패키지명] text=[이벤트텍스트전체] class=[className]"
+   - 추가로 getWindows()의 모든 윈도우 패키지명도 1회 로그:
+     reason="WINDOWS: [윈도우1패키지, 윈도우2패키지, ...]"
+3. 쿠팡 진단 모드 OFF면 기존 로직 그대로
 
-수정 후 git add -A && git commit -m "v3.5: 플로팅오버레이 + 음성제어 + Room DB + 배터리최적화 + 백업복원 + 온보딩" && git push 해줘.
+===== 작업 완료 후 =====
+git add -A && git commit -m "fix: 배민 묶음 debounce 2초 + 쿠팡 진단모드" && git push
