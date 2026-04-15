@@ -11,7 +11,7 @@ object FilterLog {
     private const val KEY_ENTRIES = "entries"
     private const val MAX_ENTRIES = 200
 
-    fun record(ctx: Context, call: DeliveryCall, result: CallFilter.FilterResult) {
+    fun record(ctx: Context, call: DeliveryCall, result: CallFilter.FilterResult, baeminPoint: Double? = null) {
         val unitPrice = if (call.distance != null && call.distance > 0)
             (call.price / call.distance).toInt() else 0
         val entry = JSONObject().apply {
@@ -27,6 +27,10 @@ object FilterLog {
             put("parseSuccess", call.parseSuccess)
             put("storeName", call.storeName)
             put("destination", call.destination)
+            if (call.bundleCount > 1) put("bundleCount", call.bundleCount)
+            if (call.isMultiPickup) put("multiPickup", true)
+            if (baeminPoint != null) put("point", baeminPoint)
+            if (call.point != null) put("point", call.point)
         }
 
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

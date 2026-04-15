@@ -42,7 +42,9 @@
       "Bash(git push:*)",
       "Bash(git remote:*)",
       "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" git log --oneline --all)",
-      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" git show 06304f2 -- app/src/main/java/com/vita/ontheway/Config.kt)"
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" git show 06304f2 -- app/src/main/java/com/vita/ontheway/Config.kt)",
+      "Read(//c//**)",
+      "Read(//c/Users/hjrha/AndroidStudioProjects/OnTheWay/$LOCALAPPDATA/Programs/**)"
     ]
   }
 }

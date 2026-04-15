@@ -193,6 +193,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         acceptBtn.visibility  = View.INVISIBLE
         addAgentMessage("어디로 가세요?")
 
+        // ── 접근성 서비스 / 알림 리스너 경고 배너 (v2 2.0) ──
+        checkServiceStatus()
+
         val searchSession = SearchSessionStore.ensureActiveSession(this)
         OnTheWayService.activeSearchSessionId = searchSession.sessionId
 
@@ -209,6 +212,50 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
         }
         mainHandler.postDelayed(filterRefresh, 5000)
+    }
+
+    private fun checkServiceStatus() {
+        val warnings = mutableListOf<String>()
+
+        // 접근성 서비스 체크
+        val accessibilityEnabled = try {
+            val enabledServices = Settings.Secure.getString(
+                contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            enabledServices.contains("com.vita.ontheway")
+        } catch (e: Exception) { false }
+
+        if (!accessibilityEnabled) {
+            warnings.add("접근성 서비스가 꺼져 있습니다")
+        }
+
+        // 알림 리스너 체크
+        val notifEnabled = try {
+            val enabledListeners = Settings.Secure.getString(
+                contentResolver, "enabled_notification_listeners"
+            ) ?: ""
+            enabledListeners.contains("com.vita.ontheway")
+        } catch (e: Exception) { false }
+
+        if (!notifEnabled) {
+            warnings.add("알림 접근 권한이 꺼져 있습니다")
+        }
+
+        if (warnings.isNotEmpty()) {
+            val banner = TextView(this).apply {
+                text = "⚠ ${warnings.joinToString(" · ")} — 터치하여 설정"
+                textSize = 13f
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.parseColor("#E53935"))
+                setPadding(dp(16), dp(10), dp(16), dp(10))
+                gravity = Gravity.CENTER
+                setOnClickListener {
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }
+            }
+            val root = findViewById<ViewGroup>(android.R.id.content)
+            root.addView(banner, 0, ViewGroup.LayoutParams(MP, WC))
+        }
     }
 
     private fun switchTab(tab: String) {
@@ -277,7 +324,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 "REJECT" -> "넘기세요"; "ACCEPT" -> {
                     val up = e.optInt("unitPrice", 0)
                     val dist = e.optDouble("distanceKm", -1.0)
-                    if (up >= 2500 && dist in 0.0..3.0) "잡으세요" else "괜찮습니다"
+                    val pt = e.optDouble("point", -1.0)
+                    if (price >= 10000 || (price >= 7000 && ((dist in 0.0..3.0) || (pt in 0.0..15.0))) || (up >= 2500 && dist in 0.0..3.0)) "잡으세요" else "괜찮습니다"
                 }; else -> verdict
             }
             lastCallText.text = "$platform ${fmt(price)}원 $verdictKr"
@@ -308,7 +356,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val unitPrice = entry.optInt("unitPrice", 0)
             val verdict = entry.optString("verdict", "")
 
-            // 3단계 판정 색상
+            // 3단계 판정 색상 (v2 2.0 확장)
             val verdictKr: String
             val verdictColor: Int
             if (verdict == "REJECT") {
@@ -316,7 +364,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 verdictColor = Color.parseColor("#E53935")
             } else {
                 val dist = entry.optDouble("distanceKm", -1.0)
-                if (unitPrice >= 2500 && dist in 0.0..3.0) {
+                val ptVal = entry.optDouble("point", -1.0)
+                val isGrab = price >= 10000 ||
+                    (price >= 7000 && ((dist in 0.0..3.0) || (ptVal in 0.0..15.0))) ||
+                    (unitPrice >= 2500 && dist in 0.0..3.0)
+                if (isGrab) {
                     verdictKr = "잡으세요"
                     verdictColor = Color.parseColor("#4CAF50")
                 } else {
@@ -375,16 +427,36 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val destination = entry.optString("destination", "")
         val isMulti = entry.optBoolean("multi", false)
 
+        val pointVal = entry.optDouble("point", -1.0)
         val verdictKr = if (verdict == "REJECT") "넘기세요"
+        else if (price >= 10000) "잡으세요"
+        else if (price >= 7000 && ((dist in 0.0..3.0) || (pointVal in 0.0..15.0))) "잡으세요"
         else if (unitPrice >= 2500 && dist in 0.0..3.0) "잡으세요"
         else "괜찮습니다"
+
+        val point = entry.optDouble("point", -1.0)
+        val bundleCount = entry.optInt("bundleCount", 0)
+        val isMultiPickup = entry.optBoolean("multiPickup", false)
 
         val sb = StringBuilder()
         sb.appendLine("플랫폼: $platform")
         sb.appendLine("금액: ${nf.format(price)}원")
         if (dist >= 0) sb.appendLine("거리: ${"%.1f".format(dist)}km")
         if (unitPrice > 0) sb.appendLine("단가: ${nf.format(unitPrice)}원/km")
-        if (isMulti) sb.appendLine("묶음배달: 예")
+        // 포인트/환산거리 표시 (v2 2.0)
+        if (point > 0) {
+            val pointKm = point * 0.15
+            sb.appendLine("포인트: ${"%.1f".format(point)}P (환산 ${"%.1f".format(pointKm)}km)")
+            if (pointKm > 0) {
+                val pointUnit = (price / pointKm).toInt()
+                sb.appendLine("환산단가: ${nf.format(pointUnit)}원/km")
+            }
+        }
+        if (isMulti) {
+            val countStr = if (bundleCount > 1) "${bundleCount}건" else "예"
+            val pickupStr = if (isMultiPickup) " (다중 픽업)" else ""
+            sb.appendLine("묶음배달: $countStr$pickupStr")
+        }
         val platformNames = setOf("배민배달", "배민커넥트", "배민", "쿠팡이츠", "쿠팡", "카카오T")
         if (storeName.isNotEmpty() && storeName !in platformNames) sb.appendLine("가게: $storeName")
         if (destination.isNotEmpty() && !destination.contains("검색하기")) sb.appendLine("목적지: $destination")

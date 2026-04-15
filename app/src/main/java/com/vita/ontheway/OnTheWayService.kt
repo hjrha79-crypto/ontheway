@@ -71,12 +71,34 @@ class OnTheWayService : AccessibilityService() {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
         Log.d("OTW_DEBUG", "패키지: $pkg")
+
+        // 카카오T 진단 로그 (모든 이벤트)
+        if (pkg.contains("kakaomobility") || pkg.contains("flexer")) {
+            Log.w("OTW_KAKAO", "★ 카카오T: pkg=$pkg, type=${event.eventType}, source=${event.source != null}, root=${rootInActiveWindow != null}")
+        }
+
         if (pkg !in TARGET_PACKAGES) return
-        val root = rootInActiveWindow ?: event.source ?: return
+
+        // root 확보: rootInActiveWindow 우선, 없으면 event.source, 카카오T는 getWindows() fallback
+        var root = rootInActiveWindow ?: event.source
+        if (root == null && (pkg == PKG_FLEXER || pkg == PKG_DRIVER)) {
+            root = findWindowRoot(pkg)
+        }
+        if (root == null) return
 
         // ── 배달 플랫폼 분기 (쿠팡이츠/배민커넥트) ──
         if (pkg in DELIVERY_PACKAGES) {
-            handleDeliveryPlatform(root, pkg)
+            // 배민: rootInActiveWindow가 배민이 아닌 경우 getWindows()로 탐색
+            if (pkg == PKG_BAEMIN && root.packageName?.toString() != PKG_BAEMIN) {
+                val baeminRoot = findWindowRoot(PKG_BAEMIN)
+                if (baeminRoot != null) {
+                    handleDeliveryPlatform(baeminRoot, pkg)
+                } else {
+                    handleDeliveryPlatform(root, pkg)
+                }
+            } else {
+                handleDeliveryPlatform(root, pkg)
+            }
             return
         }
 
@@ -387,6 +409,18 @@ class OnTheWayService : AccessibilityService() {
         }
     }
 
+    /** getWindows()를 순회하여 지정 패키지의 root를 찾는다 */
+    private fun findWindowRoot(targetPkg: String): AccessibilityNodeInfo? {
+        return try {
+            windows?.firstNotNullOfOrNull { w ->
+                w.root?.takeIf { it.packageName?.toString() == targetPkg }
+            }
+        } catch (e: Exception) {
+            Log.w("OTW_DEBUG", "getWindows fallback 실패: ${e.message}")
+            null
+        }
+    }
+
     // ── 배달 플랫폼 처리 (쿠팡이츠/배민커넥트) ─────────
     private fun handleDeliveryPlatform(root: AccessibilityNodeInfo, pkg: String) {
         val texts = mutableListOf<String>()
@@ -397,12 +431,19 @@ class OnTheWayService : AccessibilityService() {
         // 대기 화면 무시 필터 — 파싱/로그/TTS 전부 스킵 (최우선 체크)
         val joined = texts.joinToString(" ")
         if (pkg == PKG_BAEMIN) {
-            if (joined.contains("가상 배달을 체험해 보세요") || joined.contains("신규배차를 켜고 배달을 시작하세요")
-                || joined.contains("배달을 시작해") || joined.contains("배차 대기")
-                || joined.contains("배달 완료") || joined.contains("배달 중")
-                || joined.contains("가게 도착") || joined.contains("고객에게 전달")
-                || joined.contains("배달 내역") || joined.contains("정산")
-                || joined.contains("공지사항") || joined.contains("내 정보")) {
+            val baeminSkipKeywords = listOf(
+                // 기존
+                "가상 배달을 체험해 보세요", "신규배차를 켜고 배달을 시작하세요",
+                "배달을 시작해", "배차 대기",
+                "배달 완료", "배달 중", "가게 도착", "고객에게 전달",
+                "배달 내역", "정산", "공지사항", "내 정보",
+                // v2 2.0 추가 필터
+                "배달 체험하기",
+                "진행 배달미션", "배달 미션", "완료 시 최대", "미션 전체보기",
+                "메뉴금액", "주문정보", "가게정보", "찾아오는 길",
+                "신규배차를 켜고", "배달을 시작해"
+            )
+            if (baeminSkipKeywords.any { joined.contains(it) }) {
                 return
             }
         }
@@ -431,9 +472,16 @@ class OnTheWayService : AccessibilityService() {
 
         // 배민 포인트 파싱 (거리 지표)
         val baeminPoint = if (pkg == PKG_BAEMIN) BaeminParser.parsePoint(texts) else null
+        // 포인트 기반 환산거리 (1P = 0.15km)
+        val pointDistKm = if (baeminPoint != null) baeminPoint * 0.15 else null
 
         for (call in calls) {
-            val result = CallFilter.judge(call, this)
+            // 포인트 환산 정보를 CallFilter에 전달하기 위해 enriched call 생성
+            val enrichedCall = if (call.platform == "baemin" && call.distance == null && pointDistKm != null) {
+                call.copy(distance = pointDistKm)
+            } else call
+
+            val result = CallFilter.judge(enrichedCall, this)
             val callKey = "${call.platform}_${call.price}_${call.distance ?: 0}"
 
             // 안전 조건: 1콜 1음성
@@ -448,8 +496,13 @@ class OnTheWayService : AccessibilityService() {
                 continue
             }
 
-            // 로그 기록
-            FilterLog.record(this, call, result)
+            // 묶음 총액 기록 (부분 파싱 중복 방지)
+            if (call.isMulti) {
+                TtsDeduplicator.recordBundleTotal(call.platform, call.price)
+            }
+
+            // 로그 기록 (enriched call로 기록하여 포인트 환산거리 포함)
+            FilterLog.record(this, enrichedCall, result, baeminPoint)
             // 마지막 감지 시각 기록 (상태 표시용)
             lastCallDetectedTime = now
 
@@ -458,8 +511,11 @@ class OnTheWayService : AccessibilityService() {
                 Log.d("DeliveryFilter", "TtsDeduplicator 중복 스킵: ${call.platform} ${call.price}원")
                 continue
             }
-            val unitPrice = if (call.distance != null && call.distance > 0)
-                (call.price / call.distance).toInt() else 0
+
+            // 단가 계산: 포인트 환산거리 우선, 없으면 실거리
+            val effectiveDist = pointDistKm ?: call.distance
+            val unitPrice = if (effectiveDist != null && effectiveDist > 0)
+                (call.price / effectiveDist).toInt() else 0
             val pName = if (call.platform == "coupang") "쿠팡" else "배민"
             val priceKorean = toKoreanNumber(call.price)
             val unitKorean = toKoreanNumber(unitPrice)
@@ -472,21 +528,30 @@ class OnTheWayService : AccessibilityService() {
                 Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
             } else {
                 callSpeakHistory[callKey] = now
-                // ACCEPT 상위: 단가 2500+, 배달거리 3km 이하 (거리 있는 플랫폼만)
-                val isTopAccept = unitPrice >= 2500 &&
-                    call.distance != null && call.distance <= 3.0
+
+                // ── "잡으세요" 확장 판정 (v2 2.0) ──
+                val isTopAccept = when {
+                    // 10,000원 이상 무조건 잡으세요
+                    call.price >= 10000 -> true
+                    // 7,000원 이상 + (거리 ≤ 3km 또는 포인트 ≤ 15P)
+                    call.price >= 7000 && (
+                        (call.distance != null && call.distance <= 3.0) ||
+                        (baeminPoint != null && baeminPoint <= 15.0)
+                    ) -> true
+                    // 기존: 단가 ≥ 2,500원/km + 거리 ≤ 3km
+                    unitPrice >= 2500 && effectiveDist != null && effectiveDist <= 3.0 -> true
+                    else -> false
+                }
 
                 if (isTopAccept) {
                     lastSpeakTime = now
-                    speakTts("$pName, 잡으세요, 단가 $unitKorean")
+                    speakTts("$pName, 잡으세요, ${priceKorean}원")
                     Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
                 } else if (CallFilter.isOkVoiceEnabled(this)) {
                     lastSpeakTime = now
-                    // 배민은 거리 없으므로 "잡으세요" 불가, 최대 "괜찮습니다"
                     var ttsMsg = "$pName, 괜찮습니다"
                     if (unitPrice > 0) ttsMsg += ", 단가 $unitKorean"
                     if (call.distance != null && call.distance > 3.0) ttsMsg += " 픽업 멉니다"
-                    // 배민 포인트 25P 이상이면 먼 거리 경고
                     if (baeminPoint != null && baeminPoint >= 25.0) ttsMsg += ", 먼 거리입니다"
                     speakTts(ttsMsg)
                     Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
