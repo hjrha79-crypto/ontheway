@@ -370,6 +370,24 @@ class SettingsActivity : AppCompatActivity() {
 
         root.addView(advCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
+        // ─── v2.2 진단 모드 섹션 ───
+        root.addView(sectionTitle("진단"))
+        val diagCard = card()
+        diagCard.addView(TextView(this).apply {
+            text = "패키지별 이벤트 수 확인"
+            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#FF9800"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener { showDiagnosticDialog() }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(12), dp(16), dp(12)) })
+        diagCard.addView(TextView(this).apply {
+            text = "Accessibility로 수신된 패키지별 이벤트 수를 표시합니다.\n카카오T가 0건이면 이벤트 자체가 안 오는 것입니다."
+            textSize = 12f; setTextColor(Color.parseColor("#999999"))
+            setPadding(dp(16), 0, dp(16), dp(12))
+        })
+        root.addView(diagCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
         // ─── Shadow Mode KPI 섹션 ───
         root.addView(sectionTitle("Shadow Mode"))
         val shadowCard = card()
@@ -383,6 +401,73 @@ class SettingsActivity : AppCompatActivity() {
 
         scrollView.addView(root)
         setContentView(scrollView)
+    }
+
+    private fun showDiagnosticDialog() {
+        val counts = OnTheWayService.packageEventCount.toList()
+            .sortedByDescending { it.second }
+        val sb = StringBuilder()
+
+        // 카카오 관련 패키지 먼저
+        val kakaoPackages = counts.filter {
+            it.first.contains("kakaomobility") || it.first.contains("flexer") ||
+            it.first.contains("kakao.taxi")
+        }
+        if (kakaoPackages.isEmpty()) {
+            sb.appendLine("★ 카카오T 관련 이벤트: 0건 (미수신)")
+            sb.appendLine("→ Accessibility 이벤트가 오지 않습니다")
+            sb.appendLine("→ NotificationListener 대안 경로 사용")
+            sb.appendLine()
+        } else {
+            sb.appendLine("★ 카카오T 관련:")
+            kakaoPackages.forEach { (pkg, count) ->
+                sb.appendLine("  $pkg: ${count}건")
+            }
+            sb.appendLine()
+        }
+
+        // 배달 플랫폼
+        val deliveryPackages = counts.filter {
+            it.first.contains("coupang") || it.first.contains("woowahan")
+        }
+        if (deliveryPackages.isNotEmpty()) {
+            sb.appendLine("배달 플랫폼:")
+            deliveryPackages.forEach { (pkg, count) ->
+                sb.appendLine("  $pkg: ${count}건")
+            }
+            sb.appendLine()
+        }
+
+        // 기타 (상위 10개)
+        val others = counts.filter { (pkg, _) ->
+            !pkg.contains("kakaomobility") && !pkg.contains("flexer") &&
+            !pkg.contains("kakao.taxi") && !pkg.contains("coupang") &&
+            !pkg.contains("woowahan")
+        }.take(10)
+        if (others.isNotEmpty()) {
+            sb.appendLine("기타 (상위 10개):")
+            others.forEach { (pkg, count) ->
+                sb.appendLine("  $pkg: ${count}건")
+            }
+        }
+
+        if (counts.isEmpty()) {
+            sb.appendLine("아직 수신된 이벤트가 없습니다.")
+            sb.appendLine("앱을 백그라운드에 두고 다른 앱을 사용해보세요.")
+        }
+
+        sb.appendLine()
+        sb.appendLine("총 ${counts.sumOf { it.second }}건 / ${counts.size}개 패키지")
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("진단: 패키지별 이벤트 수")
+            .setMessage(sb.toString())
+            .setPositiveButton("확인", null)
+            .setNeutralButton("초기화") { _, _ ->
+                OnTheWayService.packageEventCount.clear()
+                Toast.makeText(this, "카운터 초기화됨", Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     private fun sectionTitle(text: String): TextView {

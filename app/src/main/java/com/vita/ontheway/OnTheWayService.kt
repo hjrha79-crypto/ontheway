@@ -55,6 +55,9 @@ class OnTheWayService : AccessibilityService() {
         val VOICE_ACCEPT_COMMANDS = setOf("잡아", "수락", "이거")
         const val ACCEPT_TIMEOUT_MS = 30_000L
         const val AUTO_ACCEPT_COOLDOWN_MS = 60_000L
+
+        // v2.2: 진단 모드 — 패키지별 이벤트 카운트
+        val packageEventCount = mutableMapOf<String, Int>()
     }
 
     // 1콜 1음성: callKey → 마지막 발화 시각
@@ -79,11 +82,13 @@ class OnTheWayService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
-        Log.d("OTW_DEBUG", "패키지: $pkg")
 
-        // 카카오T 진단 로그 (모든 이벤트)
-        if (pkg.contains("kakaomobility") || pkg.contains("flexer")) {
-            Log.w("OTW_KAKAO", "★ 카카오T: pkg=$pkg, type=${event.eventType}, source=${event.source != null}, root=${rootInActiveWindow != null}")
+        // v2.2: 진단 모드 — 모든 패키지별 이벤트 카운트
+        packageEventCount[pkg] = (packageEventCount[pkg] ?: 0) + 1
+
+        // 카카오 관련 패키지는 별도 경고 로그
+        if (pkg.contains("kakaomobility") || pkg.contains("flexer") || pkg.contains("kakao")) {
+            Log.w("OTW_KAKAO", "★ 카카오: pkg=$pkg, type=${event.eventType}, count=${packageEventCount[pkg]}, source=${event.source != null}, root=${rootInActiveWindow != null}")
         }
 
         // v3.0: 수락 버튼 클릭 감지 (수익 트래킹)

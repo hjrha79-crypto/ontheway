@@ -16,7 +16,9 @@ class DeliveryNotificationService : NotificationListenerService() {
     companion object {
         private const val PKG_COUPANG = "com.coupang.mobile.eats.courier"
         private const val PKG_BAEMIN = "com.woowahan.bros"
-        private val TARGET_PACKAGES = setOf(PKG_COUPANG, PKG_BAEMIN)
+        private const val PKG_FLEXER = "com.kakaomobility.flexer"
+        private const val PKG_KAKAO_DRIVER = "com.kakao.taxi.driver"
+        private val TARGET_PACKAGES = setOf(PKG_COUPANG, PKG_BAEMIN, PKG_FLEXER, PKG_KAKAO_DRIVER)
 
         // 중복 알림 방지: 알림key → 처리시각
         private val processedNotifs = mutableMapOf<String, Long>()
@@ -66,8 +68,6 @@ class DeliveryNotificationService : NotificationListenerService() {
         if (processedNotifs[notiKey]?.let { now - it < 10_000 } == true) return
         processedNotifs[notiKey] = now
 
-        Log.d("DeliveryNoti", "알림: pkg=${sbn.packageName}, title=${sbn.notification?.extras?.getCharSequence("android.title")}, text=${sbn.notification?.extras?.getCharSequence("android.text")}")
-
         // 알림 텍스트 추출
         val extras = sbn.notification?.extras ?: return
         val title = extras.getCharSequence("android.title")?.toString() ?: ""
@@ -78,6 +78,16 @@ class DeliveryNotificationService : NotificationListenerService() {
         Log.d("DeliveryNoti", "알림 수신: pkg=$pkg, title=$title, text=$text")
 
         if (combined.isBlank()) return
+
+        // v2.2: 카카오T 알림 처리 (Accessibility 대안 경로)
+        if (pkg == PKG_FLEXER || pkg == PKG_KAKAO_DRIVER) {
+            Log.w("DeliveryNoti", "★ 카카오T 알림: pkg=$pkg, title=$title, text=$text, bigText=$bigText")
+            val kakaoCalls = parseKakaoTNotification(combined)
+            if (kakaoCalls.isNotEmpty()) {
+                handleKakaoTCalls(kakaoCalls, now)
+            }
+            return
+        }
 
         // 플랫폼별 파싱 (배민만)
         val calls = when (pkg) {
@@ -137,6 +147,58 @@ class DeliveryNotificationService : NotificationListenerService() {
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) { /* no-op */ }
+
+    // ── v2.2: 카카오T 알림 파싱 ──
+    private fun parseKakaoTNotification(text: String): List<DeliveryCall> {
+        // 금액 패턴: "39,400원", "12,000원" 등
+        val priceMatch = Regex("([\\d,]+)\\s*원").find(text) ?: return emptyList()
+        val price = priceMatch.groupValues[1].replace(",", "").toIntOrNull() ?: return emptyList()
+        if (price !in 1000..100000) return emptyList()
+
+        // 거리 파싱
+        val distance = Regex("(\\d+\\.?\\d*)\\s*km", RegexOption.IGNORE_CASE)
+            .find(text)?.groupValues?.get(1)?.toDoubleOrNull()
+
+        // 주소 파싱 (간단)
+        val from = Regex("(출발|픽업|탑승)[:\\s]*([가-힣]+)")
+            .find(text)?.groupValues?.get(2) ?: ""
+        val to = Regex("(도착|하차|목적지)[:\\s]*([가-힣]+)")
+            .find(text)?.groupValues?.get(2) ?: ""
+
+        Log.d("DeliveryNoti", "카카오T 파싱: ${price}원, ${distance}km, $from→$to")
+
+        return listOf(DeliveryCall(
+            price = price, distance = distance, isMulti = false,
+            platform = "kakaot", rawText = text,
+            storeName = from, destination = to
+        ))
+    }
+
+    private fun handleKakaoTCalls(calls: List<DeliveryCall>, now: Long) {
+        for (call in calls) {
+            // Accessibility가 이미 처리했으면 스킵
+            if (TtsDeduplicator.wasSpokenWithin("kakaot", call.price, 10_000)) {
+                Log.d("DeliveryNoti", "카카오T Accessibility 우선 - 알림 스킵: ${call.price}원")
+                continue
+            }
+
+            val result = CallFilter.judge(call, this)
+            FilterLog.record(this, call, result)
+            OnTheWayService.instance?.lastCallDetectedTime = now
+
+            if (!TtsDeduplicator.shouldSpeak("kakaot", call.price)) continue
+
+            val priceKr = toKoreanNumber(call.price)
+            if (result.verdict == CallFilter.Verdict.REJECT) {
+                speakTts("카카오, 넘기세요, ${priceKr}원")
+                Log.d("DeliveryNoti", "카카오T REJECT: ${call.price}원")
+            } else {
+                speakTts("카카오, 잡으세요, ${priceKr}원")
+                Log.d("DeliveryNoti", "카카오T ACCEPT: ${call.price}원")
+            }
+        }
+        processedNotifs.entries.removeIf { now - it.value > 60_000 }
+    }
 
     // ── 쿠팡 알림 파싱 ──
     private fun parseCoupangNotification(text: String): List<DeliveryCall> {
