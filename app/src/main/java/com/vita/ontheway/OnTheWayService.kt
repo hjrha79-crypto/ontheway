@@ -105,12 +105,15 @@ class OnTheWayService : AccessibilityService() {
 
         // ── 배달 플랫폼 분기 (쿠팡이츠/배민커넥트) ──
         if (pkg in DELIVERY_PACKAGES) {
-            // 배민: rootInActiveWindow가 배민이 아닌 경우 getWindows()로 탐색
-            if (pkg == PKG_BAEMIN && root.packageName?.toString() != PKG_BAEMIN) {
-                val baeminRoot = findWindowRoot(PKG_BAEMIN)
-                if (baeminRoot != null) {
-                    handleDeliveryPlatform(baeminRoot, pkg)
+            // root의 패키지가 이벤트 패키지와 다르면 getWindows()로 정확한 윈도우 탐색
+            val rootPkg = root.packageName?.toString()
+            if (rootPkg != pkg) {
+                val correctRoot = findWindowRoot(pkg)
+                if (correctRoot != null) {
+                    Log.d("OTW_DEBUG", "getWindows로 정확한 윈도우 확보: $pkg (root was $rootPkg)")
+                    handleDeliveryPlatform(correctRoot, pkg)
                 } else {
+                    Log.d("OTW_DEBUG", "getWindows에서도 $pkg 윈도우 없음, root=$rootPkg 로 처리")
                     handleDeliveryPlatform(root, pkg)
                 }
             } else {
@@ -498,7 +501,9 @@ class OnTheWayService : AccessibilityService() {
                 "배달 체험하기",
                 "진행 배달미션", "배달 미션", "완료 시 최대", "미션 전체보기",
                 "메뉴금액", "주문정보", "가게정보", "찾아오는 길",
-                "신규배차를 켜고", "배달을 시작해"
+                "신규배차를 켜고",
+                // v2.1 추가 필터
+                "주행기록 기반"
             )
             if (baeminSkipKeywords.any { joined.contains(it) }) {
                 return
@@ -529,8 +534,8 @@ class OnTheWayService : AccessibilityService() {
 
         // 배민 포인트 파싱 (거리 지표)
         val baeminPoint = if (pkg == PKG_BAEMIN) BaeminParser.parsePoint(texts) else null
-        // 포인트 기반 환산거리 (1P = 0.15km)
-        val pointDistKm = if (baeminPoint != null) baeminPoint * 0.15 else null
+        // 포인트 기반 환산거리 (1P = 0.25km, 보수적 환산)
+        val pointDistKm = if (baeminPoint != null) baeminPoint * 0.25 else null
 
         for (call in calls) {
             // 포인트 환산 정보를 CallFilter에 전달하기 위해 enriched call 생성

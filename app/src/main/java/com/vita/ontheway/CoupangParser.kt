@@ -19,8 +19,15 @@ object CoupangParser {
         "배달 현황", "출근하기", "퇴근하기", "배달 완료",
         "고객에게 전달", "픽업 완료", "가게 도착", "고객 도착",
         "배달 중", "픽업 중", "주문 현황", "정산", "공지사항",
-        "배달 내역", "수입 현황", "내 정보", "설정"
+        "배달 내역", "수입 현황", "내 정보", "설정",
+        // v2.1 추가
+        "미션", "보상", "프로모션", "이벤트", "리워드",
+        "완료 시 최대", "추가 수입", "인센티브",
+        "주문을 기다리는 중", "대기 중"
     )
+
+    // 콜 화면 필수 버튼 텍스트: 이 중 하나는 있어야 진짜 콜
+    private val CALL_SCREEN_BUTTONS = setOf("거절", "주문 수락", "주문수락")
 
     fun parse(texts: List<String>): List<DeliveryCall> {
         val results = mutableListOf<DeliveryCall>()
@@ -29,6 +36,12 @@ object CoupangParser {
         // 비콜 필터링: 배달 진행/완료/메뉴 화면이면 빈 리스트 반환
         if (NON_CALL_KEYWORDS.any { joined.contains(it) }) {
             Log.d("CoupangParser", "비콜 화면 감지 - 스킵: ${joined.take(50)}")
+            return results
+        }
+
+        // v2.1: "거절" 또는 "주문 수락" 버튼이 없으면 콜 화면이 아님
+        if (CALL_SCREEN_BUTTONS.none { joined.contains(it) }) {
+            Log.d("CoupangParser", "콜 버튼 없음 - 비콜 스킵: ${joined.take(50)}")
             return results
         }
 

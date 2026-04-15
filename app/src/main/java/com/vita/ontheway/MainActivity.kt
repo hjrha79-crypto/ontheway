@@ -445,7 +445,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (unitPrice > 0) sb.appendLine("단가: ${nf.format(unitPrice)}원/km")
         // 포인트/환산거리 표시 (v2 2.0)
         if (point > 0) {
-            val pointKm = point * 0.15
+            val pointKm = point * 0.25
             sb.appendLine("포인트: ${"%.1f".format(point)}P (환산 ${"%.1f".format(pointKm)}km)")
             if (pointKm > 0) {
                 val pointUnit = (price / pointKm).toInt()

@@ -94,7 +94,7 @@ object CallFilter {
 
         // ── 포인트 기반 거리 환산 판정 (배민, v2 2.0) ──
         if (call.platform == "baemin" && call.point != null && call.point > 0) {
-            val pointKm = call.point * 0.15
+            val pointKm = call.point * 0.25
             val pointUnitPrice = (call.price / pointKm).toInt()
             val pointTag = "포인트 ${"%.1f".format(call.point)}P (환산 ${"%.1f".format(pointKm)}km), 단가 ${fmt.format(pointUnitPrice)}원/km"
 
