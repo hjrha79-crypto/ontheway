@@ -146,6 +146,29 @@ object FilterLog {
         return file.absolutePath
     }
 
+    /** v3.0: 수락 기록 추가 */
+    fun recordAccepted(ctx: Context, price: Int, platform: String) {
+        val entry = JSONObject().apply {
+            put("ts", System.currentTimeMillis())
+            put("platform", platform)
+            put("price", price)
+            put("verdict", "ACCEPTED")
+            put("reason", "수락됨")
+        }
+
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val arr = try {
+            JSONArray(prefs.getString(KEY_ENTRIES, "[]"))
+        } catch (e: Exception) {
+            JSONArray()
+        }
+
+        arr.put(entry)
+        while (arr.length() > MAX_ENTRIES) arr.remove(0)
+        prefs.edit().putString(KEY_ENTRIES, arr.toString()).apply()
+        Log.d("FilterLog", "$platform ${price}원 → ACCEPTED")
+    }
+
     /** 최근 N건 반환 (최신순) */
     fun getRecent(ctx: Context, count: Int = 20): List<JSONObject> {
         val entries = getAll(ctx)

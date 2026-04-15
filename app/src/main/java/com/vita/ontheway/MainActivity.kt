@@ -475,6 +475,28 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     // ═══ 수익 (콤팩트 1줄 헤더 + 서브라인) ═══
     private fun updateEarningDisplay() {
+        // v3.0: 수익 트래킹 활성화 시 실시간 매출 표시
+        if (AdvancedPrefs.isEarningsTrackingEnabled(this)) {
+            val tracked = EarningsTracker.getToday(this)
+            if (tracked.acceptedCount > 0) {
+                earningText.text = "${fmt(tracked.totalRevenue)}원"
+                val hourlyStr = if (tracked.hourlyRate > 0) "${fmt(tracked.hourlyRate)}원/h" else "0원/h"
+                earningMeta.text = "${tracked.acceptedCount}콜 · $hourlyStr · 목표 ${fmt(todayGoalAmt)}원"
+                todayEarning = tracked.totalRevenue
+
+                val progress = if (todayGoalAmt > 0) {
+                    (todayEarning.toFloat() / todayGoalAmt).coerceIn(0f, 1f)
+                } else 0f
+                progressFill.post {
+                    val parent = progressFill.parent as? FrameLayout ?: return@post
+                    val totalWidth = parent.width
+                    val fillWidth = (totalWidth * progress).toInt()
+                    progressFill.layoutParams = progressFill.layoutParams.apply { width = fillWidth }
+                }
+                return
+            }
+        }
+
         val callCount = EarningManager.getTodayCallCount(this)
         val pace = EarningManager.getEarningPace(this)
         val paceStr = if (pace > 0) "${fmt(pace)}원/h" else "0원/h"

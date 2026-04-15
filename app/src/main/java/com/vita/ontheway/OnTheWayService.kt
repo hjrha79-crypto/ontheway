@@ -54,6 +54,7 @@ class OnTheWayService : AccessibilityService() {
         val ACCEPT_BUTTON_TEXTS = listOf("배차수락", "배차 수락", "주문 수락", "주문수락", "수락하기", "모두 수락")
         val VOICE_ACCEPT_COMMANDS = setOf("잡아", "수락", "이거")
         const val ACCEPT_TIMEOUT_MS = 30_000L
+        const val AUTO_ACCEPT_COOLDOWN_MS = 60_000L
     }
 
     // 1콜 1음성: callKey → 마지막 발화 시각
@@ -62,6 +63,14 @@ class OnTheWayService : AccessibilityService() {
     private val callDetectedAt = mutableMapOf<String, Long>()
     private var lastSpeakTime: Long = 0
     var lastCallDetectedTime: Long = 0  // 상태 표시용
+
+    // v3.0: 자동 수락 쿨다운
+    private var lastAutoAcceptTime: Long = 0
+
+    // v3.0: 마지막 판정 정보 (수락 감지용)
+    private var lastDeliveryCall: DeliveryCall? = null
+    private var lastDeliveryVerdict: String = ""  // "잡으세요", "괜찮습니다", "넘기세요"
+    private var lastDeliveryPlatform: String = ""
 
     // 배달 필터용 TTS
     private var tts: TextToSpeech? = null
@@ -75,6 +84,14 @@ class OnTheWayService : AccessibilityService() {
         // 카카오T 진단 로그 (모든 이벤트)
         if (pkg.contains("kakaomobility") || pkg.contains("flexer")) {
             Log.w("OTW_KAKAO", "★ 카카오T: pkg=$pkg, type=${event.eventType}, source=${event.source != null}, root=${rootInActiveWindow != null}")
+        }
+
+        // v3.0: 수락 버튼 클릭 감지 (수익 트래킹)
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            val clickedText = event.text?.joinToString("") ?: event.contentDescription?.toString() ?: ""
+            if (ACCEPT_BUTTON_TEXTS.any { clickedText.contains(it) }) {
+                onAcceptDetected()
+            }
         }
 
         if (pkg !in TARGET_PACKAGES) return
@@ -421,6 +438,46 @@ class OnTheWayService : AccessibilityService() {
         }
     }
 
+    /** v3.0: 수락 버튼 클릭 감지 시 처리 */
+    private fun onAcceptDetected() {
+        val call = lastDeliveryCall ?: return
+        val price = call.price
+        val platform = lastDeliveryPlatform.ifEmpty { call.platform }
+
+        Log.d("OnTheWay", "수락 감지: ${price}원 ($platform)")
+
+        // 수익 트래킹
+        EarningsTracker.recordAccept(this, price, platform)
+
+        // 네비 자동실행 (3초 딜레이)
+        val pickupAddr = call.storeName.ifEmpty { call.destination }
+        if (pickupAddr.isNotEmpty()) {
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                NaviLauncher.autoLaunchForAccept(this, pickupAddr)
+            }, 3000)
+        }
+    }
+
+    /** v3.0: 자동 수락 (잡으세요 판정만) */
+    private fun tryAutoAccept() {
+        if (!AdvancedPrefs.isAutoAcceptEnabled(this)) return
+        if (lastDeliveryVerdict != "잡으세요") return
+
+        val now = System.currentTimeMillis()
+        if (now - lastAutoAcceptTime < AUTO_ACCEPT_COOLDOWN_MS) {
+            Log.d("OnTheWay", "자동수락 쿨다운 중 (${(AUTO_ACCEPT_COOLDOWN_MS - (now - lastAutoAcceptTime)) / 1000}초 남음)")
+            return
+        }
+
+        lastAutoAcceptTime = now
+        speakTts("자동 수락합니다")
+
+        // 1초 후 수락 버튼 클릭
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            acceptCurrentCall()
+        }, 1000)
+    }
+
     // ── 배달 플랫폼 처리 (쿠팡이츠/배민커넥트) ─────────
     private fun handleDeliveryPlatform(root: AccessibilityNodeInfo, pkg: String) {
         val texts = mutableListOf<String>()
@@ -524,6 +581,9 @@ class OnTheWayService : AccessibilityService() {
                 // REJECT → "넘기세요"
                 callSpeakHistory[callKey] = now
                 lastSpeakTime = now
+                lastDeliveryCall = call
+                lastDeliveryVerdict = "넘기세요"
+                lastDeliveryPlatform = platformName
                 speakTts("$pName, 넘기세요, ${priceKorean}원")
                 Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
             } else {
@@ -543,10 +603,17 @@ class OnTheWayService : AccessibilityService() {
                     else -> false
                 }
 
+                // v3.0: 마지막 판정 기록
+                lastDeliveryCall = call
+                lastDeliveryPlatform = platformName
+                lastDeliveryVerdict = if (isTopAccept) "잡으세요" else "괜찮습니다"
+
                 if (isTopAccept) {
                     lastSpeakTime = now
                     speakTts("$pName, 잡으세요, ${priceKorean}원")
                     Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
+                    // v3.0: 자동 수락 시도
+                    tryAutoAccept()
                 } else if (CallFilter.isOkVoiceEnabled(this)) {
                     lastSpeakTime = now
                     var ttsMsg = "$pName, 괜찮습니다"
@@ -559,6 +626,9 @@ class OnTheWayService : AccessibilityService() {
                     Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 괜찮습니다 음성 OFF")
                 }
             }
+
+            // v3.0: 일별 리포트 타이머 갱신
+            DailyReport.onCallDetected(this)
         }
 
         // 오래된 히스토리 정리

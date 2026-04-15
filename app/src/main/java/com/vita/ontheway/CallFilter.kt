@@ -26,12 +26,31 @@ object CallFilter {
     fun bundleHighPrice(count: Int): Int = 7000 + (count - 1) * 3000
 
     fun judge(call: DeliveryCall, ctx: Context): FilterResult {
-        val minPrice = getMinPrice(ctx)
+        var minPrice = getMinPrice(ctx)
         val minUnitPrice = getMinUnitPrice(ctx)
         val fmt = java.text.NumberFormat.getNumberInstance()
 
         val hasDist = call.distance != null && call.distance > 0
         val unitPrice = if (hasDist) (call.price / call.distance!!).toInt() else 0
+
+        // v3.0: 귀가 방향 필터
+        var directionTag = ""
+        if (AdvancedPrefs.isDirectionFilterEnabled(ctx)) {
+            val homeDir = AdvancedPrefs.getHomeDirection(ctx)
+            if (homeDir.isNotEmpty() && call.destination.isNotEmpty()) {
+                // 동/읍/면 이름 추출
+                val homeTokens = extractAreaTokens(homeDir)
+                val destTokens = extractAreaTokens(call.destination)
+                val isHomeDirection = homeTokens.any { ht -> destTokens.any { it.contains(ht) || ht.contains(it) } }
+                if (isHomeDirection) {
+                    minPrice = (minPrice - 500).coerceAtLeast(1000)
+                    directionTag = ", 귀가 방향 보너스"
+                } else if (homeTokens.isNotEmpty() && destTokens.isNotEmpty()) {
+                    minPrice += 500
+                    directionTag = ", 역방향 페널티"
+                }
+            }
+        }
 
         // ── 묶음배달 건수별 판정 (v2 2.0) ──
         if (call.isMulti) {
@@ -113,32 +132,38 @@ object CallFilter {
         // 고액 콜 보호: 7,000원 이상이면 단가 무관 통과
         if (call.price >= 7000) {
             return FilterResult(Verdict.ACCEPT,
-                "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 (단가 무관 통과)")
+                "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 (단가 무관 통과)$directionTag")
         }
 
         // 최소 배달료 미달
         if (call.price < minPrice) {
             return FilterResult(Verdict.REJECT,
-                "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달")
+                "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달$directionTag")
         }
 
         // 단가 미달 (거리 정보가 있을 때만)
         if (hasDist && unitPrice < minUnitPrice) {
             return FilterResult(Verdict.REJECT,
-                "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달")
+                "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달$directionTag")
         }
 
         // ACCEPT 사유
         return if (hasDist && unitPrice >= 2500 && call.distance!! <= 3.0) {
             FilterResult(Verdict.ACCEPT,
-                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km")
+                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$directionTag")
         } else if (hasDist) {
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원")
+                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원$directionTag")
         } else {
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원")
+                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원$directionTag")
         }
+    }
+
+    /** 주소에서 동/읍/면/구 이름 토큰 추출 */
+    private fun extractAreaTokens(address: String): List<String> {
+        val pattern = Regex("([가-힣]+)(동|읍|면|구|리)")
+        return pattern.findAll(address).map { it.groupValues[1] }.toList()
     }
 
     // ── 설정값 getter/setter ──

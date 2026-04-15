@@ -286,6 +286,90 @@ class SettingsActivity : AppCompatActivity() {
         }
         root.addView(logCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
+        // ─── v3.0 고급 기능 섹션 ───
+        root.addView(sectionTitle("고급 기능 (v3.0)"))
+        val advCard = card()
+
+        // 1. 수익 트래킹
+        advCard.addView(advancedToggle(
+            "수익 트래킹",
+            "수락된 콜의 금액을 자동으로 누적 추적합니다",
+            AdvancedPrefs.isEarningsTrackingEnabled(this)
+        ) { checked -> AdvancedPrefs.setEarningsTracking(this, checked) })
+
+        // 2. 네비 자동실행
+        advCard.addView(advancedToggle(
+            "네비 자동실행",
+            "콜 수락 시 픽업지로 네비게이션을 자동 실행합니다",
+            AdvancedPrefs.isNaviAutoLaunchEnabled(this)
+        ) { checked -> AdvancedPrefs.setNaviAutoLaunch(this, checked) })
+
+        // 네비앱 선택
+        val naviAppRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(16), dp(4), dp(16), dp(12))
+        }
+        val curNavi = AdvancedPrefs.getNaviApp(this)
+        listOf("카카오내비" to "kakao_navi", "티맵" to "tmap", "카카오맵" to "kakao_map").forEach { (label, value) ->
+            naviAppRow.addView(TextView(this).apply {
+                text = label; textSize = 13f
+                val isSelected = value == curNavi
+                setTextColor(if (isSelected) Color.WHITE else Color.parseColor("#5B6ABF"))
+                setBackgroundColor(if (isSelected) Color.parseColor("#5B6ABF") else Color.parseColor("#F0F0F0"))
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                setOnClickListener {
+                    AdvancedPrefs.setNaviApp(this@SettingsActivity, value)
+                    recreate()
+                }
+            }, lp(0, WC, 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+        }
+        advCard.addView(naviAppRow)
+
+        // 3. 자동 수락
+        advCard.addView(advancedToggle(
+            "자동 수락 (잡으세요만)",
+            "잡으세요 판정된 콜만 자동으로 수락합니다 (60초 쿨다운)",
+            AdvancedPrefs.isAutoAcceptEnabled(this)
+        ) { checked -> AdvancedPrefs.setAutoAccept(this, checked) })
+
+        // 4. 귀가 방향 필터
+        advCard.addView(advancedToggle(
+            "귀가 방향 필터",
+            "귀가 방향 콜에 보너스, 반대 방향에 페널티를 적용합니다",
+            AdvancedPrefs.isDirectionFilterEnabled(this)
+        ) { checked -> AdvancedPrefs.setDirectionFilter(this, checked) })
+
+        // 귀가 방향 주소 입력
+        val homeDirInput = EditText(this).apply {
+            hint = "귀가 방향 주소 (예: 성동구 성수동)"
+            setText(AdvancedPrefs.getHomeDirection(this@SettingsActivity))
+            textSize = 14f; setTextColor(Color.BLACK); setHintTextColor(Color.parseColor("#BBBBBB"))
+            setBackgroundColor(Color.parseColor("#F5F5F5"))
+            setPadding(dp(16), dp(12), dp(16), dp(12)); setSingleLine(true)
+        }
+        advCard.addView(homeDirInput, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(4)) })
+        advCard.addView(TextView(this).apply {
+            text = "귀가 방향 저장"
+            textSize = 13f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.parseColor("#5B6ABF")); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F0F0F0"))
+            setPadding(0, dp(10), 0, dp(10))
+            setOnClickListener {
+                AdvancedPrefs.setHomeDirection(this@SettingsActivity, homeDirInput.text.toString().trim())
+                Toast.makeText(this@SettingsActivity, "귀가 방향 저장됨", Toast.LENGTH_SHORT).show()
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(12)) })
+
+        // 5. 일별 리포트
+        advCard.addView(advancedToggle(
+            "일별 리포트",
+            "30분간 새 콜이 없으면 오늘 요약 알림을 생성합니다",
+            AdvancedPrefs.isDailyReportEnabled(this)
+        ) { checked -> AdvancedPrefs.setDailyReport(this, checked) })
+
+        root.addView(advCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
         // ─── Shadow Mode KPI 섹션 ───
         root.addView(sectionTitle("Shadow Mode"))
         val shadowCard = card()
@@ -314,6 +398,36 @@ class SettingsActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.WHITE)
         }
+    }
+
+    private fun advancedToggle(title: String, desc: String, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(4))
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        row.addView(TextView(this@SettingsActivity).apply {
+            text = title
+            textSize = 14f; setTextColor(Color.BLACK)
+        }, lp(0, WC, 1f))
+        row.addView(Switch(this@SettingsActivity).apply {
+            isChecked = checked
+            setOnCheckedChangeListener { _, v -> onChange(v) }
+        })
+        container.addView(row)
+        container.addView(TextView(this@SettingsActivity).apply {
+            text = desc
+            textSize = 12f; setTextColor(Color.parseColor("#999999"))
+            setPadding(0, dp(2), 0, dp(4))
+        })
+        // 구분선
+        container.addView(View(this@SettingsActivity).apply {
+            setBackgroundColor(Color.parseColor("#F0F0F0"))
+        }, lp(MP, dp(1)))
+        return container
     }
 
     private fun filterInput(parent: LinearLayout, label: String, value: Int): EditText {
