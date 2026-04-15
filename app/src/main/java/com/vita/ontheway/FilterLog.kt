@@ -31,6 +31,7 @@ object FilterLog {
             if (call.isMultiPickup) put("multiPickup", true)
             if (baeminPoint != null) put("point", baeminPoint)
             if (call.point != null) put("point", call.point)
+            if (call.pickupDistanceKm != null) put("pickupKm", call.pickupDistanceKm)
         }
 
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

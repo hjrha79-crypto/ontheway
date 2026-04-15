@@ -52,6 +52,10 @@ object AdvancedPrefs {
     fun isDeliveryCompleteEnabled(ctx: Context) = prefs(ctx).getBoolean("delivery_complete", false)
     fun setDeliveryComplete(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("delivery_complete", v).apply()
 
+    // v3.4: GPS 위치 사용 (기본 OFF)
+    fun isGpsEnabled(ctx: Context) = prefs(ctx).getBoolean("gps_enabled", false)
+    fun setGpsEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("gps_enabled", v).apply()
+
     // v3.3: 콜 알림음 (기본 OFF)
     fun isCallSoundEnabled(ctx: Context) = prefs(ctx).getBoolean("call_sound", false)
     fun setCallSound(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("call_sound", v).apply()

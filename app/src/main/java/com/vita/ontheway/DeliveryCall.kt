@@ -11,5 +11,6 @@ data class DeliveryCall(
     val parseSuccess: Boolean = true,
     val bundleCount: Int = 1,          // 묶음 건수 (v2 2.0)
     val isMultiPickup: Boolean = false, // 다중 픽업 여부 (v2 2.0)
-    val point: Double? = null           // 배민 포인트 (v2 2.0)
+    val point: Double? = null,          // 배민 포인트 (v2 2.0)
+    val pickupDistanceKm: Double? = null // v3.4: GPS 기반 픽업 거리
 )

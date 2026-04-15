@@ -33,6 +33,35 @@ object CallFilter {
         val hasDist = call.distance != null && call.distance > 0
         val unitPrice = if (hasDist) (call.price / call.distance!!).toInt() else 0
 
+        // v3.4: 총거리 판정 (픽업 + 배달)
+        val pickupKm = call.pickupDistanceKm ?: 0.0
+        val deliveryKm = call.distance ?: 0.0
+        val totalKm = pickupKm + deliveryKm
+        val totalUnitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
+        val gpsTag = if (pickupKm > 0) ", 픽업 ${"%.1f".format(pickupKm)}km + 배달 ${"%.1f".format(deliveryKm)}km = 총 ${"%.1f".format(totalKm)}km, 총단가 ${fmt.format(totalUnitPrice)}원/km" else ""
+
+        // v3.4: 자동 방향 판별
+        var autoDirectionTag = ""
+        if (AdvancedPrefs.isGpsEnabled(ctx) && OnTheWayService.currentLat != 0.0 && call.destination.isNotEmpty()) {
+            val destCoord = LocationTable.findCoord(call.destination)
+            if (destCoord != null) {
+                val dir = LocationTable.getDirection(OnTheWayService.currentLat, OnTheWayService.currentLng, destCoord.lat, destCoord.lng)
+                val homeDir = AdvancedPrefs.getHomeDirection(ctx)
+                if (homeDir.isNotEmpty()) {
+                    val homeCoord = LocationTable.findCoord(homeDir)
+                    if (homeCoord != null) {
+                        val homeDirStr = LocationTable.getDirection(OnTheWayService.currentLat, OnTheWayService.currentLng, homeCoord.lat, homeCoord.lng)
+                        if (dir == homeDirStr) {
+                            autoDirectionTag = ", 귀가 방향 일치($dir)"
+                            minPrice = (minPrice - 500).coerceAtLeast(1000)
+                        } else {
+                            autoDirectionTag = ", 역방향($dir vs 귀가$homeDirStr)"
+                        }
+                    }
+                }
+            }
+        }
+
         // v3.3: 블랙리스트 체크
         if (call.storeName.isNotEmpty() && StoreManager.isBlacklisted(ctx, call.storeName)) {
             return FilterResult(Verdict.REJECT,
@@ -152,31 +181,31 @@ object CallFilter {
         // 고액 콜 보호: 7,000원 이상이면 단가 무관 통과
         if (call.price >= 7000) {
             return FilterResult(Verdict.ACCEPT,
-                "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 (단가 무관 통과)$storeTag$peakTag$directionTag")
+                "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 (단가 무관 통과)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
         }
 
         // 최소 배달료 미달
         if (call.price < minPrice) {
             return FilterResult(Verdict.REJECT,
-                "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달$storeTag$peakTag$directionTag")
+                "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
         }
 
         // 단가 미달 (거리 정보가 있을 때만)
         if (hasDist && unitPrice < minUnitPrice) {
             return FilterResult(Verdict.REJECT,
-                "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달$storeTag$peakTag$directionTag")
+                "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
         }
 
         // ACCEPT 사유
         return if (hasDist && unitPrice >= 2500 && call.distance!! <= 3.0) {
             FilterResult(Verdict.ACCEPT,
-                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$storeTag$peakTag$directionTag")
+                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
         } else if (hasDist) {
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원$storeTag$peakTag$directionTag")
+                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
         } else {
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원$storeTag$peakTag$directionTag")
+                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
         }
     }
 

@@ -196,6 +196,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // ── 접근성 서비스 / 알림 리스너 경고 배너 (v2 2.0) ──
         checkServiceStatus()
 
+        // v3.4: GPS 권한 요청
+        if (AdvancedPrefs.isGpsEnabled(this) &&
+            checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION), 300)
+        }
+
         val searchSession = SearchSessionStore.ensureActiveSession(this)
         OnTheWayService.activeSearchSessionId = searchSession.sessionId
 
@@ -302,6 +308,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         } else null
 
         var statusMsg = if (ago != null) "필터 작동 중 · 마지막 감지 $ago" else "필터 대기 중"
+
+        // v3.4: GPS 위치 표시
+        if (AdvancedPrefs.isGpsEnabled(this) && OnTheWayService.gpsActive && OnTheWayService.currentLat != 0.0) {
+            val nearArea = LocationTable.getNearestArea(OnTheWayService.currentLat, OnTheWayService.currentLng)
+            if (nearArea != null) statusMsg += " · 위치: ${nearArea} 부근"
+        }
 
         // v3.3: 피크 상태 표시
         val peakText = PeakDetector.getStatusText(this)
@@ -538,6 +550,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             if (pointKm > 0) {
                 val pointUnit = (price / pointKm).toInt()
                 sb.appendLine("환산단가: ${nf.format(pointUnit)}원/km")
+            }
+        }
+        // v3.4: 픽업 거리 / 총거리 / 총단가
+        val pickupKm = entry.optDouble("pickupKm", -1.0)
+        if (pickupKm > 0) {
+            sb.appendLine("픽업 거리: ${"%.1f".format(pickupKm)}km")
+            if (dist > 0) {
+                val totalKm = pickupKm + dist
+                val totalUnit = (price / totalKm).toInt()
+                sb.appendLine("총 거리: ${"%.1f".format(totalKm)}km")
+                sb.appendLine("총 단가: ${nf.format(totalUnit)}원/km")
             }
         }
         if (isMulti) {

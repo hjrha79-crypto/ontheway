@@ -5,7 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -66,6 +70,12 @@ class OnTheWayService : AccessibilityService() {
         const val AUTO_ACCEPT_COOLDOWN_MS = 60_000L
         const val NOTIF_CHANNEL_ID = "otw_service"
         const val NOTIF_ID = 1001
+
+        // v3.4: GPS 위치
+        var currentLat: Double = 0.0
+        var currentLng: Double = 0.0
+        var currentSpeed: Float = 0f  // m/s
+        var gpsActive: Boolean = false
 
         // v2.2: 진단 모드 — 패키지별 이벤트 카운트
         val packageEventCount = mutableMapOf<String, Int>()
@@ -572,9 +582,19 @@ class OnTheWayService : AccessibilityService() {
 
         for (call in calls) {
             // 포인트 환산 정보를 CallFilter에 전달하기 위해 enriched call 생성
-            val enrichedCall = if (call.platform == "baemin" && call.distance == null && pointDistKm != null) {
+            var enrichedCall = if (call.platform == "baemin" && call.distance == null && pointDistKm != null) {
                 call.copy(distance = pointDistKm)
             } else call
+
+            // v3.4: GPS 기반 픽업 거리 계산
+            var pickupDistKm: Double? = null
+            if (gpsActive && currentLat != 0.0) {
+                val storeAddr = call.storeName.ifEmpty { call.destination }
+                pickupDistKm = LocationTable.distanceTo(currentLat, currentLng, storeAddr)
+                if (pickupDistKm != null) {
+                    enrichedCall = enrichedCall.copy(pickupDistanceKm = pickupDistKm)
+                }
+            }
 
             val result = CallFilter.judge(enrichedCall, this)
             val callKey = "${call.platform}_${call.price}_${call.distance ?: 0}"
@@ -615,6 +635,13 @@ class OnTheWayService : AccessibilityService() {
             val priceStr = formatPrice(call.price)
             val unitKorean = toKoreanNumber(unitPrice)
 
+            // v3.4: 픽업 예상 시간
+            val pickupEtaMin = if (pickupDistKm != null && pickupDistKm > 0) {
+                val speedKmh = if (currentSpeed > 1f) currentSpeed * 3.6 else 30.0 // 정지 시 30km/h 가정
+                (pickupDistKm / speedKmh * 60).toInt().coerceAtLeast(1)
+            } else null
+            val pickupTtsExtra = if (pickupEtaMin != null) ", 픽업 ${pickupEtaMin}분 거리" else ""
+
             if (result.verdict == CallFilter.Verdict.REJECT) {
                 // REJECT → "넘기세요"
                 callSpeakHistory[callKey] = now
@@ -649,7 +676,7 @@ class OnTheWayService : AccessibilityService() {
 
                 if (isTopAccept) {
                     lastSpeakTime = now
-                    speakTts("$pName, 잡으세요, ${priceStr}원")
+                    speakTts("$pName, 잡으세요, ${priceStr}원$pickupTtsExtra")
                     Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
                     tryAutoAccept()
                 } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
@@ -826,7 +853,48 @@ class OnTheWayService : AccessibilityService() {
         }
         // v3.2: Foreground notification
         startForegroundNotification()
+        // v3.4: GPS 시작
+        startGps()
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
+    }
+
+    private var locationManager: LocationManager? = null
+    private val locationListener = object : LocationListener {
+        override fun onLocationChanged(loc: Location) {
+            currentLat = loc.latitude
+            currentLng = loc.longitude
+            currentSpeed = loc.speed
+            gpsActive = true
+            Log.d("OTW_GPS", "위치: $currentLat, $currentLng, 속도: ${currentSpeed}m/s")
+        }
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        override fun onProviderEnabled(provider: String) {}
+        override fun onProviderDisabled(provider: String) { gpsActive = false }
+    }
+
+    private fun startGps() {
+        if (!AdvancedPrefs.isGpsEnabled(this)) return
+        try {
+            locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                locationManager?.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER, 30000L, 50f, locationListener
+                )
+                // 네트워크도 fallback
+                locationManager?.requestLocationUpdates(
+                    LocationManager.NETWORK_PROVIDER, 30000L, 50f, locationListener
+                )
+                gpsActive = true
+                Log.d("OTW_GPS", "GPS 시작")
+            } else {
+                Log.w("OTW_GPS", "위치 권한 없음 - GPS 비활성화")
+                gpsActive = false
+            }
+        } catch (e: Exception) {
+            Log.w("OTW_GPS", "GPS 시작 실패: ${e.message}")
+            gpsActive = false
+        }
     }
 
     private fun startForegroundNotification() {
@@ -906,6 +974,8 @@ class OnTheWayService : AccessibilityService() {
         tts?.shutdown()
         tts = null
         ttsReady = false
+        try { locationManager?.removeUpdates(locationListener) } catch (e: Exception) {}
+        gpsActive = false
         super.onDestroy()
     }
 }

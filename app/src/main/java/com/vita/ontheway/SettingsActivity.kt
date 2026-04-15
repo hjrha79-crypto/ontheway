@@ -485,6 +485,13 @@ class SettingsActivity : AppCompatActivity() {
             AdvancedPrefs.isDailyReportEnabled(this)
         ) { checked -> AdvancedPrefs.setDailyReport(this, checked) })
 
+        // v3.4: GPS 위치 사용
+        advCard.addView(advancedToggle(
+            "GPS 위치 사용",
+            "현재위치→픽업거리 계산, 자동 방향 판별, 예상 도착 시간",
+            AdvancedPrefs.isGpsEnabled(this)
+        ) { checked -> AdvancedPrefs.setGpsEnabled(this, checked) })
+
         // v3.3: 피크 자동 조절
         advCard.addView(advancedToggle(
             "피크 자동 조절",
