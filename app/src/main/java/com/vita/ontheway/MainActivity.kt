@@ -301,7 +301,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
         } else null
 
-        val statusMsg = if (ago != null) "필터 작동 중 · 마지막 감지 $ago" else "필터 대기 중"
+        var statusMsg = if (ago != null) "필터 작동 중 · 마지막 감지 $ago" else "필터 대기 중"
+
+        // v3.3: 피크 상태 표시
+        val peakText = PeakDetector.getStatusText(this)
+        if (peakText.isNotEmpty()) statusMsg += " · $peakText"
+
+        // v3.3: 연속 넘김 카운터
+        val rejectCount = OnTheWayService.instance?.consecutiveRejectCount ?: 0
+        if (rejectCount >= 3) statusMsg += " · 연속 넘김: ${rejectCount}건"
+
         filterStatusText.text = statusMsg
 
         val detail = FilterLog.getTodayDetail(this)
@@ -545,11 +554,38 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         sb.appendLine()
         sb.appendLine("감지 시각: $ts")
 
-        AlertDialog.Builder(this)
+        val dlg = AlertDialog.Builder(this)
             .setTitle("콜 상세 정보")
             .setMessage(sb.toString())
             .setPositiveButton("확인", null)
-            .show()
+
+        // v3.3: 즐겨찾기/블랙리스트 버튼 (가게명이 있을 때만)
+        if (storeName.isNotEmpty()) {
+            val platformNames = setOf("배민배달", "배민커넥트", "배민", "쿠팡이츠", "쿠팡", "카카오T")
+            if (storeName !in platformNames) {
+                if (StoreManager.isFavorite(this, storeName)) {
+                    dlg.setNeutralButton("즐겨찾기 해제") { _, _ ->
+                        StoreManager.removeFavorite(this, storeName)
+                        android.widget.Toast.makeText(this, "$storeName 즐겨찾기 해제", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                } else if (StoreManager.isBlacklisted(this, storeName)) {
+                    dlg.setNeutralButton("블랙리스트 해제") { _, _ ->
+                        StoreManager.removeBlacklist(this, storeName)
+                        android.widget.Toast.makeText(this, "$storeName 블랙리스트 해제", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    dlg.setNeutralButton("즐겨찾기") { _, _ ->
+                        StoreManager.addFavorite(this, storeName, entry.optString("platform", ""))
+                        android.widget.Toast.makeText(this, "$storeName 즐겨찾기 추가", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    dlg.setNegativeButton("블랙리스트") { _, _ ->
+                        StoreManager.addBlacklist(this, storeName, entry.optString("platform", ""))
+                        android.widget.Toast.makeText(this, "$storeName 블랙리스트 추가", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+        dlg.show()
     }
 
     // ═══ 수익 (콤팩트 1줄 헤더 + 서브라인) ═══

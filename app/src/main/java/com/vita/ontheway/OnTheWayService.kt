@@ -86,6 +86,11 @@ class OnTheWayService : AccessibilityService() {
     private var lastDeliveryVerdict: String = ""  // "잡으세요", "괜찮습니다", "넘기세요"
     private var lastDeliveryPlatform: String = ""
 
+    // v3.3: 연속 REJECT 카운터
+    var consecutiveRejectCount: Int = 0
+    // v3.3: 마지막 수락 시각 (배달 완료 소요시간)
+    private var lastAcceptTime: Long = 0
+
     // 배달 필터용 TTS
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -107,6 +112,15 @@ class OnTheWayService : AccessibilityService() {
             val clickedText = event.text?.joinToString("") ?: event.contentDescription?.toString() ?: ""
             if (ACCEPT_BUTTON_TEXTS.any { clickedText.contains(it) }) {
                 onAcceptDetected()
+            }
+        }
+
+        // v3.3: 배달 완료 감지
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val evTexts = event.text?.joinToString(" ") ?: ""
+            if (evTexts.contains("배달 완료") || evTexts.contains("배달완료") || evTexts.contains("배달이 완료되었습니다")) {
+                onDeliveryComplete()
             }
         }
 
@@ -465,6 +479,9 @@ class OnTheWayService : AccessibilityService() {
 
         Log.d("OnTheWay", "수락 감지: ${price}원 ($platform)")
 
+        // v3.3: 수락 시각 기록 (배달 완료 소요시간 계산용)
+        lastAcceptTime = System.currentTimeMillis()
+
         // 수익 트래킹
         EarningsTracker.recordAccept(this, price, platform)
 
@@ -649,9 +666,34 @@ class OnTheWayService : AccessibilityService() {
                 }
             }
 
+            // v3.3: 연속 REJECT 추적
+            if (result.verdict == CallFilter.Verdict.REJECT) {
+                consecutiveRejectCount++
+                if (AdvancedPrefs.isRejectWarningEnabled(this)) {
+                    if (consecutiveRejectCount == 5) {
+                        speakTts("5건 연속 넘기고 있습니다. 기준을 낮춰볼까요?")
+                    } else if (consecutiveRejectCount == 10) {
+                        speakTts("콜이 계속 안 맞습니다. 이동을 추천합니다.")
+                    }
+                }
+            } else {
+                consecutiveRejectCount = 0
+            }
+
+            // v3.3: 즐겨찾기 가게 TTS 추가
+            if (call.storeName.isNotEmpty() && StoreManager.isFavorite(this, call.storeName)) {
+                speakTts("단골 가게입니다")
+            }
+
+            // v3.3: 콜 알림음
+            playCallSound(lastDeliveryVerdict)
+
             // v3.2: 진동 + 알림 업데이트
             vibrate(lastDeliveryVerdict)
             updateNotification()
+
+            // v3.3: 목표 달성 알림
+            checkGoalProgress()
 
             // v3.0: 일별 리포트 타이머 갱신
             DailyReport.onCallDetected(this)
@@ -716,6 +758,59 @@ class OnTheWayService : AccessibilityService() {
             String.format("%,d", price)
         } else {
             toKoreanNumber(price)
+        }
+    }
+
+    /** v3.3: 배달 완료 감지 시 처리 */
+    private fun onDeliveryComplete() {
+        if (!AdvancedPrefs.isDeliveryCompleteEnabled(this)) return
+        val earnings = EarningsTracker.getToday(this)
+        val fmt = java.text.NumberFormat.getNumberInstance()
+        speakTts("배달 완료. 오늘 ${earnings.acceptedCount}건 완료, 매출 ${fmt.format(earnings.totalRevenue)}원")
+        Log.d("OnTheWay", "배달 완료 감지")
+
+        // 소요시간 기록
+        if (lastAcceptTime > 0) {
+            val elapsed = (System.currentTimeMillis() - lastAcceptTime) / 60000
+            Log.d("OnTheWay", "배달 소요시간: ${elapsed}분")
+            lastAcceptTime = 0
+        }
+    }
+
+    /** v3.3: 콜 알림음 재생 */
+    private fun playCallSound(verdict: String) {
+        if (!AdvancedPrefs.isCallSoundEnabled(this)) return
+        try {
+            val resId = when (verdict) {
+                "잡으세요" -> resources.getIdentifier("sound_grab", "raw", packageName)
+                "괜찮습니다" -> resources.getIdentifier("sound_ok", "raw", packageName)
+                "넘기세요" -> resources.getIdentifier("sound_skip", "raw", packageName)
+                else -> 0
+            }
+            if (resId != 0) {
+                val mp = android.media.MediaPlayer.create(this, resId)
+                mp?.setOnCompletionListener { it.release() }
+                mp?.start()
+            } else {
+                // 사운드 파일 없으면 기본 시스템 알림음
+                val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                android.media.RingtoneManager.getRingtone(this, uri)?.play()
+            }
+        } catch (e: Exception) {
+            Log.w("OnTheWay", "알림음 재생 실패: ${e.message}")
+        }
+    }
+
+    /** v3.3: 목표 달성 확인 */
+    private fun checkGoalProgress() {
+        if (!GoalManager.isGoalAlertEnabled(this)) return
+        val progress = GoalManager.getProgress(this)
+        if (progress >= 1.0f && !GoalManager.wasFullAlerted(this)) {
+            GoalManager.markFullAlerted(this)
+            speakTts("오늘 목표 달성! 수고하셨습니다!")
+        } else if (progress >= 0.5f && !GoalManager.wasHalfAlerted(this)) {
+            GoalManager.markHalfAlerted(this)
+            speakTts("목표 절반 달성!")
         }
     }
 

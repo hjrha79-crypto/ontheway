@@ -485,7 +485,63 @@ class SettingsActivity : AppCompatActivity() {
             AdvancedPrefs.isDailyReportEnabled(this)
         ) { checked -> AdvancedPrefs.setDailyReport(this, checked) })
 
+        // v3.3: 피크 자동 조절
+        advCard.addView(advancedToggle(
+            "피크 자동 조절",
+            "피크 시간대 +500원, 비피크 시간대 -500원 자동 조절",
+            PeakDetector.isPeakAutoEnabled(this)
+        ) { checked -> PeakDetector.setPeakAuto(this, checked) })
+
+        // v3.3: 연속 넘김 경고
+        advCard.addView(advancedToggle(
+            "연속 넘김 경고",
+            "5건/10건 연속 REJECT 시 TTS 경고",
+            AdvancedPrefs.isRejectWarningEnabled(this)
+        ) { checked -> AdvancedPrefs.setRejectWarning(this, checked) })
+
+        // v3.3: 배달 완료 안내
+        advCard.addView(advancedToggle(
+            "배달 완료 안내",
+            "배달 완료 감지 시 오늘 실적 TTS 안내",
+            AdvancedPrefs.isDeliveryCompleteEnabled(this)
+        ) { checked -> AdvancedPrefs.setDeliveryComplete(this, checked) })
+
+        // v3.3: 콜 알림음
+        advCard.addView(advancedToggle(
+            "콜 알림음",
+            "판정별 다른 알림음 재생 (사운드 파일 없으면 기본음)",
+            AdvancedPrefs.isCallSoundEnabled(this)
+        ) { checked -> AdvancedPrefs.setCallSound(this, checked) })
+
+        // v3.3: 목표 알림
+        advCard.addView(advancedToggle(
+            "목표 알림",
+            "목표 50%/100% 달성 시 TTS 알림",
+            GoalManager.isGoalAlertEnabled(this)
+        ) { checked -> GoalManager.setGoalAlert(this, checked) })
+
         root.addView(advCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── v3.3: 목표 설정 섹션 ───
+        root.addView(sectionTitle("목표 설정"))
+        val goalSettCard = card()
+        val goalAmtBar = filterSeekBar(goalSettCard, "일일 목표 금액", GoalManager.getGoalAmount(this), 50000, 300000, 10000, "원")
+        val goalCntBar = filterSeekBar(goalSettCard, "일일 목표 건수", GoalManager.getGoalCount(this), 10, 100, 5, "건")
+        val goalHrBar = filterSeekBar(goalSettCard, "목표 시급", GoalManager.getGoalHourly(this), 5000, 30000, 1000, "원/h")
+        goalSettCard.addView(TextView(this).apply {
+            text = "목표 저장"
+            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#5B6ABF"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener {
+                GoalManager.setGoalAmount(this@SettingsActivity, goalAmtBar.second())
+                GoalManager.setGoalCount(this@SettingsActivity, goalCntBar.second())
+                GoalManager.setGoalHourly(this@SettingsActivity, goalHrBar.second())
+                Toast.makeText(this@SettingsActivity, "목표 저장됨", Toast.LENGTH_SHORT).show()
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(16)) })
+        root.addView(goalSettCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── v2.2 진단 모드 섹션 ───
         root.addView(sectionTitle("진단"))

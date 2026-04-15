@@ -33,6 +33,26 @@ object CallFilter {
         val hasDist = call.distance != null && call.distance > 0
         val unitPrice = if (hasDist) (call.price / call.distance!!).toInt() else 0
 
+        // v3.3: 블랙리스트 체크
+        if (call.storeName.isNotEmpty() && StoreManager.isBlacklisted(ctx, call.storeName)) {
+            return FilterResult(Verdict.REJECT,
+                "블랙리스트 거부: ${call.storeName}")
+        }
+
+        // v3.3: 즐겨찾기 보너스
+        var storeTag = ""
+        if (call.storeName.isNotEmpty() && StoreManager.isFavorite(ctx, call.storeName)) {
+            minPrice = (minPrice - 1000).coerceAtLeast(1000)
+            storeTag = ", 즐겨찾기 보너스"
+        }
+
+        // v3.3: 피크 시간 자동 조절
+        val peakStatus = PeakDetector.getCurrentStatus(ctx)
+        if (peakStatus.adjustment != 0) {
+            minPrice = (minPrice + peakStatus.adjustment).coerceAtLeast(1000)
+        }
+        val peakTag = if (peakStatus.adjustment > 0) ", 피크 +500" else if (peakStatus.adjustment < 0) ", 비피크 -500" else ""
+
         // v3.0: 귀가 방향 필터
         var directionTag = ""
         if (AdvancedPrefs.isDirectionFilterEnabled(ctx)) {
@@ -132,31 +152,31 @@ object CallFilter {
         // 고액 콜 보호: 7,000원 이상이면 단가 무관 통과
         if (call.price >= 7000) {
             return FilterResult(Verdict.ACCEPT,
-                "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 (단가 무관 통과)$directionTag")
+                "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 (단가 무관 통과)$storeTag$peakTag$directionTag")
         }
 
         // 최소 배달료 미달
         if (call.price < minPrice) {
             return FilterResult(Verdict.REJECT,
-                "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달$directionTag")
+                "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달$storeTag$peakTag$directionTag")
         }
 
         // 단가 미달 (거리 정보가 있을 때만)
         if (hasDist && unitPrice < minUnitPrice) {
             return FilterResult(Verdict.REJECT,
-                "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달$directionTag")
+                "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달$storeTag$peakTag$directionTag")
         }
 
         // ACCEPT 사유
         return if (hasDist && unitPrice >= 2500 && call.distance!! <= 3.0) {
             FilterResult(Verdict.ACCEPT,
-                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$directionTag")
+                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$storeTag$peakTag$directionTag")
         } else if (hasDist) {
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원$directionTag")
+                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원$storeTag$peakTag$directionTag")
         } else {
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원$directionTag")
+                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원$storeTag$peakTag$directionTag")
         }
     }
 

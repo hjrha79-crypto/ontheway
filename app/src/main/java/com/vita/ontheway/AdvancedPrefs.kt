@@ -43,4 +43,20 @@ object AdvancedPrefs {
     // 일별 리포트
     fun isDailyReportEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_DAILY_REPORT, false)
     fun setDailyReport(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean(KEY_DAILY_REPORT, v).apply()
+
+    // v3.3: 연속 넘김 경고 (기본 ON)
+    fun isRejectWarningEnabled(ctx: Context) = prefs(ctx).getBoolean("reject_warning", true)
+    fun setRejectWarning(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("reject_warning", v).apply()
+
+    // v3.3: 배달 완료 안내 (기본 OFF)
+    fun isDeliveryCompleteEnabled(ctx: Context) = prefs(ctx).getBoolean("delivery_complete", false)
+    fun setDeliveryComplete(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("delivery_complete", v).apply()
+
+    // v3.3: 콜 알림음 (기본 OFF)
+    fun isCallSoundEnabled(ctx: Context) = prefs(ctx).getBoolean("call_sound", false)
+    fun setCallSound(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("call_sound", v).apply()
+
+    // 알림음 타이밍: "before" or "after" TTS
+    fun getCallSoundTiming(ctx: Context): String = prefs(ctx).getString("call_sound_timing", "before") ?: "before"
+    fun setCallSoundTiming(ctx: Context, v: String) = prefs(ctx).edit().putString("call_sound_timing", v).apply()
 }
