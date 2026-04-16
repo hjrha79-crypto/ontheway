@@ -46,7 +46,8 @@
       "Read(//c//**)",
       "Read(//c/Users/hjrha/AndroidStudioProjects/OnTheWay/$LOCALAPPDATA/Programs/**)",
       "Bash(N건)",
-      "Bash(N원)"
+      "Bash(N원)",
+      "Bash(git checkout:*)"
     ]
   }
 }

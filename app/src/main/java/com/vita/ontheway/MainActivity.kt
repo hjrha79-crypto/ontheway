@@ -1321,9 +1321,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     override fun onPause() {
         super.onPause()
-        voiceManager.continuous = false; voiceManager.stop()
-        micBtn.setBackgroundResource(R.drawable.mic_bg)
-        micBtn.text = "\uD83C\uDFA4"
+        if (::voiceManager.isInitialized) { voiceManager.continuous = false; voiceManager.stop() }
+        if (::micBtn.isInitialized) { micBtn.setBackgroundResource(R.drawable.mic_bg); micBtn.text = "\uD83C\uDFA4" }
     }
 
     override fun onResume() {
@@ -1336,7 +1335,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
-        if (::voiceManager.isInitialized) voiceManager.stop()
+        if (::voiceManager.isInitialized) { voiceManager.stop() }
         if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
         super.onDestroy()
     }
