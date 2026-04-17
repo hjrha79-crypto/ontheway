@@ -56,12 +56,6 @@ class DeliveryNotificationService : NotificationListenerService() {
         val pkg = sbn.packageName ?: return
         if (pkg !in TARGET_PACKAGES) return
 
-        // v2.1: 쿠팡이츠는 NotificationListener에서 완전 무시 (Accessibility 단일 경로)
-        if (pkg == PKG_COUPANG) {
-            Log.d("DeliveryNoti", "쿠팡 알림 무시 (Accessibility 단일 경로): ${sbn.notification?.extras?.getCharSequence("android.title")}")
-            return
-        }
-
         // 중복 알림 체크 (같은 key 10초 이내 무시)
         val notiKey = "${sbn.key}_${sbn.id}"
         val now = System.currentTimeMillis()
@@ -89,9 +83,10 @@ class DeliveryNotificationService : NotificationListenerService() {
             return
         }
 
-        // 플랫폼별 파싱 (배민만)
+        // 플랫폼별 파싱 (배민 + 쿠팡 병행)
         val calls = when (pkg) {
             PKG_BAEMIN -> parseBaeminNotification(combined)
+            PKG_COUPANG -> parseCoupangNotification(combined)
             else -> emptyList()
         }
 

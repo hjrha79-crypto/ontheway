@@ -108,6 +108,10 @@ class OnTheWayService : AccessibilityService() {
     private val debounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val BAEMIN_DEBOUNCE_MS = 2000L
 
+    // v3.6: 배민 콜 대량 중복 감지 방지 (같은 플랫폼+금액 3초 이내 = 중복)
+    private data class RecentCall(val platform: String, val price: Int, val time: Long)
+    private val recentCalls = mutableListOf<RecentCall>()
+
     // 배달 필터용 TTS
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -596,6 +600,10 @@ class OnTheWayService : AccessibilityService() {
 
         Log.d("DeliveryFilter", "[$platformName] rawText: ${texts.joinToString(" | ")}")
 
+        // v3.6: 배민 대량 중복 감지 — 파싱 전에 최근 3초 이내 같은 플랫폼 이벤트 횟수 체크
+        val now0 = System.currentTimeMillis()
+        recentCalls.removeIf { now0 - it.time > 5000 }  // 5초 지난 기록 정리
+
         // 파싱
         val calls = when (pkg) {
             PKG_COUPANG -> CoupangParser.parse(texts)
@@ -609,18 +617,31 @@ class OnTheWayService : AccessibilityService() {
             return
         }
 
+        // v3.6: 배민 대량 중복 감지 — 같은 플랫폼+금액 3초 이내 = 중복 무시
+        val dedupedCalls = calls.filter { call ->
+            val isDup = recentCalls.any { r ->
+                r.platform == platformName && r.price == call.price && (now0 - r.time < 3000)
+            }
+            if (isDup) {
+                Log.d("DeliveryFilter", "[$platformName] 대량 중복 무시: ${call.price}원")
+                false
+            } else {
+                recentCalls.add(RecentCall(platformName, call.price, now0))
+                true
+            }
+        }
+        if (dedupedCalls.isEmpty()) return
+        // 이후 dedupedCalls 사용
+        val activeCalls = dedupedCalls
+
         val now = System.currentTimeMillis()
 
-        // 배민 포인트 파싱 (거리 지표)
+        // 배민 포인트 파싱 (참고용, 거리 환산 판정에 미사용)
         val baeminPoint = if (pkg == PKG_BAEMIN) BaeminParser.parsePoint(texts) else null
-        // 포인트 기반 환산거리 (1P = 0.25km, 보수적 환산)
-        val pointDistKm = if (baeminPoint != null) baeminPoint * 0.25 else null
 
         // 콜별 enrichment + 판정
-        val pendingCalls = calls.map { call ->
-            var enrichedCall = if (call.platform == "baemin" && call.distance == null && pointDistKm != null) {
-                call.copy(distance = pointDistKm)
-            } else call
+        val pendingCalls = activeCalls.map { call ->
+            var enrichedCall = call  // 포인트 환산거리 주입 폐기 (v3.6)
 
             var pickupDistKm: Double? = null
             if (gpsActive && currentLat != 0.0) {
@@ -786,16 +807,12 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
-        // v3.3: 연속 REJECT 추적
-        if (result.verdict == CallFilter.Verdict.REJECT) {
-                consecutiveRejectCount++
-            if (AdvancedPrefs.isRejectWarningEnabled(this)) {
-                if (consecutiveRejectCount == 5) speakTts("5건 연속 넘기고 있습니다. 기준을 낮춰볼까요?")
-                else if (consecutiveRejectCount == 10) speakTts("콜이 계속 안 맞습니다. 이동을 추천합니다.")
-            }
-        } else {
-            consecutiveRejectCount = 0
+        // v3.6: 연속 REJECT 자동 기준 하향
+        val streakMsg = CallFilter.updateRejectStreak(result.verdict, this)
+        if (streakMsg != null) {
+            speakTts(streakMsg)
         }
+        consecutiveRejectCount = CallFilter.getConsecutiveRejectCount()
 
         if (call.storeName.isNotEmpty() && StoreManager.isFavorite(this, call.storeName)) {
             speakTts("단골 가게입니다")

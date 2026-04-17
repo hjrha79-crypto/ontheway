@@ -1,6 +1,7 @@
 package com.vita.ontheway
 
 import android.content.Context
+import android.util.Log
 
 object CallFilter {
 
@@ -11,6 +12,12 @@ object CallFilter {
     private const val KEY_OK_VOICE_ENABLED = "ok_voice_enabled"
     private const val KEY_MAX_PICKUP_KM = "max_pickup_km"
     private const val KEY_VOICE_ACCEPT_ENABLED = "voice_accept_enabled"
+
+    // v3.6: 연속 REJECT 자동 기준 하향
+    private var consecutiveRejectCount: Int = 0
+    private var priceReduction: Int = 0  // 현재 하향된 금액
+    private const val REDUCTION_STEP = 500
+    private const val MIN_PRICE_FLOOR = 1500  // 최저 기준
 
     enum class Verdict { ACCEPT, REJECT }
 
@@ -27,6 +34,10 @@ object CallFilter {
 
     fun judge(call: DeliveryCall, ctx: Context): FilterResult {
         var minPrice = getMinPrice(ctx)
+        // v3.6: 연속 REJECT 기준 하향 적용
+        if (priceReduction > 0) {
+            minPrice = (minPrice - priceReduction).coerceAtLeast(MIN_PRICE_FLOOR)
+        }
         val minUnitPrice = getMinUnitPrice(ctx)
         val fmt = java.text.NumberFormat.getNumberInstance()
 
@@ -141,73 +152,84 @@ object CallFilter {
                 "묶음 통과 ${fmt.format(call.price)}원 ($bundleTag$multiPickupTag)")
         }
 
-        // ── 포인트 기반 거리 환산 판정 (배민, v2 2.0) ──
-        if (call.platform == "baemin" && call.point != null && call.point > 0) {
-            val pointKm = call.point * 0.25
-            val pointUnitPrice = (call.price / pointKm).toInt()
-            val pointTag = "포인트 ${"%.1f".format(call.point)}P (환산 ${"%.1f".format(pointKm)}km), 단가 ${fmt.format(pointUnitPrice)}원/km"
+        // ── 포인트 환산 폐기 (v3.6) ── 배민 포인트는 참고용만, 판정에 미사용
+        // 배민 콜은 거리 없음 로직으로 처리 (금액 기준)
+        val pointTag = if (call.platform == "baemin" && call.point != null && call.point > 0)
+            ", 포인트 ${"%.1f".format(call.point)}P (참고용)" else ""
 
-            // 포인트 구간별 최소금액
-            val pointMinPrice = when {
-                call.point <= 15.0 -> 3000
-                call.point <= 25.0 -> 4000
-                else -> 5000
-            }
-
-            // 고액 보호 (기본 7000원)
-            if (call.price >= 7000) {
-                return FilterResult(Verdict.ACCEPT,
-                    "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 ($pointTag)")
-            }
-
-            // 포인트 구간 최소금액 미달
-            if (call.price < pointMinPrice) {
-                return FilterResult(Verdict.REJECT,
-                    "금액 ${fmt.format(call.price)}원 < 포인트구간 ${fmt.format(pointMinPrice)}원 미달 ($pointTag)")
-            }
-
-            // 환산 단가 미달
-            if (pointUnitPrice < minUnitPrice) {
-                return FilterResult(Verdict.REJECT,
-                    "환산단가 ${fmt.format(pointUnitPrice)}원/km < ${fmt.format(minUnitPrice)}원 미달 ($pointTag)")
-            }
-
-            return FilterResult(Verdict.ACCEPT,
-                "통과 ${fmt.format(call.price)}원 ($pointTag)")
-        }
-
-        // ── 단건 판정 (기존 로직) ──
+        // ── 단건 판정 ──
 
         // 고액 콜 보호: 7,000원 이상이면 단가 무관 통과
         if (call.price >= 7000) {
             return FilterResult(Verdict.ACCEPT,
-                "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 (단가 무관 통과)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
+                "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 (단가 무관 통과)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
 
         // 최소 배달료 미달
         if (call.price < minPrice) {
             return FilterResult(Verdict.REJECT,
-                "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
+                "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
 
-        // 단가 미달 (거리 정보가 있을 때만)
+        // 단가 미달 (거리 정보가 있을 때만 — 배민 포인트 환산거리는 제외)
         if (hasDist && unitPrice < minUnitPrice) {
             return FilterResult(Verdict.REJECT,
-                "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
+                "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
 
         // ACCEPT 사유
         return if (hasDist && unitPrice >= 2500 && call.distance!! <= 3.0) {
             FilterResult(Verdict.ACCEPT,
-                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
+                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         } else if (hasDist) {
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
+                "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         } else {
             FilterResult(Verdict.ACCEPT,
-                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag")
+                "금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
     }
+
+    /**
+     * v3.6: 판정 결과에 따라 연속 REJECT 카운터 업데이트
+     * @return TTS 안내 메시지 (null이면 안내 불필요)
+     */
+    fun updateRejectStreak(verdict: Verdict, ctx: Context): String? {
+        if (verdict == Verdict.REJECT) {
+            consecutiveRejectCount++
+            val newReduction = when {
+                consecutiveRejectCount >= 30 -> REDUCTION_STEP * 3  // 1500원 하향
+                consecutiveRejectCount >= 20 -> REDUCTION_STEP * 2  // 1000원 하향
+                consecutiveRejectCount >= 10 -> REDUCTION_STEP      // 500원 하향
+                else -> 0
+            }
+            if (newReduction > priceReduction) {
+                priceReduction = newReduction
+                val adjusted = (getMinPrice(ctx) - priceReduction).coerceAtLeast(MIN_PRICE_FLOOR)
+                Log.d("CallFilter", "연속 REJECT ${consecutiveRejectCount}건 → 기준 하향: ${adjusted}원")
+                return "기준을 낮췄습니다"
+            }
+        } else {
+            if (priceReduction > 0) {
+                priceReduction = 0
+                consecutiveRejectCount = 0
+                Log.d("CallFilter", "ACCEPT 발생 → 기준 복구: ${getMinPrice(ctx)}원")
+                return "기준을 원래대로 돌렸습니다"
+            }
+            consecutiveRejectCount = 0
+        }
+        return null
+    }
+
+    /** 현재 적용 중인 최소금액 기준 (하향 반영) */
+    fun getEffectiveMinPrice(ctx: Context): Int =
+        (getMinPrice(ctx) - priceReduction).coerceAtLeast(MIN_PRICE_FLOOR)
+
+    /** 현재 기준 하향 금액 */
+    fun getCurrentReduction(): Int = priceReduction
+
+    /** 연속 REJECT 수 */
+    fun getConsecutiveRejectCount(): Int = consecutiveRejectCount
 
     /** 주소에서 동/읍/면/구 이름 토큰 추출 */
     private fun extractAreaTokens(address: String): List<String> {
