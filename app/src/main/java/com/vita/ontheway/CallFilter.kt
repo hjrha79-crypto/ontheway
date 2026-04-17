@@ -152,12 +152,44 @@ object CallFilter {
                 "묶음 통과 ${fmt.format(call.price)}원 ($bundleTag$multiPickupTag)")
         }
 
-        // ── 포인트 환산 폐기 (v3.6) ── 배민 포인트는 참고용만, 판정에 미사용
-        // 배민 콜은 거리 없음 로직으로 처리 (금액 기준)
+        // ── 포인트 참고 태그 (거리 환산에는 미사용) ──
         val pointTag = if (call.platform == "baemin" && call.point != null && call.point > 0)
             ", 포인트 ${"%.1f".format(call.point)}P (참고용)" else ""
 
-        // ── 단건 판정 ──
+        // ── 배민 포인트 구간별 최소금액 (v3.6) ──
+        // 거리 정보 없는 배민 콜은 포인트 구간별 최소금액 적용
+        if (call.platform == "baemin" && !hasDist) {
+            val point = call.point ?: 0.0
+            val pointMinPrice = when {
+                point <= 0 || point <= 15.0 -> 3000
+                point <= 25.0 -> 4000
+                else -> 5500
+            }
+            // 자동 기준 하향 적용
+            val effectivePointMin = (pointMinPrice - priceReduction).coerceAtLeast(MIN_PRICE_FLOOR)
+            val pointSegment = when {
+                point <= 0 -> "포인트없음"
+                point <= 15.0 -> "≤15P"
+                point <= 25.0 -> "16~25P"
+                else -> "≥26P"
+            }
+
+            // 고액 콜 보호
+            if (call.price >= 7000) {
+                return FilterResult(Verdict.ACCEPT,
+                    "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+            }
+
+            if (call.price >= effectivePointMin) {
+                return FilterResult(Verdict.ACCEPT,
+                    "금액 ${fmt.format(call.price)}원 ≥ 구간기준 ${fmt.format(effectivePointMin)}원 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+            } else {
+                return FilterResult(Verdict.REJECT,
+                    "금액 ${fmt.format(call.price)}원 < 구간기준 ${fmt.format(effectivePointMin)}원 미달 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+            }
+        }
+
+        // ── 단건 판정 (거리 있음 또는 배민 외 플랫폼) ──
 
         // 고액 콜 보호: 7,000원 이상이면 단가 무관 통과
         if (call.price >= 7000) {
@@ -171,7 +203,7 @@ object CallFilter {
                 "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
 
-        // 단가 미달 (거리 정보가 있을 때만 — 배민 포인트 환산거리는 제외)
+        // 단가 미달 (거리 정보가 있을 때만)
         if (hasDist && unitPrice < minUnitPrice) {
             return FilterResult(Verdict.REJECT,
                 "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")

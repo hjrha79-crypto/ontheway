@@ -108,7 +108,7 @@ class OnTheWayService : AccessibilityService() {
     private val debounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val BAEMIN_DEBOUNCE_MS = 2000L
 
-    // v3.6: 배민 콜 대량 중복 감지 방지 (같은 플랫폼+금액 3초 이내 = 중복)
+    // v3.6: 배민 콜 대량 중복 감지 방지 (같은 플랫폼+금액 30초 이내 = 중복)
     private data class RecentCall(val platform: String, val price: Int, val time: Long)
     private val recentCalls = mutableListOf<RecentCall>()
 
@@ -602,7 +602,7 @@ class OnTheWayService : AccessibilityService() {
 
         // v3.6: 배민 대량 중복 감지 — 파싱 전에 최근 3초 이내 같은 플랫폼 이벤트 횟수 체크
         val now0 = System.currentTimeMillis()
-        recentCalls.removeIf { now0 - it.time > 5000 }  // 5초 지난 기록 정리
+        recentCalls.removeIf { now0 - it.time > 60000 }  // 60초 지난 기록 정리
 
         // 파싱
         val calls = when (pkg) {
@@ -620,7 +620,7 @@ class OnTheWayService : AccessibilityService() {
         // v3.6: 배민 대량 중복 감지 — 같은 플랫폼+금액 3초 이내 = 중복 무시
         val dedupedCalls = calls.filter { call ->
             val isDup = recentCalls.any { r ->
-                r.platform == platformName && r.price == call.price && (now0 - r.time < 3000)
+                r.platform == platformName && r.price == call.price && (now0 - r.time < 30000)
             }
             if (isDup) {
                 Log.d("DeliveryFilter", "[$platformName] 대량 중복 무시: ${call.price}원")
