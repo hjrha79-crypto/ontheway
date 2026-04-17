@@ -187,8 +187,8 @@ class OnTheWayService : AccessibilityService() {
                     Log.d("OTW_DEBUG", "getWindows로 정확한 윈도우 확보: $pkg (root was $rootPkg)")
                     handleDeliveryPlatform(correctRoot, pkg)
                 } else {
-                    Log.d("OTW_DEBUG", "getWindows에서도 $pkg 윈도우 없음, root=$rootPkg 로 처리")
-                    handleDeliveryPlatform(root, pkg)
+                    Log.d("OTW_DEBUG", "getWindows에서도 $pkg 윈도우 없음 — 잘못된 root($rootPkg) 사용 방지, 스킵")
+                    return
                 }
             } else {
                 handleDeliveryPlatform(root, pkg)
@@ -580,7 +580,9 @@ class OnTheWayService : AccessibilityService() {
                 "메뉴금액", "주문정보", "가게정보", "찾아오는 길",
                 "신규배차를 켜고",
                 // v2.1 추가 필터
-                "주행기록 기반"
+                "주행기록 기반",
+                // v2.2 유령콜 필터
+                "배달이 많은 곳으로 이동"
             )
             if (baeminSkipKeywords.any { joined.contains(it) }) {
                 return
