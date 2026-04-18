@@ -566,6 +566,8 @@ class OnTheWayService : AccessibilityService() {
     // ── 배달 플랫폼 처리 (쿠팡이츠/배민커넥트) ─────────
     private fun handleDeliveryPlatform(root: AccessibilityNodeInfo, pkg: String) {
         val texts = mutableListOf<String>()
+        val platformTag = if (pkg == PKG_COUPANG) "COUPANG" else "BAEMIN"
+        PerfTrace.mark(platformTag, "event_received")
         extractText(root, texts)
 
         val platformName = if (pkg == PKG_COUPANG) "coupang" else "baemin"
@@ -607,11 +609,14 @@ class OnTheWayService : AccessibilityService() {
 
         // ── 배민 묶음 세션 선행 차단 ──
         if (pkg == PKG_BAEMIN) {
+            PerfTrace.mark("BAEMIN", "session_check")
             BaeminBundleSession.checkAndStartSession(joined)
 
             if (BaeminBundleSession.isActive()) {
                 // 파싱하여 세션에 데이터 피딩
+                PerfTrace.mark("BAEMIN", "parse_start")
                 val sessionCalls = BaeminParser.parse(texts)
+                PerfTrace.mark("BAEMIN", "parse_end", "results=${sessionCalls.size}")
                 val sessionPoint = BaeminParser.parsePoint(texts)
                 for (call in sessionCalls) {
                     BaeminBundleSession.addCallData(call.price, call.point ?: sessionPoint, call.storeName)
@@ -629,6 +634,8 @@ class OnTheWayService : AccessibilityService() {
                 // 총 합계 파싱 완료 시 즉시 종료
                 if (BaeminBundleSession.canFinalize()) {
                     bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
+                    PerfTrace.mark("BAEMIN", "session_finalize")
+                    SessionStats.onBundleFinalized(this)
                     val bundleCall = BaeminBundleSession.finalize()
                     if (bundleCall != null) {
                         var enrichedBundle = bundleCall
@@ -655,11 +662,13 @@ class OnTheWayService : AccessibilityService() {
         }
 
         // 파싱
+        PerfTrace.mark(platformTag, "parse_start")
         val calls = when (pkg) {
             PKG_COUPANG -> CoupangParser.parse(texts)
             PKG_BAEMIN  -> BaeminParser.parse(texts)
             else        -> return
         }
+        PerfTrace.mark(platformTag, "parse_end", "results=${calls.size}")
         Log.d("OTW_DEBUG", "파서 호출: 결과=$calls")
 
         if (calls.isEmpty()) {
@@ -751,6 +760,7 @@ class OnTheWayService : AccessibilityService() {
 
         // 선행 차단으로 "묶음 중복 제거" 불필요 → 모든 콜 개별 처리
         for (pending in buffered) {
+            SessionStats.onSingleDetected(this)
             processDeliveryCall(pending, now)
         }
 
@@ -764,6 +774,7 @@ class OnTheWayService : AccessibilityService() {
         bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
         bundleTimeoutRunnable = Runnable {
             if (BaeminBundleSession.isActive()) {
+                SessionStats.onBundleTimeout(this)
                 val bundleCall = BaeminBundleSession.finalizeOnTimeout()
                 if (bundleCall != null) {
                     val result = CallFilter.judge(bundleCall, this)
@@ -778,6 +789,7 @@ class OnTheWayService : AccessibilityService() {
 
     /** 개별 콜 처리 (TTS + 로그 + 진동 등) */
     private fun processDeliveryCall(pending: PendingCall, now: Long) {
+        PerfTrace.mark(if (pending.call.platform == "coupang") "COUPANG" else "BAEMIN", "tts_start")
         val call = pending.call
         val enrichedCall = pending.enrichedCall
         val result = pending.result
@@ -958,6 +970,7 @@ class OnTheWayService : AccessibilityService() {
             }
         }
         tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "filter_${System.currentTimeMillis()}")
+        PerfTrace.mark("TTS", "tts_spoken")
     }
 
     /** v3.1: 금액 읽기 방식 (한국어 / 숫자) */

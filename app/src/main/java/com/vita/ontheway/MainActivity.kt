@@ -334,9 +334,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         val detail = FilterLog.getTodayDetail(this)
         if (detail.total > 0) {
-            filterCountText.text = "오늘 ${detail.total}건 (넘기세요 ${detail.reject} · 괜찮습니다/잡으세요 ${detail.accept})"
+            filterCountText.text = "오늘 ${detail.total}건 (넘기세요 ${detail.reject} · 괜찮습니다/잡으세요 ${detail.accept})\n${SessionStats.getSummary(this)}"
         } else {
-            filterCountText.text = ""
+            filterCountText.text = SessionStats.getSummary(this)
         }
 
         // 마지막 콜 정보
