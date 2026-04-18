@@ -180,12 +180,12 @@ object CallFilter {
                     "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
 
-            if (call.price >= effectivePointMin) {
+            if (call.price > effectivePointMin) {
                 return FilterResult(Verdict.ACCEPT,
-                    "금액 ${fmt.format(call.price)}원 ≥ 구간기준 ${fmt.format(effectivePointMin)}원 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "금액 ${fmt.format(call.price)}원 > 구간기준 ${fmt.format(effectivePointMin)}원 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             } else {
                 return FilterResult(Verdict.REJECT,
-                    "금액 ${fmt.format(call.price)}원 < 구간기준 ${fmt.format(effectivePointMin)}원 미달 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "금액 ${fmt.format(call.price)}원 ≤ 구간기준 ${fmt.format(effectivePointMin)}원 미달 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
         }
 

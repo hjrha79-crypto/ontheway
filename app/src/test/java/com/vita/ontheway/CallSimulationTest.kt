@@ -260,11 +260,11 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `22 배민 단가 경계미달 3900원 8P 1950원km REJECT`() {
-        val texts = listOf("맘스터치", "배달료 3,900원", "8.0P")
+    fun `22 배민 포인트구간 경계 16P 4000원 REJECT`() {
+        val texts = listOf("맘스터치", "배달료 4,000원", "16.0P")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
-        // 8P = 2.0km, 단가 3900/2.0 = 1950 < 2000 -> REJECT
+        // 16P → 16~25P 구간, 최소 4000원, 4000 ≤ 4000 → REJECT (초과만 ACCEPT)
         val result = CallFilter.judge(calls[0], ctx)
         assertEquals(CallFilter.Verdict.REJECT, result.verdict)
         println("22 PASS: ${result.reason}")
@@ -471,5 +471,126 @@ class CallSimulationTest {
         val result = CallFilter.judge(calls[0], ctx)
         assertEquals(CallFilter.Verdict.REJECT, result.verdict)
         println("40 PASS: ${result.reason}")
+    }
+
+    // ---- 배민 묶음 세션 (실전 케이스 4개) ----
+
+    @Test
+    fun `41 묶음세션A 9070원 3건 43점6P`() {
+        BaeminBundleSession.reset()
+
+        // 이벤트1: 첫 가게 단건 (트리거 없음)
+        val joined1 = "치킨집 배달료 3,650원 18.5P"
+        assertFalse("세션 미시작", BaeminBundleSession.checkAndStartSession(joined1))
+
+        // 이벤트2: 총 합계 화면 (트리거 + 즉시 종료 가능)
+        val joined2 = "총 합계 9,070원 43.6P 3건 모두 수락 모두 거절"
+        assertTrue("세션 시작", BaeminBundleSession.checkAndStartSession(joined2))
+        assertTrue("종료 가능", BaeminBundleSession.canFinalize())
+
+        // 이전 이벤트 데이터 피딩 (OnTheWayService debounce 버퍼 드레인 시뮬)
+        BaeminBundleSession.addCallData(3650, 18.5, "치킨집")
+
+        val result = BaeminBundleSession.finalize()
+        assertNotNull("묶음 결과 생성", result)
+        assertEquals(9070, result!!.price)
+        assertEquals(43.6, result.point!!, 0.01)
+        assertEquals(3, result.bundleCount)
+        assertTrue("묶음 판정", result.isMulti)
+
+        // CallFilter 판정
+        val filterResult = CallFilter.judge(result, ctx)
+        assertEquals(CallFilter.Verdict.ACCEPT, filterResult.verdict)
+        println("41 PASS: 묶음세션A - ${result.price}원/${result.point}P ${result.bundleCount}건 → ${filterResult.verdict}")
+    }
+
+    @Test
+    fun `42 묶음세션B 6010원 2건 31점7P`() {
+        BaeminBundleSession.reset()
+
+        // 이벤트1: 첫 가게 (트리거 없음 → 버퍼 대기)
+        val joined1 = "피자집 배달료 3,700원 18.5P"
+        assertFalse("세션 미시작", BaeminBundleSession.checkAndStartSession(joined1))
+
+        // 이벤트2: 총 합계 (세션 트리거 + 즉시 종료)
+        val joined2 = "총 합계 6,010원 31.7P 2건 모두 수락 모두 거절"
+        assertTrue("세션 시작", BaeminBundleSession.checkAndStartSession(joined2))
+        assertTrue("종료 가능", BaeminBundleSession.canFinalize())
+
+        // 버퍼 드레인 시뮬
+        BaeminBundleSession.addCallData(3700, 18.5, "피자집")
+        BaeminBundleSession.addCallData(2310, 13.2, "치킨집")
+
+        val result = BaeminBundleSession.finalize()
+        assertNotNull("묶음 결과 생성", result)
+        assertEquals(6010, result!!.price)
+        assertEquals(31.7, result.point!!, 0.01)
+        assertEquals(2, result.bundleCount)
+        assertTrue("묶음 판정", result.isMulti)
+        assertTrue("다중 픽업", result.isMultiPickup)
+
+        // 다중픽업 2건 최소 7000원, 6010 < 7000 → REJECT
+        val filterResult = CallFilter.judge(result, ctx)
+        assertEquals(CallFilter.Verdict.REJECT, filterResult.verdict)
+        println("42 PASS: 묶음세션B - ${result.price}원/${result.point}P ${result.bundleCount}건 → ${filterResult.verdict}")
+    }
+
+    @Test
+    fun `43 묶음세션C 4610원 2건 23점8P`() {
+        BaeminBundleSession.reset()
+
+        // 총 합계 이벤트 단일 수신
+        val joined = "총 합계 4,610원 23.8P 2건 모두 수락 모두 거절"
+        assertTrue("세션 시작", BaeminBundleSession.checkAndStartSession(joined))
+        assertTrue("종료 가능", BaeminBundleSession.canFinalize())
+
+        // 개별 가게 데이터 피딩
+        BaeminBundleSession.addCallData(2310, 11.9, "가게A")
+        BaeminBundleSession.addCallData(2300, 11.9, "가게B")
+
+        val result = BaeminBundleSession.finalize()
+        assertNotNull("묶음 결과 생성", result)
+        assertEquals(4610, result!!.price)
+        assertEquals(23.8, result.point!!, 0.01)
+        assertEquals(2, result.bundleCount)
+        assertTrue("묶음 판정", result.isMulti)
+        assertTrue("다중 픽업", result.isMultiPickup)
+
+        // 4610 < bundleMin(5500) → REJECT
+        val filterResult = CallFilter.judge(result, ctx)
+        assertEquals(CallFilter.Verdict.REJECT, filterResult.verdict)
+        println("43 PASS: 묶음세션C - ${result.price}원/${result.point}P ${result.bundleCount}건 → ${filterResult.verdict}")
+    }
+
+    @Test
+    fun `44 묶음세션D 5420원 2건 32P 11초간격`() {
+        BaeminBundleSession.reset()
+
+        // 이벤트1 (T=0): 첫 가게, 트리거 없음 → 세션 미시작
+        val joined1 = "가게A 배달료 2,550원 14.5P"
+        assertFalse("세션 미시작", BaeminBundleSession.checkAndStartSession(joined1))
+        assertFalse("세션 비활성", BaeminBundleSession.isActive())
+
+        // 이벤트2 (T=11초 시뮬): 묶음 총 합계 (트리거)
+        val joined2 = "총 합계 5,420원 32.0P 2건 모두 수락 모두 거절"
+        assertTrue("세션 시작", BaeminBundleSession.checkAndStartSession(joined2))
+        assertTrue("종료 가능", BaeminBundleSession.canFinalize())
+
+        // debounce 버퍼 드레인 (OnTheWayService에서 잔존 데이터 흡수)
+        BaeminBundleSession.addCallData(2550, 14.5, "가게A")
+        BaeminBundleSession.addCallData(2870, 17.5, "가게B")
+
+        val result = BaeminBundleSession.finalize()
+        assertNotNull("묶음 결과 생성", result)
+        assertEquals(5420, result!!.price)
+        assertEquals(32.0, result.point!!, 0.01)
+        assertEquals(2, result.bundleCount)
+        assertTrue("묶음 판정", result.isMulti)
+        assertTrue("다중 픽업", result.isMultiPickup)
+
+        // 5420 < bundleMin(5500) → REJECT
+        val filterResult = CallFilter.judge(result, ctx)
+        assertEquals(CallFilter.Verdict.REJECT, filterResult.verdict)
+        println("44 PASS: 묶음세션D - ${result.price}원/${result.point}P ${result.bundleCount}건 11초간격 → ${filterResult.verdict}")
     }
 }

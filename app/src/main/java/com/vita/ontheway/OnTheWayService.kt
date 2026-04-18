@@ -105,6 +105,7 @@ class OnTheWayService : AccessibilityService() {
     private data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?)
     private val baeminBuffer = mutableListOf<PendingCall>()
     private var baeminDebounceRunnable: Runnable? = null
+    private var bundleTimeoutRunnable: Runnable? = null
     private val debounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val BAEMIN_DEBOUNCE_MS = 2000L
 
@@ -604,6 +605,55 @@ class OnTheWayService : AccessibilityService() {
         val now0 = System.currentTimeMillis()
         recentCalls.removeIf { now0 - it.time > 60000 }  // 60초 지난 기록 정리
 
+        // ── 배민 묶음 세션 선행 차단 ──
+        if (pkg == PKG_BAEMIN) {
+            BaeminBundleSession.checkAndStartSession(joined)
+
+            if (BaeminBundleSession.isActive()) {
+                // 파싱하여 세션에 데이터 피딩
+                val sessionCalls = BaeminParser.parse(texts)
+                val sessionPoint = BaeminParser.parsePoint(texts)
+                for (call in sessionCalls) {
+                    BaeminBundleSession.addCallData(call.price, call.point ?: sessionPoint, call.storeName)
+                }
+
+                // 대기 중인 debounce 버퍼도 세션으로 드레인
+                synchronized(baeminBuffer) {
+                    for (pending in baeminBuffer) {
+                        BaeminBundleSession.addCallData(pending.call.price, pending.baeminPoint, pending.call.storeName)
+                    }
+                    baeminBuffer.clear()
+                }
+                baeminDebounceRunnable?.let { debounceHandler.removeCallbacks(it) }
+
+                // 총 합계 파싱 완료 시 즉시 종료
+                if (BaeminBundleSession.canFinalize()) {
+                    bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
+                    val bundleCall = BaeminBundleSession.finalize()
+                    if (bundleCall != null) {
+                        var enrichedBundle = bundleCall
+                        var pickupDistKm: Double? = null
+                        if (gpsActive && currentLat != 0.0) {
+                            val storeAddr = bundleCall.storeName.split("+").firstOrNull() ?: ""
+                            if (storeAddr.isNotEmpty()) {
+                                pickupDistKm = LocationTable.distanceTo(currentLat, currentLng, storeAddr)
+                                if (pickupDistKm != null) {
+                                    enrichedBundle = enrichedBundle.copy(pickupDistanceKm = pickupDistKm)
+                                }
+                            }
+                        }
+                        val result = CallFilter.judge(enrichedBundle, this)
+                        val pendingCall = PendingCall(bundleCall, enrichedBundle, result, bundleCall.point, pickupDistKm)
+                        lastCallDetectedTime = System.currentTimeMillis()
+                        processDeliveryCall(pendingCall, System.currentTimeMillis())
+                    }
+                } else {
+                    scheduleBundleTimeout()
+                }
+                return
+            }
+        }
+
         // 파싱
         val calls = when (pkg) {
             PKG_COUPANG -> CoupangParser.parse(texts)
@@ -679,6 +729,17 @@ class OnTheWayService : AccessibilityService() {
 
     /** 배민 debounce 버퍼 처리: 2초 후 실행 */
     private fun processBaeminBuffer() {
+        // 세션 활성 시 버퍼를 세션으로 드레인
+        if (BaeminBundleSession.isActive()) {
+            synchronized(baeminBuffer) {
+                for (pending in baeminBuffer) {
+                    BaeminBundleSession.addCallData(pending.call.price, pending.baeminPoint, pending.call.storeName)
+                }
+                baeminBuffer.clear()
+            }
+            return
+        }
+
         val buffered: List<PendingCall>
         synchronized(baeminBuffer) {
             buffered = baeminBuffer.toList()
@@ -688,24 +749,31 @@ class OnTheWayService : AccessibilityService() {
 
         val now = System.currentTimeMillis()
 
-        // bundleCount > 1인 콜이 있으면 그것만 TTS
-        val bundleCall = buffered.firstOrNull { it.call.bundleCount > 1 || it.call.isMulti }
-        val ttsCall = bundleCall ?: buffered.last()
-
+        // 선행 차단으로 "묶음 중복 제거" 불필요 → 모든 콜 개별 처리
         for (pending in buffered) {
-            if (pending === ttsCall) {
-                processDeliveryCall(pending, now)
-            } else {
-                // TTS 없이 로그만 저장 (묶음 중복 제거)
-                val silentResult = CallFilter.FilterResult(pending.result.verdict, pending.result.reason + " (묶음 중복 제거)")
-                FilterLog.record(this, pending.enrichedCall, silentResult, pending.baeminPoint)
-                Log.d("DeliveryFilter", "배민 debounce 로그만: ${pending.call.price}원 (묶음 중복 제거)")
-            }
+            processDeliveryCall(pending, now)
         }
 
         val expireTime = now - 60000
         callSpeakHistory.entries.removeIf { it.value < expireTime }
         callDetectedAt.entries.removeIf { it.value < expireTime }
+    }
+
+    /** 묶음 세션 타임아웃 핸들러 예약 */
+    private fun scheduleBundleTimeout() {
+        bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
+        bundleTimeoutRunnable = Runnable {
+            if (BaeminBundleSession.isActive()) {
+                val bundleCall = BaeminBundleSession.finalizeOnTimeout()
+                if (bundleCall != null) {
+                    val result = CallFilter.judge(bundleCall, this)
+                    val pendingCall = PendingCall(bundleCall, bundleCall, result, bundleCall.point, null)
+                    lastCallDetectedTime = System.currentTimeMillis()
+                    processDeliveryCall(pendingCall, System.currentTimeMillis())
+                }
+            }
+        }
+        debounceHandler.postDelayed(bundleTimeoutRunnable!!, BaeminBundleSession.SESSION_TIMEOUT_MS)
     }
 
     /** 개별 콜 처리 (TTS + 로그 + 진동 등) */
@@ -1094,6 +1162,8 @@ class OnTheWayService : AccessibilityService() {
         gpsActive = false
         try { VoiceControl.stop() } catch (e: Exception) {}
         try { FloatingOverlay.hide() } catch (e: Exception) {}
+        BaeminBundleSession.reset()
+        bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
         super.onDestroy()
     }
 }
