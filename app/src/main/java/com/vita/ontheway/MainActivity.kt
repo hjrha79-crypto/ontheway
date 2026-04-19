@@ -46,6 +46,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var lastCallText: TextView
     private lateinit var recentCallList: LinearLayout
     private lateinit var inputBar: LinearLayout
+    private lateinit var hourlyRateCard: LinearLayout
+    private lateinit var recentHourlyRate: TextView
+    private lateinit var cumulativeHourlyRate: TextView
+    private lateinit var appCheckText: TextView
     private var currentTab = "status"  // "status" or "chat"
 
     private var partialBubble: TextView? = null
@@ -127,6 +131,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         chatPanel = findViewById(R.id.chatPanel)
         lastCallText = findViewById(R.id.lastCallText)
         recentCallList = findViewById(R.id.recentCallList)
+        hourlyRateCard = findViewById(R.id.hourlyRateCard)
+        recentHourlyRate = findViewById(R.id.recentHourlyRate)
+        cumulativeHourlyRate = findViewById(R.id.cumulativeHourlyRate)
+        appCheckText = findViewById(R.id.appCheckText)
 
         val statsBtn = findViewById<TextView>(R.id.statsBtn)
         val favBtn   = findViewById<TextView>(R.id.favBtn)
@@ -195,6 +203,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         todayGoalAmt = EarningManager.getGoal(this)
         EarningManager.markStartTime(this)
         updateEarningDisplay()
+        updateHourlyRateDisplay()
+        updateAppCheckDisplay()
         refreshPlacesRow()
         resultCard.visibility = View.GONE
         acceptBtn.visibility  = View.INVISIBLE
@@ -358,6 +368,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
             lastCallText.text = "$platform ${fmt(price)}원 $verdictKr"
         }
+
+        updateHourlyRateDisplay()
+        updateAppCheckDisplay()
 
         if (currentTab == "status") refreshDashboard()
     }
@@ -659,6 +672,26 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val fillWidth = (totalWidth * progress).toInt()
             progressFill.layoutParams = progressFill.layoutParams.apply { width = fillWidth }
         }
+    }
+
+    private fun updateHourlyRateDisplay() {
+        val recent = EarningsTracker.getRecentHourlyRate(this)
+        val cumulative = EarningsTracker.getCumulativeHourlyRate(this)
+
+        if (recent == -1 && cumulative == -1) {
+            hourlyRateCard.visibility = View.GONE
+            return
+        }
+
+        hourlyRateCard.visibility = View.VISIBLE
+        recentHourlyRate.text = if (recent >= 0) "${fmt(recent)}원/h" else "-"
+        cumulativeHourlyRate.text = if (cumulative >= 0) "${fmt(cumulative)}원/h" else "-"
+    }
+
+    private fun updateAppCheckDisplay() {
+        SessionStats.ensureLoaded(this)
+        val count = SessionStats.appCheckCount
+        appCheckText.text = if (count > 0) "오늘 ${count}회 확인" else ""
     }
 
     private fun showGoalSetting() {
@@ -1332,6 +1365,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         todayGoalAmt = EarningManager.getGoal(this)
         todayEarning = EarningManager.getTodayEarning(this)
         updateEarningDisplay()
+        SessionStats.onAppChecked(this)
+        updateHourlyRateDisplay()
+        updateAppCheckDisplay()
     }
 
     override fun onDestroy() {

@@ -79,6 +79,90 @@ object EarningsTracker {
         return TodayEarnings(count, total, hourlyRate, progress)
     }
 
+    /**
+     * 체감 시급: 최근 60분 내 ACCEPT 콜 수익 합 / 활동 시간
+     * 30분 이상 콜 없는 구간은 분모에서 제외 (휴식)
+     * @return 원/시간 (반올림), 데이터 부족 시 -1
+     */
+    fun getRecentHourlyRate(ctx: Context): Int {
+        val now = System.currentTimeMillis()
+        val oneHourAgo = now - 3600_000L
+        val accepts = getTodayAccepts(ctx).filter { it.first >= oneHourAgo }
+        if (accepts.isEmpty()) return -1
+
+        val totalRevenue = accepts.sumOf { it.second }
+        val activeSeconds = calcActiveSeconds(accepts, oneHourAgo, now)
+        if (activeSeconds < 600) return -1  // 10분 미만 → 노이즈
+
+        return Math.round(totalRevenue * 3600.0 / activeSeconds).toInt()
+    }
+
+    /**
+     * 누적 시급: 오늘 첫 콜 ~ 현재, 30분 이상 휴식 구간 제외
+     * @return 원/시간 (반올림), 데이터 부족 시 -1
+     */
+    fun getCumulativeHourlyRate(ctx: Context): Int {
+        val now = System.currentTimeMillis()
+        val accepts = getTodayAccepts(ctx)
+        if (accepts.isEmpty()) return -1
+
+        val firstTime = accepts.first().first
+        val totalRevenue = accepts.sumOf { it.second }
+        val activeSeconds = calcActiveSeconds(accepts, firstTime, now)
+        if (activeSeconds < 600) return -1  // 10분 미만 → 노이즈
+
+        return Math.round(totalRevenue * 3600.0 / activeSeconds).toInt()
+    }
+
+    /** 오늘 ACCEPTED 엔트리를 (timestamp, price) 리스트로 반환 (시간순) */
+    private fun getTodayAccepts(ctx: Context): List<Pair<Long, Int>> {
+        val todayStart = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        val entries = FilterLog.getAll(ctx)
+        val result = mutableListOf<Pair<Long, Int>>()
+        for (i in 0 until entries.length()) {
+            val e = entries.getJSONObject(i)
+            val ts = e.optLong("ts", 0)
+            if (ts < todayStart) continue
+            if (e.optString("verdict") != "ACCEPTED") continue
+            result.add(ts to e.optInt("price", 0))
+        }
+        return result.sortedBy { it.first }
+    }
+
+    /**
+     * 활동 시간 계산: 전체 구간에서 30분 이상 갭(휴식)을 제외
+     * @return 활동 초 수
+     */
+    private fun calcActiveSeconds(
+        accepts: List<Pair<Long, Int>>,
+        windowStart: Long,
+        windowEnd: Long
+    ): Long {
+        if (accepts.isEmpty()) return 0
+        val REST_THRESHOLD = 30 * 60 * 1000L  // 30분
+
+        // 이벤트 시점들: windowStart, 각 accept 시점, windowEnd
+        val points = mutableListOf(windowStart)
+        accepts.forEach { points.add(it.first) }
+        points.add(windowEnd)
+
+        var activeMs = 0L
+        for (i in 1 until points.size) {
+            val gap = points[i] - points[i - 1]
+            if (gap < REST_THRESHOLD) {
+                activeMs += gap
+            }
+            // 30분 이상 갭이면 휴식 → 제외
+        }
+        return activeMs / 1000
+    }
+
     private fun todayStr() = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault())
         .format(java.util.Date())
 }

@@ -47,7 +47,15 @@
       "Read(//c/Users/hjrha/AndroidStudioProjects/OnTheWay/$LOCALAPPDATA/Programs/**)",
       "Bash(N건)",
       "Bash(N원)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git stash:*)",
+      "Bash(./gradlew test:*)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew test --tests \"com.vita.ontheway.CallSimulationTest\")",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew testDebugUnitTest --tests \"com.vita.ontheway.CallSimulationTest\")",
+      "Bash(find app/build/test-results -name *.xml 2)",
+      "Bash(/dev/null -exec grep -l \"testsuites\\\\|testsuite\" {})",
+      "Bash(/dev/null -exec grep -c 'testcase ' {})"
     ]
   }
 }

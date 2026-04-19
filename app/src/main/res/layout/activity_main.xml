@@ -111,6 +111,79 @@
         </FrameLayout>
     </LinearLayout>
 
+    <!-- ═══ 시급 카드 ═══ -->
+    <LinearLayout
+        android:id="@+id/hourlyRateCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="6dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:background="#F5F5F5"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:layout_marginEnd="4dp">
+
+            <TextView
+                android:id="@+id/recentHourlyRate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textSize="18sp"
+                android:textColor="#5B6ABF"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="체감 시급 (최근 1시간)"
+                android:textSize="10sp"
+                android:textColor="#999999"
+                android:paddingTop="2dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:background="#F5F5F5"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:layout_marginStart="4dp">
+
+            <TextView
+                android:id="@+id/cumulativeHourlyRate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:fontFamily="sans-serif-medium" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="누적 시급 (오늘 평균)"
+                android:textSize="10sp"
+                android:textColor="#999999"
+                android:paddingTop="2dp" />
+        </LinearLayout>
+    </LinearLayout>
+
     <!-- ═══ 탭 바 ═══ -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -264,6 +337,18 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
             </LinearLayout>
+
+            <!-- 앱 확인 횟수 -->
+            <TextView
+                android:id="@+id/appCheckText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textSize="11sp"
+                android:textColor="#BBBBBB"
+                android:gravity="center"
+                android:paddingTop="8dp"
+                android:paddingBottom="4dp" />
         </LinearLayout>
     </ScrollView>
 

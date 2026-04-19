@@ -1,36 +1,74 @@
-OnTheWay v2 수정 2건. 프로젝트 경로: C:\Users\hjrha\AndroidStudioProjects\OnTheWay
+출근 전 빠른 작업. 30분 내 완료 목표.
 
-===== 이슈 1: 배민 묶음배달 중복 TTS 방지 =====
+=== 작업 목표 ===
+OnTheWay에 시급 표시 2종 추가 + 앱 확인 횟수 측정
 
-현상: 묶음 2건 콜이 들어오면 개별(6,420원) + 합산(8,720원) + 개별(2,300원) 3번 TTS됨.
-원인: 배민 화면 스와이프 시 개별/합산이 각각 Accessibility 이벤트로 들어옴.
+=== 작업 1: 시급 계산 로직 ===
 
-수정:
-1. OnTheWayService에 배민 전용 debounce 로직 추가
-2. 배민 콜 감지 시 즉시 TTS 하지 않고 2초 대기
-3. 2초 윈도우 내 같은 플랫폼(배민) 콜을 리스트에 모음
-4. 2초 후 판정:
-   - 리스트 중 bundleCount > 1인 콜이 있으면 → 그 콜만 TTS + FilterLog 저장
-   - bundleCount > 1인 콜이 없으면 → 마지막 콜만 TTS + FilterLog 저장
-   - 나머지 콜은 FilterLog에만 저장 (TTS 없음, reason에 "묶음 중복 제거" 표기)
-5. Handler + postDelayed 패턴 사용
-6. 쿠팡은 debounce 적용 안 함 (기존 즉시 TTS 유지)
+EarningsTracker.kt (이미 있으면 수정, 없으면 신설) 또는 기존 수익 관련 파일에 다음 로직 추가:
 
-===== 이슈 2: 쿠팡이츠 Accessibility 진단 로그 =====
+1. 체감 시급 (최근 1시간 기준)
+   fun getRecentHourlyRate(): Int
+   - 현재 시각 기준 최근 60분 내 ACCEPT된 콜의 수익 합
+   - 60분 × 60초 = 3600초를 분모로 사용
+   - 단, 최근 60분 중 "연속 30분 이상 콜 없음" 구간은 분모에서 제외 (휴식)
+   - 결과: 원/시간 (반올림)
 
-현상: 쿠팡이츠 앱 출근 상태, 콜 알림 울리는데 OnTheWay 완전 무반응. 접근성 서비스 ON 상태. 배민은 정상 감지됨.
-의심: 쿠팡 앱 업데이트로 Accessibility 이벤트 패턴 변경 또는 getWindows()에서 패키지 못 잡음.
+2. 누적 시급 (오늘 전체 기준)
+   fun getCumulativeHourlyRate(): Int
+   - 오늘 첫 콜 수락 시각부터 현재까지
+   - "연속 30분 이상 콜 없음" 구간은 분모에서 자동 제외
+   - 결과: 원/시간 (반올림)
 
-수정:
-1. SettingsActivity에 "쿠팡 진단 모드" Switch 추가 (SharedPreferences 키: "coupang_debug_mode", 기본 OFF)
-2. OnTheWayService.onAccessibilityEvent()에서:
-   - 쿠팡 진단 모드 ON일 때
-   - 모든 이벤트(패키지 무관)에서 packageName이 "com.coupang.mobile.eats.courier"이면:
-     → FilterLog에 기록: platform="쿠팡진단", price="0", judgment="DEBUG",
-        reason="eventType=[타입] pkg=[패키지명] text=[이벤트텍스트전체] class=[className]"
-   - 추가로 getWindows()의 모든 윈도우 패키지명도 1회 로그:
-     reason="WINDOWS: [윈도우1패키지, 윈도우2패키지, ...]"
-3. 쿠팡 진단 모드 OFF면 기존 로직 그대로
+3. 예외 처리
+   - ACCEPT된 콜이 0건 → -1 반환 (표시 안 함)
+   - 운행 시간 10분 미만 → -1 반환 (노이즈 방지)
 
-===== 작업 완료 후 =====
-git add -A && git commit -m "fix: 배민 묶음 debounce 2초 + 쿠팡 진단모드" && git push
+4. 수익 집계 기준 (이번 단계는 간소화)
+   - 일단 OnTheWay가 ACCEPT 판정한 콜의 금액을 합산
+   - (실제 수락 감지는 다음 단계)
+
+=== 작업 2: 홈 화면 UI 수정 ===
+
+MainActivity.kt 또는 홈 화면 레이아웃:
+
+SessionStats 통계줄 바로 위에 시급 카드 추가:
+
+오늘 수익: 67,400원
+┌───────────────┬───────────────┐
+│ 체감 시급      │ 누적 시급      │
+│ 22,400원/h    │ 18,200원/h    │
+│ (최근 1시간)    │ (오늘 평균)    │
+└───────────────┴───────────────┘
+
+- 체감 시급이 더 크게 (주 정보)
+- 누적 시급은 옆에 보조
+- -1 반환 시 해당 칸에 "-" 표시
+- 5초마다 자동 갱신 (기존 Handler 활용)
+
+=== 작업 3: 앱 확인 횟수 측정 ===
+
+SessionStats.kt에 필드 추가:
+- var appCheckCount: Int = 0
+- fun onAppChecked(ctx: Context) { appCheckCount++; save(ctx) }
+- reset() 시 appCheckCount도 0으로
+
+MainActivity.onResume()에 추가:
+- SessionStats.onAppChecked(this) 호출
+
+홈 화면 하단 작게 표시:
+- "오늘 X회 확인" (회색 작은 글씨)
+
+=== 제약 ===
+- 기존 판정 로직, 세션 로직, 파싱 로직 절대 건드리지 말 것
+- PerfTrace 로그는 유지
+- 유닛테스트 영향 최소화 (기존 43개 PASS 유지)
+- 30분 내 완료 가능한 규모로 유지
+
+=== 완료 기준 ===
+1. 빌드 성공
+2. 기존 43개 테스트 PASS 유지
+3. 변경 파일 리스트 공유
+
+전체 수정 가능한 범위면 shift+tab으로 일괄 승인 모드 가능.
+단, EarningsTracker.kt가 이미 존재하는지 먼저 확인하고 진행해줘.
