@@ -37,4 +37,74 @@ object StoreNameCleaner {
 
     /** clean() 결과를 ", "로 합쳐서 반환 */
     fun cleanToString(raw: String): String = clean(raw).joinToString(", ")
+
+    // ── v3.19 Layer 3: 가게명 금지어 블랙리스트 ──
+
+    private val STORE_BLACKLIST = setOf(
+        "배달 이어서 하기", "이어서 배달하기",
+        "배차수락", "배차 수락",
+        "지도 확대 기능이 꺼졌습니다", "지도 확대",
+        "신규배달", "새로운 배달이 배정되었습니다",
+        "픽업 완료", "배달 완료", "배달완료", "배달 중",
+        "도착예정시간", "도착예상시간",
+        "수락하기", "거절하기",
+        "가맹점 도착", "고객 도착", "고객에게 전달",
+        "배민배달", "배민커넥트",
+        "조리완료", "조리 완료"
+    )
+
+    /** 공백 제거한 정규화 블랙리스트 (공백 불일치 대응) */
+    private val NORMALIZED_BLACKLIST = STORE_BLACKLIST.map { it.replace("\\s+".toRegex(), "") }.toSet()
+
+    private val INVALID_STORE_PATTERNS = listOf(
+        Regex("^\\d{1,2}:\\d{2}"),              // 시각: "16:40 완료"
+        Regex("^\\d+(\\.\\d+)?\\s*km$"),         // 거리: "3.5km"
+        Regex("^\\d{1,3}(,\\d{3})*\\s*원$"),     // 금액: "4,990원"
+        Regex("^\\d+(\\.\\d+)?\\s*P$", RegexOption.IGNORE_CASE), // 포인트: "38.3P"
+        Regex("^\\d+(건|초|분)"),                 // 수량/시간: "2건"
+        Regex("완료$"),                           // "~완료"
+        Regex("^배달\\s")                         // "배달 ~"
+    )
+
+    /** Layer 3: 가게명이 블랙리스트에 해당하는지 */
+    fun isBlacklisted(name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed in STORE_BLACKLIST) return true
+        if (trimmed.replace("\\s+".toRegex(), "") in NORMALIZED_BLACKLIST) return true
+        if (INVALID_STORE_PATTERNS.any { it.containsMatchIn(trimmed) }) return true
+        return false
+    }
+
+    // ── v3.19 Layer 4: 가게명 형태 검증 ──
+
+    private val ALLOWED_CHARS = Regex("^[가-힣a-zA-Z0-9\\s&\\-().]+$")
+
+    /** Layer 4: 가게명 형태가 유효한지 */
+    fun isValidFormat(name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.length < 2 || trimmed.length > 40) return false
+        if (!ALLOWED_CHARS.matches(trimmed)) return false
+        if (trimmed.all { it.isDigit() }) return false
+        if (trimmed.none { it in '\uAC00'..'\uD7A3' || it.isLetter() }) return false
+        val specialCount = trimmed.count { it in setOf('&', '-', '(', ')', '.') }
+        if (trimmed.isNotEmpty() && specialCount.toDouble() / trimmed.length > 0.3) return false
+        return true
+    }
+
+    /**
+     * Layer 3+4 통합 검증. 거부 시 빈 문자열 반환.
+     * @return 검증된 가게명, 또는 빈 문자열
+     */
+    fun validateStoreName(name: String): String {
+        if (name.isBlank()) return ""
+        if (isBlacklisted(name)) {
+            android.util.Log.w("ParsingBlocked", "Blacklist: '$name'")
+            return ""
+        }
+        if (!isValidFormat(name)) {
+            android.util.Log.w("ParsingBlocked", "Format: '$name'")
+            return ""
+        }
+        return name
+    }
 }

@@ -553,23 +553,11 @@ class OnTheWayService : AccessibilityService() {
         // 대기 화면 무시 필터 — 파싱/로그/TTS 전부 스킵 (최우선 체크)
         val joined = texts.joinToString(" ")
         if (pkg == PKG_BAEMIN) {
-            val baeminSkipKeywords = listOf(
-                // 기존
-                "가상 배달을 체험해 보세요", "신규배차를 켜고 배달을 시작하세요",
-                "배달을 시작해", "배차 대기",
-                "배달 완료", "배달 중", "가게 도착", "고객에게 전달",
-                "배달 내역", "정산", "공지사항", "내 정보",
-                // v2 2.0 추가 필터
-                "배달 체험하기",
-                "진행 배달미션", "배달 미션", "완료 시 최대", "미션 전체보기",
-                "메뉴금액", "주문정보", "가게정보", "찾아오는 길",
-                "신규배차를 켜고",
-                // v2.1 추가 필터
-                "주행기록 기반",
-                // v2.2 유령콜 필터
-                "배달이 많은 곳으로 이동"
-            )
-            if (baeminSkipKeywords.any { joined.contains(it) }) {
+            // v3.19 Layer 1: 화면 타입 식별
+            val screen = ScreenTypeDetector.detect(joined)
+            if (screen.type != ScreenTypeDetector.ScreenType.NEW_CALL &&
+                screen.type != ScreenTypeDetector.ScreenType.BUNDLE_SESSION) {
+                Log.d("ScreenFilter", "[$platformName] skip: ${screen.type} (${screen.confidence})")
                 return
             }
         }

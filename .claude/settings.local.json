@@ -65,7 +65,10 @@
       "Bash(./gradlew testDebugUnitTest --tests \"com.vita.ontheway.CallSimulationTest\")",
       "Bash(cd:*)",
       "Bash(./gradlew compileDebugKotlin)",
-      "Bash(./gradlew testDebugUnitTest)"
+      "Bash(./gradlew testDebugUnitTest)",
+      "Bash(export 'JAVA_HOME=C:/Program Files/Android/Android Studio/jbr')",
+      "Bash(find app/build/test-results -name *.xml -exec grep -l testcase {})",
+      "Bash(2)"
     ]
   }
 }

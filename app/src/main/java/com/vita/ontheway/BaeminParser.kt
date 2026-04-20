@@ -53,7 +53,8 @@ object BaeminParser {
             }
         }.map { it.trim() }.distinct()
 
-        val storeName = storeAfterPickup ?: storeNames.firstOrNull() ?: ""
+        val rawStoreName = storeAfterPickup ?: storeNames.firstOrNull() ?: ""
+        val storeName = StoreNameCleaner.validateStoreName(rawStoreName)
 
         val destination = texts.firstOrNull { t ->
             t.length in 3..30 && DEST_PATTERN.matches(t.trim())
