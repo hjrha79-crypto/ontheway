@@ -11,7 +11,22 @@ object FilterLog {
     private const val KEY_ENTRIES = "entries"
     private const val MAX_ENTRIES = 200
 
-    fun record(ctx: Context, call: DeliveryCall, result: CallFilter.FilterResult, baeminPoint: Double? = null) {
+    // v3.8: 허용 플랫폼 화이트리스트
+    private val ALLOWED_PLATFORMS = setOf("coupang", "baemin", "kakaot")
+
+    fun record(ctx: Context, call: DeliveryCall, result: CallFilter.FilterResult, baeminPoint: Double? = null, eventId: String? = null, sessionState: String? = null) {
+        // GUARD 1: 플랫폼 화이트리스트
+        if (call.platform !in ALLOWED_PLATFORMS) {
+            Log.d("FilterLog", "BLOCKED: non-delivery platform ${call.platform}")
+            return
+        }
+
+        // GUARD 2: 가격 유효성
+        if (call.price <= 0) {
+            Log.d("FilterLog", "BLOCKED: invalid price ${call.price}")
+            return
+        }
+
         val unitPrice = if (call.distance != null && call.distance > 0)
             (call.price / call.distance).toInt() else 0
         val entry = JSONObject().apply {
@@ -32,6 +47,8 @@ object FilterLog {
             if (baeminPoint != null) put("point", baeminPoint)
             if (call.point != null) put("point", call.point)
             if (call.pickupDistanceKm != null) put("pickupKm", call.pickupDistanceKm)
+            if (eventId != null) put("eventId", eventId)
+            if (sessionState != null) put("state", sessionState)
         }
 
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -179,5 +196,35 @@ object FilterLog {
             result.add(entries.getJSONObject(i))
         }
         return result
+    }
+
+    /** v3.8: 오염 데이터 일괄 정리 (1회 실행) */
+    fun migrateV38Cleanup(ctx: Context) {
+        val migrationPrefs = ctx.getSharedPreferences("ontheway", Context.MODE_PRIVATE)
+        if (migrationPrefs.getBoolean("migration_v38_cleanup", false)) return
+
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val arr = try {
+            JSONArray(prefs.getString(KEY_ENTRIES, "[]"))
+        } catch (e: Exception) {
+            JSONArray()
+        }
+
+        val cleaned = JSONArray()
+        var removed = 0
+        for (i in 0 until arr.length()) {
+            val e = arr.getJSONObject(i)
+            val platform = e.optString("platform", "")
+            val price = e.optInt("price", 0)
+            if (price <= 0 || platform !in ALLOWED_PLATFORMS) {
+                removed++
+                continue
+            }
+            cleaned.put(e)
+        }
+
+        prefs.edit().putString(KEY_ENTRIES, cleaned.toString()).apply()
+        migrationPrefs.edit().putBoolean("migration_v38_cleanup", true).apply()
+        Log.d("FilterLog", "v3.8 마이그레이션: ${removed}건 오염 데이터 삭제, ${cleaned.length()}건 유지")
     }
 }

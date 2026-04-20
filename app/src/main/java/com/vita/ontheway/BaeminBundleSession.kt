@@ -5,9 +5,10 @@ import android.util.Log
 /**
  * 배민 묶음배달 세션 관리 (선행 차단 방식)
  *
- * 상태: IDLE → COLLECTING → finalize() → IDLE
+ * 상태: IDLE → COLLECTING → finalize() → FINALIZED (쿨다운) → IDLE
  * 트리거: "총 합계" / "X건 모두 수락" / "모두 거절"
  * 종료: 총 합계 금액 파싱 성공 시 즉시, 또는 15초 타임아웃
+ * v3.12: FINALIZED 쿨다운으로 동일 화면 텍스트에 의한 중복 세션 방지
  */
 object BaeminBundleSession {
 
@@ -17,6 +18,8 @@ object BaeminBundleSession {
         private set
 
     private var sessionStartTime: Long = 0
+    private var finalizedAt: Long = 0
+    private const val FINALIZE_COOLDOWN_MS = 5_000L  // v3.12: 종료 후 5초 쿨다운
     private var finalTotalPrice: Int = 0
     private var finalTotalPoint: Double = 0.0
     private var detectedBundleCount: Int = 0
@@ -37,6 +40,16 @@ object BaeminBundleSession {
      * @return true if session is now active
      */
     fun checkAndStartSession(joined: String): Boolean {
+        // v3.12: FINALIZED 쿨다운 — 같은 화면 텍스트로 즉시 재시작 방지
+        if (state == State.FINALIZED) {
+            if (System.currentTimeMillis() - finalizedAt < FINALIZE_COOLDOWN_MS) {
+                Log.d("BaeminBundle", "쿨다운 중 — 세션 재시작 차단 ${System.currentTimeMillis() - finalizedAt}ms")
+                return false
+            }
+            // 쿨다운 만료 → IDLE 복귀
+            state = State.IDLE
+        }
+
         val hasTotalKeyword = TOTAL_KEYWORD.containsMatchIn(joined)
         val acceptMatch = BUNDLE_ACCEPT_PATTERN.find(joined)
         val hasRejectAll = BUNDLE_REJECT_PATTERN.containsMatchIn(joined)
@@ -113,6 +126,12 @@ object BaeminBundleSession {
      * 총 합계가 있으면 그 값 사용, 없으면 축적 금액 합산.
      */
     fun finalize(): DeliveryCall? {
+        // v3.12: 이미 FINALIZED면 재호출 차단
+        if (state == State.FINALIZED) {
+            Log.w("BaeminBundle", "finalize() 재호출 차단 — 이미 FINALIZED")
+            return null
+        }
+
         val price = if (finalTotalPrice > 0) finalTotalPrice else collectedPrices.sum()
         if (price <= 0) {
             reset()
@@ -145,8 +164,37 @@ object BaeminBundleSession {
         )
 
         Log.d("BaeminBundle", "세션 종료: ${count}건 ${price}원 point=$point stores=$uniqueStores")
-        reset()
+        // v3.12: IDLE이 아닌 FINALIZED로 전환 (쿨다운 시작)
+        state = State.FINALIZED
+        finalizedAt = System.currentTimeMillis()
+        sessionStartTime = 0
+        finalTotalPrice = 0
+        finalTotalPoint = 0.0
+        detectedBundleCount = 0
+        storeNames.clear()
+        collectedPrices.clear()
+        collectedPoints.clear()
         return result
+    }
+
+    /** 묶음 내 개별 아이템의 suppression 키 목록 반환 ("가게명|가격" 형식) */
+    fun getSuppressionKeys(): List<String> {
+        val keys = mutableListOf<String>()
+        // 각 가게명+가격 조합
+        for (store in storeNames) {
+            for (price in collectedPrices) {
+                keys.add("$store|$price")
+            }
+        }
+        // 총액도 등록 (가게명 조합 + 총액)
+        val totalPrice = if (finalTotalPrice > 0) finalTotalPrice else collectedPrices.sum()
+        if (totalPrice > 0) {
+            val combinedStore = storeNames.distinct().joinToString("+")
+            if (combinedStore.isNotEmpty()) {
+                keys.add("$combinedStore|$totalPrice")
+            }
+        }
+        return keys.distinct()
     }
 
     /** 타임아웃 시 축적 데이터로 종료 */

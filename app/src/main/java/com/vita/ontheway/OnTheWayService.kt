@@ -113,6 +113,9 @@ class OnTheWayService : AccessibilityService() {
     private data class RecentCall(val platform: String, val price: Int, val time: Long)
     private val recentCalls = mutableListOf<RecentCall>()
 
+    // v3.18: 세션 매니저
+    private var sessionManager: SessionManager? = null
+
     // 배달 필터용 TTS
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -124,16 +127,11 @@ class OnTheWayService : AccessibilityService() {
         // v2.2: 진단 모드 — 모든 패키지별 이벤트 카운트
         packageEventCount[pkg] = (packageEventCount[pkg] ?: 0) + 1
 
-        // 쿠팡 진단 모드
+        // 쿠팡 진단 모드 — DiagnosticLog 별도 DB 기록 (v3.14)
         if (pkg == PKG_COUPANG && AdvancedPrefs.isCoupangDebugEnabled(this)) {
             val evTexts = event.text?.joinToString(" ") ?: ""
             val className = event.className?.toString() ?: ""
-            val reason = "eventType=${event.eventType} pkg=$pkg text=[$evTexts] class=[$className]"
-            Log.w("OTW_COUPANG_DEBUG", reason)
-            FilterLog.record(this, DeliveryCall(
-                price = 0, distance = null, isMulti = false, platform = "쿠팡진단",
-                rawText = reason, parseSuccess = false
-            ), CallFilter.FilterResult(CallFilter.Verdict.REJECT, reason))
+            DiagnosticLog.record(pkg, event.eventType, className, evTexts)
 
             // getWindows() 패키지 로그 (10초에 1회)
             val now = System.currentTimeMillis()
@@ -141,12 +139,7 @@ class OnTheWayService : AccessibilityService() {
                 callDetectedAt["coupang_win_log"] = now
                 try {
                     val winPkgs = windows?.mapNotNull { w -> w.root?.packageName?.toString() } ?: emptyList()
-                    val winReason = "WINDOWS: $winPkgs"
-                    Log.w("OTW_COUPANG_DEBUG", winReason)
-                    FilterLog.record(this, DeliveryCall(
-                        price = 0, distance = null, isMulti = false, platform = "쿠팡진단",
-                        rawText = winReason, parseSuccess = false
-                    ), CallFilter.FilterResult(CallFilter.Verdict.REJECT, winReason))
+                    DiagnosticLog.record(pkg, event.eventType, "WINDOWS", winPkgs.toString())
                 } catch (e: Exception) {}
             }
         }
@@ -620,6 +613,8 @@ class OnTheWayService : AccessibilityService() {
                 val sessionPoint = BaeminParser.parsePoint(texts)
                 for (call in sessionCalls) {
                     BaeminBundleSession.addCallData(call.price, call.point ?: sessionPoint, call.storeName)
+                    // v3.18: SessionManager에 이벤트 기록
+                    sessionManager?.onEventReceived("baemin", call.storeName, call.price, "accessibility_event")
                 }
 
                 // 대기 중인 debounce 버퍼도 세션으로 드레인
@@ -636,6 +631,11 @@ class OnTheWayService : AccessibilityService() {
                     bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
                     PerfTrace.mark("BAEMIN", "session_finalize")
                     SessionStats.onBundleFinalized(this)
+                    // v3.19: 묶음 suppression 등록 (finalize 전에 키 추출)
+                    val suppressionKeys = BaeminBundleSession.getSuppressionKeys()
+                    sessionManager?.registerBundleSuppression(suppressionKeys)
+                    // v3.18: SessionManager 경유
+                    sessionManager?.finalizeActiveSession("bundle_finalized")
                     val bundleCall = BaeminBundleSession.finalize()
                     if (bundleCall != null) {
                         var enrichedBundle = bundleCall
@@ -728,6 +728,8 @@ class OnTheWayService : AccessibilityService() {
         // ── 쿠팡: 즉시 처리 (debounce 없음) ──
         for (pending in pendingCalls) {
             processDeliveryCall(pending, now)
+            // v3.18: 쿠팡은 알림 도착 = 즉시 finalize
+            sessionManager?.finalizeActiveSession("coupang_immediate")
         }
 
         // 오래된 히스토리 정리
@@ -775,6 +777,10 @@ class OnTheWayService : AccessibilityService() {
         bundleTimeoutRunnable = Runnable {
             if (BaeminBundleSession.isActive()) {
                 SessionStats.onBundleTimeout(this)
+                // v3.19: 타임아웃에서도 suppression 등록
+                val suppressionKeys = BaeminBundleSession.getSuppressionKeys()
+                sessionManager?.registerBundleSuppression(suppressionKeys)
+                sessionManager?.finalizeActiveSession("bundle_timeout")
                 val bundleCall = BaeminBundleSession.finalizeOnTimeout()
                 if (bundleCall != null) {
                     val result = CallFilter.judge(bundleCall, this)
@@ -816,8 +822,15 @@ class OnTheWayService : AccessibilityService() {
             TtsDeduplicator.recordBundleTotal(call.platform, call.price)
         }
 
+        // v3.18: SessionManager 경유
+        val callSessionEvt = sessionManager?.onEventReceived(
+            platformName, call.storeName, call.price, "delivery_process"
+        )
+
         // 로그 기록 (enriched call로 기록하여 포인트 환산거리 포함)
-        FilterLog.record(this, enrichedCall, result, baeminPoint)
+        FilterLog.record(this, enrichedCall, result, baeminPoint,
+            eventId = callSessionEvt?.eventId,
+            sessionState = callSessionEvt?.state?.name)
         // 마지막 감지 시각 기록 (상태 표시용)
         lastCallDetectedTime = now
 
@@ -1050,6 +1063,13 @@ class OnTheWayService : AccessibilityService() {
         try { startGps() } catch (e: Exception) { Log.w("OnTheWay", "GPS 초기화 실패: ${e.message}") }
         try { VoiceControl.start(this) } catch (e: Exception) { Log.w("OnTheWay", "음성제어 초기화 실패: ${e.message}") }
         try { CallLogDb.get(this).cleanup() } catch (e: Exception) { Log.w("OnTheWay", "DB 정리 실패: ${e.message}") }
+        try { DiagnosticLog.init(this) } catch (e: Exception) { Log.w("OnTheWay", "DiagnosticLog 초기화 실패: ${e.message}") }
+        try {
+            val transitionLog = StateTransitionLog(this)
+            sessionManager = SessionManager(transitionLog)
+            // 3일 이상 된 전이 로그 정리
+            transitionLog.clearOld(System.currentTimeMillis() - 3 * 24 * 60 * 60 * 1000L)
+        } catch (e: Exception) { Log.w("OnTheWay", "SessionManager 초기화 실패: ${e.message}") }
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
     }
 

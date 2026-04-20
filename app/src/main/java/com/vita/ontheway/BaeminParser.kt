@@ -4,6 +4,14 @@ import android.util.Log
 
 object BaeminParser {
 
+    // 배민 포인트→거리 환산 계수 (v3.10)
+    // 2026-04-19 실측 검증: 38.3P→6km, 50.5P→8km, 53.9P→8~9km
+    // 기존 0.25 → 0.15 (실측 기반 약 60% 수준)
+    const val BAEMIN_POINT_TO_KM = 0.15
+
+    /** 배민 포인트 → 추정 거리(km) 변환 */
+    fun convertPointToKm(points: Double): Double = points * BAEMIN_POINT_TO_KM
+
     private val PRICE_PATTERN = Regex("배달료\\s*([\\d,]+)\\s*원")
     private val AMOUNT_PATTERN = Regex("^([\\d,]+)\\s*원$")
     private val POINT_PATTERN = Regex("([\\d.]+)\\s*P", RegexOption.IGNORE_CASE)
@@ -17,16 +25,35 @@ object BaeminParser {
         val results = mutableListOf<DeliveryCall>()
         val joined = texts.joinToString(" ")
 
-        // 가게명/전달지 추출
+        // v3.17: 가게명 추출 — "픽업지" 다음 토큰 우선, 기존 패턴 매칭 보조
+        val UI_LABELS = setOf(
+            "배민배달", "배민커넥트", "픽업지", "전달지", "포인트", "총 합계", "총합계",
+            "모두 거절", "지도앱으로 검색하기", "조리완료", "배차", "배차 수락",
+            "배달료", "수락", "거절"
+        )
+        val UI_PATTERN = Regex("""^\d+(건|초|분)""")
+
+        // 방법1: "픽업지" 다음 토큰 (가장 정확)
+        val pickupIdx = texts.indexOfFirst { it.trim() == "픽업지" }
+        val storeAfterPickup = if (pickupIdx >= 0 && pickupIdx + 1 < texts.size) {
+            val candidate = texts[pickupIdx + 1].trim()
+            if (candidate.isNotBlank() && candidate !in UI_LABELS && !UI_PATTERN.containsMatchIn(candidate)
+                && !PRICE_PATTERN.containsMatchIn(candidate) && !candidate.contains("원") && !candidate.contains("P"))
+                candidate else null
+        } else null
+
+        // 방법2: 기존 패턴 매칭
         val storeNames = texts.filter { t ->
-            t.length in 2..20 &&
-            !PRICE_PATTERN.containsMatchIn(t) &&
-            !t.contains("배달료") && !t.contains("원") && !t.contains("P") &&
-            !t.contains("배달을") && !t.contains("신규배차") &&
-            STORE_PATTERN.matches(t.trim())
+            t.trim().let { tt ->
+                tt.length in 2..30 && tt !in UI_LABELS && !UI_PATTERN.containsMatchIn(tt) &&
+                !PRICE_PATTERN.containsMatchIn(tt) &&
+                !tt.contains("배달료") && !tt.contains("원") && !tt.contains("P") &&
+                !tt.contains("배달을") && !tt.contains("신규배차") &&
+                STORE_PATTERN.matches(tt)
+            }
         }.map { it.trim() }.distinct()
 
-        val storeName = storeNames.firstOrNull() ?: ""
+        val storeName = storeAfterPickup ?: storeNames.firstOrNull() ?: ""
 
         val destination = texts.firstOrNull { t ->
             t.length in 3..30 && DEST_PATTERN.matches(t.trim())

@@ -55,7 +55,14 @@
       "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew testDebugUnitTest --tests \"com.vita.ontheway.CallSimulationTest\")",
       "Bash(find app/build/test-results -name *.xml 2)",
       "Bash(/dev/null -exec grep -l \"testsuites\\\\|testsuite\" {})",
-      "Bash(/dev/null -exec grep -c 'testcase ' {})"
+      "Bash(/dev/null -exec grep -c 'testcase ' {})",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew test)",
+      "Bash(sort -t: -k1,1 -k2,2n)",
+      "Bash(JAVA_HOME=\"C:/Program Files/Android/Android Studio/jbr\" ./gradlew clean)",
+      "Bash(head -5 \"/c/Users/hjrha/AndroidStudioProjects/OnTheWay/app/src/main/java/com/vita/ontheway\"/*.kt)",
+      "Bash(./gradlew clean:*)",
+      "Bash(export 'JAVA_HOME=/c/Program Files/Android/Android Studio/jbr')",
+      "Bash(./gradlew testDebugUnitTest --tests \"com.vita.ontheway.CallSimulationTest\")"
     ]
   }
 }

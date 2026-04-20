@@ -26,6 +26,7 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var sessionManager: SessionManager? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -35,6 +36,11 @@ class DeliveryNotificationService : NotificationListenerService() {
                 ttsReady = true
                 Log.d("DeliveryNoti", "TTS 초기화 완료")
             }
+        }
+        try {
+            sessionManager = SessionManager(StateTransitionLog(this))
+        } catch (e: Exception) {
+            Log.w("DeliveryNoti", "SessionManager 초기화 실패: ${e.message}")
         }
     }
 
@@ -102,9 +108,17 @@ class DeliveryNotificationService : NotificationListenerService() {
                 Log.d("DeliveryNoti", "쿠팡 Accessibility 우선 - 알림 스킵: ${call.price}원")
                 continue
             }
+            // v3.18: SessionManager 경유
+            val session = sessionManager?.onEventReceived(
+                call.platform, call.storeName, call.price, "notification_posted"
+            )
             val result = CallFilter.judge(call, this)
             Log.d("DeliveryNoti", "파싱 결과: price=${call.price}, result=${result.verdict} (${result.reason})")
-            FilterLog.record(this, call, result)
+            FilterLog.record(this, call, result, eventId = session?.eventId, sessionState = session?.state?.name)
+            // 쿠팡은 알림 = 즉시 finalize
+            if (call.platform == "coupang") {
+                sessionManager?.finalizeActiveSession("notification_complete")
+            }
 
             // OnTheWayService의 lastCallDetectedTime도 갱신
             OnTheWayService.instance?.lastCallDetectedTime = now

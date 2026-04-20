@@ -112,7 +112,7 @@ object CallFilter {
             }
         }
 
-        // ── 묶음배달 건수별 판정 (v2 2.0) ──
+        // ── 묶음배달 건수별 판정 (v2 2.0, v3.9 슬라이더 우선순위 통합) ──
         if (call.isMulti) {
             val bundleCount = call.bundleCount.coerceAtLeast(2)
             val bundleMin = bundleMinPrice(bundleCount)
@@ -127,13 +127,21 @@ object CallFilter {
                 bundleCount >= 2 -> 7000
                 else -> 0
             } else 0
-            val effectiveMin = maxOf(bundleMin, multiPickupMin)
+            // v3.9: 슬라이더 묶음 최소금액과 내장 기준 중 더 엄격한 쪽 적용
+            val sliderMultiMin = getMultiMinPrice(ctx)
+            val effectiveMin = maxOf(bundleMin, multiPickupMin, sliderMultiMin)
             val multiPickupTag = if (call.isMultiPickup) ", 다중 픽업" else ""
 
             // 고액 묶음 보호
             if (call.price >= bundleHigh) {
                 return FilterResult(Verdict.ACCEPT,
                     "고액 묶음 ${fmt.format(call.price)}원 ≥ ${fmt.format(bundleHigh)}원 ($bundleTag$multiPickupTag)")
+            }
+
+            // v3.9: 슬라이더 묶음 미달 시 명확한 사유
+            if (call.price < sliderMultiMin) {
+                return FilterResult(Verdict.REJECT,
+                    "슬라이더 묶음 기준 ${fmt.format(sliderMultiMin)}원 미달 ${fmt.format(call.price)}원 ($bundleTag$multiPickupTag)")
             }
 
             // 최소금액 미달
@@ -148,6 +156,18 @@ object CallFilter {
                     "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달 ($bundleTag$multiPickupTag)")
             }
 
+            // v3.11: 묶음 효율 판정 (건당 3,000원+ + 건당 거리 3km 이하 → 잡으세요)
+            val bundleDist = if (hasDist) call.distance!!
+                else if (call.point != null && call.point > 0) BaeminParser.convertPointToKm(call.point)
+                else null
+            if (bundleDist != null && bundleDist > 0) {
+                val distPerItem = bundleDist / bundleCount
+                if (perPrice >= 3000 && distPerItem <= 3.0) {
+                    return FilterResult(Verdict.ACCEPT,
+                        "잡으세요: 묶음 효율 건당 ${perPriceStr}원 ≥ 3,000원 + 건당 ${"%.1f".format(distPerItem)}km ≤ 3km ($bundleTag$multiPickupTag)")
+                }
+            }
+
             return FilterResult(Verdict.ACCEPT,
                 "묶음 통과 ${fmt.format(call.price)}원 ($bundleTag$multiPickupTag)")
         }
@@ -156,7 +176,7 @@ object CallFilter {
         val pointTag = if (call.platform == "baemin" && call.point != null && call.point > 0)
             ", 포인트 ${"%.1f".format(call.point)}P (참고용)" else ""
 
-        // ── 배민 포인트 구간별 최소금액 (v3.6) ──
+        // ── 배민 포인트 구간별 최소금액 (v3.6, v3.9 슬라이더 우선순위 통합) ──
         // 거리 정보 없는 배민 콜은 포인트 구간별 최소금액 적용
         if (call.platform == "baemin" && !hasDist) {
             val point = call.point ?: 0.0
@@ -166,7 +186,9 @@ object CallFilter {
                 else -> 5500
             }
             // 자동 기준 하향 적용
-            val effectivePointMin = (pointMinPrice - priceReduction).coerceAtLeast(MIN_PRICE_FLOOR)
+            val reducedPointMin = (pointMinPrice - priceReduction).coerceAtLeast(MIN_PRICE_FLOOR)
+            // v3.9: 슬라이더와 구간 기준 중 더 엄격한 쪽 적용
+            val effectivePointMin = maxOf(minPrice, reducedPointMin)
             val pointSegment = when {
                 point <= 0 -> "포인트없음"
                 point <= 15.0 -> "≤15P"
@@ -180,12 +202,18 @@ object CallFilter {
                     "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
 
+            // v3.9: 슬라이더 미달 시 명확한 사유 표시
+            if (call.price < minPrice) {
+                return FilterResult(Verdict.REJECT,
+                    "금액 ${fmt.format(call.price)}원 < 슬라이더 기준 ${fmt.format(minPrice)}원 미달 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+            }
+
             if (call.price > effectivePointMin) {
                 return FilterResult(Verdict.ACCEPT,
                     "금액 ${fmt.format(call.price)}원 > 구간기준 ${fmt.format(effectivePointMin)}원 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             } else {
                 return FilterResult(Verdict.REJECT,
-                    "금액 ${fmt.format(call.price)}원 ≤ 구간기준 ${fmt.format(effectivePointMin)}원 미달 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "금액 ${fmt.format(call.price)}원 ≤ 구간기준 ${fmt.format(effectivePointMin)}원 미달 ($pointSegment, 슬라이더 ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
         }
 
@@ -212,7 +240,11 @@ object CallFilter {
         // ACCEPT 사유
         return if (hasDist && unitPrice >= 2500 && call.distance!! <= 3.0) {
             FilterResult(Verdict.ACCEPT,
-                "단가 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                "잡으세요: 고단가 근거리 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+        } else if (hasDist && unitPrice >= 2000 && call.distance!! <= 2.0) {
+            // v3.11: 단거리 고단가 확대 (2,000원/km + 2km 이하)
+            FilterResult(Verdict.ACCEPT,
+                "잡으세요: 단거리 고단가 ${fmt.format(unitPrice)}원/km ≥ 2,000원 + 거리 ${"%.1f".format(call.distance)}km ≤ 2km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         } else if (hasDist) {
             FilterResult(Verdict.ACCEPT,
                 "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")

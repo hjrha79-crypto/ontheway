@@ -99,6 +99,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             return
         }
 
+        // v3.8: 오염 데이터 정리 마이그레이션
+        FilterLog.migrateV38Cleanup(this)
+
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.WHITE
         // 라이트 테마: 상태바 아이콘 어둡게
@@ -531,12 +534,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         return if (isGrab) "잡으세요" else "괜찮습니다"
     }
 
+    /** v3.15: 콜 상세 다이얼로그 — 판정 컬러 + 섹션 구조 + 사유 간결화 */
     private fun showCallDetail(entry: org.json.JSONObject) {
         val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
         val nf = java.text.NumberFormat.getNumberInstance()
         val ts = sdf.format(java.util.Date(entry.getLong("ts")))
-        val platform = when (entry.optString("platform")) {
-            "coupang" -> "쿠팡이츠"; "baemin" -> "배민커넥트"; "kakaot" -> "카카오T"; else -> "?"
+        val platformCode = entry.optString("platform", "")
+        val platformShort = when (platformCode) {
+            "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> "?"
         }
         val price = entry.optInt("price", 0)
         val dist = entry.optDouble("distanceKm", -1.0)
@@ -544,91 +549,229 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val verdict = entry.optString("verdict", "")
         val reason = entry.optString("reason", "")
         val storeName = entry.optString("storeName", "")
-        val destination = entry.optString("destination", "")
-        val isMulti = entry.optBoolean("multi", false)
-
-        val pointVal = entry.optDouble("point", -1.0)
-        val verdictKr = if (verdict == "REJECT") "넘기세요"
-        else if (price >= 10000) "잡으세요"
-        else if (price >= 7000 && ((dist in 0.0..3.0) || (pointVal in 0.0..15.0))) "잡으세요"
-        else if (unitPrice >= 2500 && dist in 0.0..3.0) "잡으세요"
-        else "괜찮습니다"
-
         val point = entry.optDouble("point", -1.0)
         val bundleCount = entry.optInt("bundleCount", 0)
+        val isMulti = entry.optBoolean("multi", false)
         val isMultiPickup = entry.optBoolean("multiPickup", false)
-
-        val sb = StringBuilder()
-        sb.appendLine("플랫폼: $platform")
-        sb.appendLine("금액: ${nf.format(price)}원")
-        if (dist >= 0) sb.appendLine("거리: ${"%.1f".format(dist)}km")
-        if (unitPrice > 0) sb.appendLine("단가: ${nf.format(unitPrice)}원/km")
-        // 포인트/환산거리 표시 (v2 2.0)
-        if (point > 0) {
-            val pointKm = point * 0.25
-            sb.appendLine("포인트: ${"%.1f".format(point)}P (환산 ${"%.1f".format(pointKm)}km)")
-            if (pointKm > 0) {
-                val pointUnit = (price / pointKm).toInt()
-                sb.appendLine("환산단가: ${nf.format(pointUnit)}원/km")
-            }
-        }
-        // v3.4: 픽업 거리 / 총거리 / 총단가
         val pickupKm = entry.optDouble("pickupKm", -1.0)
+
+        // 판정 결정 (reason 기반으로 "잡으세요" 감지)
+        val verdictKr: String
+        val verdictColor: Int
+        if (verdict == "REJECT") {
+            verdictKr = "넘기세요"
+            verdictColor = Color.parseColor("#E53935")
+        } else if (reason.contains("잡으세요")) {
+            verdictKr = "잡으세요"
+            verdictColor = Color.parseColor("#5B6ABF")
+        } else {
+            verdictKr = "괜찮습니다"
+            verdictColor = Color.parseColor("#4CAF50")
+        }
+
+        // ── 프로그래밍 방식 다이얼로그 뷰 구성 ──
+        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(8))
+        }
+
+        // 판정 (큰 글씨 + 컬러)
+        container.addView(TextView(this).apply {
+            text = verdictKr
+            textSize = 24f
+            setTextColor(verdictColor)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+
+        // 헤더: 플랫폼 · 금액
+        container.addView(TextView(this).apply {
+            text = "$platformShort · ${nf.format(price)}원"
+            textSize = 16f
+            setTextColor(Color.parseColor("#333333"))
+            setPadding(0, dp(4), 0, 0)
+        })
+
+        // 구분선
+        fun addDivider() {
+            container.addView(View(this@MainActivity).apply {
+                setBackgroundColor(Color.parseColor("#EEEEEE"))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
+                ).apply { topMargin = dp(12); bottomMargin = dp(12) }
+            })
+        }
+        addDivider()
+
+        // 섹션 행 추가 함수
+        fun addSection(label: String, value: String) {
+            val row = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(3), 0, dp(3))
+            }
+            row.addView(TextView(this@MainActivity).apply {
+                text = label
+                textSize = 14f
+                setTextColor(Color.parseColor("#888888"))
+                layoutParams = LinearLayout.LayoutParams(dp(72), LinearLayout.LayoutParams.WRAP_CONTENT)
+            })
+            row.addView(TextView(this@MainActivity).apply {
+                text = value
+                textSize = 14f
+                setTextColor(Color.parseColor("#333333"))
+            })
+            container.addView(row)
+        }
+
+        // 거리 섹션
+        if (platformCode == "baemin" && point > 0) {
+            val pointKm = BaeminParser.convertPointToKm(point)
+            addSection("거리", "약 ${"%.1f".format(pointKm)}km (${"%.1f".format(point)}P)")
+            if (pointKm > 0) {
+                addSection("단가", "${nf.format((price / pointKm).toInt())}원/km")
+            }
+        } else if (dist >= 0) {
+            addSection("거리", "${"%.1f".format(dist)}km")
+            if (unitPrice > 0) addSection("단가", "${nf.format(unitPrice)}원/km")
+        }
+
+        // 픽업/총거리
         if (pickupKm > 0) {
-            sb.appendLine("픽업 거리: ${"%.1f".format(pickupKm)}km")
+            addSection("픽업", "${"%.1f".format(pickupKm)}km")
             if (dist > 0) {
                 val totalKm = pickupKm + dist
-                val totalUnit = (price / totalKm).toInt()
-                sb.appendLine("총 거리: ${"%.1f".format(totalKm)}km")
-                sb.appendLine("총 단가: ${nf.format(totalUnit)}원/km")
+                addSection("총거리", "${"%.1f".format(totalKm)}km (${nf.format((price / totalKm).toInt())}원/km)")
             }
         }
-        if (isMulti) {
-            val countStr = if (bundleCount > 1) "${bundleCount}건" else "예"
-            val pickupStr = if (isMultiPickup) " (다중 픽업)" else ""
-            sb.appendLine("묶음배달: $countStr$pickupStr")
-        }
-        val platformNames = setOf("배민배달", "배민커넥트", "배민", "쿠팡이츠", "쿠팡", "카카오T")
-        if (storeName.isNotEmpty() && storeName !in platformNames) sb.appendLine("가게: $storeName")
-        if (destination.isNotEmpty() && !destination.contains("검색하기")) sb.appendLine("목적지: $destination")
-        sb.appendLine()
-        sb.appendLine("판정: $verdictKr")
-        sb.appendLine("사유: $reason")
-        sb.appendLine()
-        sb.appendLine("감지 시각: $ts")
 
+        // 묶음
+        if (isMulti && bundleCount > 1) {
+            val perItem = price / bundleCount
+            val pickupStr = if (isMultiPickup) " · 다중픽업" else ""
+            addSection("묶음", "${bundleCount}건 (건당 ${nf.format(perItem)}원$pickupStr)")
+        }
+
+        // 가게명 (정제) + 목적지
+        val destination = entry.optString("destination", "")
+        if (storeName.isNotEmpty()) {
+            val cleanedStores = StoreNameCleaner.clean(storeName)
+            if (cleanedStores.isNotEmpty()) {
+                addSection("가게", cleanedStores.joinToString("\n"))
+            }
+        }
+        if (destination.isNotEmpty() && !destination.contains("검색하기")) {
+            addSection("목적지", destination)
+        }
+
+        addDivider()
+
+        // 사유 (간결화)
+        val simplifiedReason = simplifyReason(reason, verdict)
+        addSection("사유", simplifiedReason)
+
+        addDivider()
+
+        // 시각 (라벨 + 값)
+        addSection("감지", ts)
+
+        // 다이얼로그 빌드
         val dlg = AlertDialog.Builder(this)
-            .setTitle("콜 상세 정보")
-            .setMessage(sb.toString())
+            .setView(container)
             .setPositiveButton("확인", null)
 
-        // v3.3: 즐겨찾기/블랙리스트 버튼 (가게명이 있을 때만)
-        if (storeName.isNotEmpty()) {
-            val platformNames = setOf("배민배달", "배민커넥트", "배민", "쿠팡이츠", "쿠팡", "카카오T")
-            if (storeName !in platformNames) {
-                if (StoreManager.isFavorite(this, storeName)) {
-                    dlg.setNeutralButton("즐겨찾기 해제") { _, _ ->
-                        StoreManager.removeFavorite(this, storeName)
-                        android.widget.Toast.makeText(this, "$storeName 즐겨찾기 해제", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                } else if (StoreManager.isBlacklisted(this, storeName)) {
-                    dlg.setNeutralButton("블랙리스트 해제") { _, _ ->
-                        StoreManager.removeBlacklist(this, storeName)
-                        android.widget.Toast.makeText(this, "$storeName 블랙리스트 해제", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    dlg.setNeutralButton("즐겨찾기") { _, _ ->
-                        StoreManager.addFavorite(this, storeName, entry.optString("platform", ""))
-                        android.widget.Toast.makeText(this, "$storeName 즐겨찾기 추가", android.widget.Toast.LENGTH_SHORT).show()
-                    }
-                    dlg.setNegativeButton("블랙리스트") { _, _ ->
-                        StoreManager.addBlacklist(this, storeName, entry.optString("platform", ""))
-                        android.widget.Toast.makeText(this, "$storeName 블랙리스트 추가", android.widget.Toast.LENGTH_SHORT).show()
-                    }
+        // v3.17: 즐겨찾기/블랙리스트 버튼 (가게명 > 목적지 > rawText 순 대체)
+        val cleanedName = if (storeName.isNotEmpty()) StoreNameCleaner.cleanToString(storeName) else ""
+        val rawText = entry.optString("rawText", "")
+        val storeKey = when {
+            cleanedName.isNotEmpty() -> storeName
+            destination.isNotEmpty() && !destination.contains("검색하기") -> destination
+            rawText.isNotEmpty() -> rawText.take(30)
+            else -> ""
+        }
+        val displayName = when {
+            cleanedName.isNotEmpty() -> cleanedName
+            destination.isNotEmpty() && !destination.contains("검색하기") -> destination
+            else -> "$platformShort 콜"
+        }
+        if (storeKey.isNotEmpty()) {
+            if (StoreManager.isFavorite(this, storeKey)) {
+                dlg.setNeutralButton("즐겨찾기 해제") { _, _ ->
+                    StoreManager.removeFavorite(this, storeKey)
+                    android.widget.Toast.makeText(this, "$displayName 즐겨찾기 해제", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } else if (StoreManager.isBlacklisted(this, storeKey)) {
+                dlg.setNeutralButton("블랙리스트 해제") { _, _ ->
+                    StoreManager.removeBlacklist(this, storeKey)
+                    android.widget.Toast.makeText(this, "$displayName 블랙리스트 해제", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                dlg.setNeutralButton("즐겨찾기") { _, _ ->
+                    StoreManager.addFavorite(this, storeKey, platformCode)
+                    android.widget.Toast.makeText(this, "$displayName 즐겨찾기 추가", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                dlg.setNegativeButton("블랙리스트") { _, _ ->
+                    StoreManager.addBlacklist(this, storeKey, platformCode)
+                    android.widget.Toast.makeText(this, "$displayName 블랙리스트 추가", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }
         dlg.show()
+    }
+
+    /** v3.17: 판정 사유 간결화 */
+    private fun simplifyReason(raw: String, verdict: String): String {
+        return when {
+            // --- REJECT ---
+            verdict == "REJECT" && raw.contains("구간기준") -> {
+                val match = Regex("""구간기준\s*([\d,]+)원""").find(raw)
+                if (match != null) "구간 기준 ${match.groupValues[1]}원 미달" else raw
+            }
+            verdict == "REJECT" && raw.contains("슬라이더") -> {
+                val match = Regex("""슬라이더[^\d]*([\d,]+)원""").find(raw)
+                if (match != null) "슬라이더 기준 ${match.groupValues[1]}원 미달" else "슬라이더 기준 미달"
+            }
+            verdict == "REJECT" && raw.contains("최소기준") -> {
+                val match = Regex("""최소기준\s*([\d,]+)원""").find(raw)
+                if (match != null) "최소 기준 ${match.groupValues[1]}원 미달" else raw
+            }
+            verdict == "REJECT" && raw.contains("단가") && raw.contains("미달") -> {
+                val match = Regex("""단가\s*([\d,]+)원/km""").find(raw)
+                if (match != null) "단가 ${match.groupValues[1]}원/km 미달" else raw
+            }
+            verdict == "REJECT" && raw.contains("묶음") -> {
+                val match = Regex("""기준\s*([\d,]+)원""").find(raw)
+                if (match != null) "묶음 기준 ${match.groupValues[1]}원 미달" else raw
+            }
+            // --- ACCEPT: 잡으세요 (한글 설명 추출) ---
+            verdict != "REJECT" && raw.contains("잡으세요") -> {
+                val match = Regex("""잡으세요:\s*([가-힣]+\s*[가-힣]+)""").find(raw)
+                if (match != null) "잡으세요 · ${match.groupValues[1].trim()}" else "잡으세요"
+            }
+            // --- ACCEPT: 쿠팡/단건 단가+거리 기반 ---
+            verdict != "REJECT" && raw.contains("단가") && raw.contains("≥") && raw.contains("거리") -> {
+                when {
+                    raw.contains("≤ 3km") || raw.contains("≤ 3.0km") -> "고단가 근거리"
+                    raw.contains("≤ 2km") || raw.contains("≤ 2.0km") -> "단거리 고단가"
+                    else -> "단가 기준 통과"
+                }
+            }
+            // --- ACCEPT: 구간 기준 통과 ---
+            verdict != "REJECT" && raw.contains("구간기준") -> "구간 기준 통과"
+            // --- ACCEPT: 묶음 통과/효율 ---
+            verdict != "REJECT" && raw.contains("묶음 효율") -> {
+                val match = Regex("""건당\s*([\d,]+)원""").find(raw)
+                if (match != null) "묶음 효율 (건당 ${match.groupValues[1]}원)" else "묶음 효율"
+            }
+            verdict != "REJECT" && raw.contains("묶음 통과") -> {
+                val match = Regex("""건당\s*([\d,]+)원""").find(raw)
+                if (match != null) "묶음 통과 (건당 ${match.groupValues[1]}원)" else "묶음 통과"
+            }
+            // --- ACCEPT: 고액/고단가/일반 ---
+            verdict != "REJECT" && raw.contains("고액") -> "고액 콜"
+            verdict != "REJECT" && raw.contains("단가") && raw.contains("≥") -> "단가 기준 통과"
+            verdict != "REJECT" && raw.contains("최소기준") -> "기준 통과"
+            else -> raw
+        }
     }
 
     // ═══ 수익 (콤팩트 1줄 헤더 + 서브라인) ═══
@@ -678,14 +821,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val recent = EarningsTracker.getRecentHourlyRate(this)
         val cumulative = EarningsTracker.getCumulativeHourlyRate(this)
 
-        if (recent == -1 && cumulative == -1) {
-            hourlyRateCard.visibility = View.GONE
-            return
-        }
-
+        // v3.16: 항상 카드 표시 (데이터 없으면 "—원/h")
         hourlyRateCard.visibility = View.VISIBLE
-        recentHourlyRate.text = if (recent >= 0) "${fmt(recent)}원/h" else "-"
-        cumulativeHourlyRate.text = if (cumulative >= 0) "${fmt(cumulative)}원/h" else "-"
+        recentHourlyRate.text = if (recent >= 0) "${fmt(recent)}원/h" else "—원/h"
+        cumulativeHourlyRate.text = if (cumulative >= 0) "${fmt(cumulative)}원/h" else "—원/h"
     }
 
     private fun updateAppCheckDisplay() {

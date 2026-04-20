@@ -503,9 +503,48 @@ class SettingsActivity : AppCompatActivity() {
         // 쿠팡 진단 모드
         advCard.addView(advancedToggle(
             "쿠팡 진단 모드",
-            "쿠팡 Accessibility 이벤트를 FilterLog에 기록 (디버그용)",
+            "쿠팡 Accessibility 이벤트를 DiagnosticLog에 기록 (디버그용)",
             AdvancedPrefs.isCoupangDebugEnabled(this)
         ) { checked -> AdvancedPrefs.setCoupangDebug(this, checked) })
+
+        // v3.14: 진단 로그 관리 UI
+        DiagnosticLog.init(this)
+        val diagContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(4), dp(16), dp(12))
+        }
+        val diagCountText = TextView(this).apply {
+            text = "진단 로그 ${DiagnosticLog.count()}건 저장됨"
+            textSize = 12f; setTextColor(Color.GRAY)
+        }
+        diagContainer.addView(diagCountText)
+        val diagBtnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(8), 0, 0)
+        }
+        diagBtnRow.addView(Button(this).apply {
+            text = "CSV 내보내기"
+            textSize = 12f
+            setOnClickListener {
+                val path = DiagnosticLog.exportCsv(this@SettingsActivity)
+                if (path != null) {
+                    Toast.makeText(this@SettingsActivity, "저장: $path", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this@SettingsActivity, "내보낼 로그 없음", Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
+        diagBtnRow.addView(Button(this).apply {
+            text = "로그 삭제"
+            textSize = 12f
+            setOnClickListener {
+                DiagnosticLog.clear()
+                diagCountText.text = "진단 로그 0건 저장됨"
+                Toast.makeText(this@SettingsActivity, "진단 로그 삭제됨", Toast.LENGTH_SHORT).show()
+            }
+        })
+        diagContainer.addView(diagBtnRow)
+        advCard.addView(diagContainer)
 
         // v3.5: 플로팅 오버레이
         advCard.addView(advancedToggle(
