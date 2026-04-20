@@ -35,7 +35,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var earningText: TextView
     private lateinit var earningMeta: TextView
     private lateinit var progressFill: View
-    private lateinit var voiceManager: VoiceManager
+
     private lateinit var filterStatusText: TextView
     private lateinit var filterCountText: TextView
     private lateinit var tabStatus: TextView
@@ -52,7 +52,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var appCheckText: TextView
     private var currentTab = "status"  // "status" or "chat"
 
-    private var partialBubble: TextView? = null
     private val messages = mutableListOf<Pair<String, String>>()
     private var isSpeaking = false
     private var todayEarning = 0
@@ -88,6 +87,26 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private val WC = ViewGroup.LayoutParams.WRAP_CONTENT
     private fun lp(w: Int, h: Int, wt: Float = 0f) = LinearLayout.LayoutParams(w, h, wt)
     private fun fmt(n: Int) = String.format("%,d", n)
+
+    private val sdfHms = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+    private val sdfHm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+    private val sdfMdHm = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+
+    /** 상대 날짜 시각 표시: 오늘→"HH:mm:ss", 어제→"어제 HH:mm", 이전→"MM-dd HH:mm" */
+    private fun formatRelativeTime(ts: Long): String {
+        val tsCal = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+        val today = java.util.Calendar.getInstance()
+        if (tsCal.get(java.util.Calendar.YEAR) == today.get(java.util.Calendar.YEAR) &&
+            tsCal.get(java.util.Calendar.DAY_OF_YEAR) == today.get(java.util.Calendar.DAY_OF_YEAR)) {
+            return sdfHms.format(java.util.Date(ts))
+        }
+        today.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        if (tsCal.get(java.util.Calendar.YEAR) == today.get(java.util.Calendar.YEAR) &&
+            tsCal.get(java.util.Calendar.DAY_OF_YEAR) == today.get(java.util.Calendar.DAY_OF_YEAR)) {
+            return "어제 ${sdfHm.format(java.util.Date(ts))}"
+        }
+        return sdfMdHm.format(java.util.Date(ts))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -158,27 +177,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         earningMeta.textSize = 11f * fs
         inputField.textSize = 15f * fs
 
-        voiceManager = VoiceManager(
-            context = this,
-            onReady  = { micBtn.text = "\uD83D\uDD34" },
-            onPartial = { text -> showPartialBubble(text) },
-            onResult  = { text ->
-                clearPartialBubble()
-                // 음성 수락 명령 감지
-                if (OnTheWayService.instance?.tryVoiceAccept(text) == true) {
-                    // 수락 처리됨 - 채팅에 보내지 않음
-                } else {
-                    sendMessage(text)
-                }
-            }
-        )
 
         statsBtn.setOnClickListener { startActivity(Intent(this, StatsActivity::class.java)) }
         favBtn.setOnClickListener { showPlaceSettings() }
         settingsBtn.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         earningText.setOnClickListener { startActivity(Intent(this, StatsActivity::class.java)) }
         earningText.setOnLongClickListener { startActivity(Intent(this, SettingsActivity::class.java)); true }
-        micBtn.setOnClickListener { toggleVoice() }
+
         sendBtn.setOnClickListener {
             val t = inputField.text.toString().trim()
             if (t.isNotEmpty()) { sendMessage(t); inputField.setText("") }
@@ -197,10 +202,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tabChat.setOnClickListener { switchTab("chat") }
         switchTab("status")  // 기본값: 상태 탭
 
-        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
-            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 200)
-        }
 
         todayEarning = EarningManager.getTodayEarning(this)
         todayGoalAmt = EarningManager.getGoal(this)
@@ -448,9 +449,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             return
         }
 
-        val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
         for (entry in logs) {
-            val ts = sdf.format(java.util.Date(entry.getLong("ts")))
+            val ts = formatRelativeTime(entry.getLong("ts"))
             val platform = when (entry.optString("platform")) {
                 "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오"; else -> "?"
             }
@@ -536,9 +536,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     /** v3.15: 콜 상세 다이얼로그 — 판정 컬러 + 섹션 구조 + 사유 간결화 */
     private fun showCallDetail(entry: org.json.JSONObject) {
-        val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
         val nf = java.text.NumberFormat.getNumberInstance()
-        val ts = sdf.format(java.util.Date(entry.getLong("ts")))
+        val ts = formatRelativeTime(entry.getLong("ts"))
         val platformCode = entry.optString("platform", "")
         val platformShort = when (platformCode) {
             "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> "?"
@@ -1061,40 +1060,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         currentDialog?.window?.setBackgroundDrawable(ColorDrawable(C_CARD))
     }
 
-    private fun toggleVoice() {
-        voiceManager.continuous = !voiceManager.continuous
-        if (voiceManager.continuous) {
-            micBtn.setBackgroundResource(R.drawable.mic_active_bg)
-            micBtn.text = "\uD83D\uDD34"
-            voiceManager.isSpeaking = false
-            voiceManager.start()
-        } else {
-            micBtn.setBackgroundResource(R.drawable.mic_bg)
-            micBtn.text = "\uD83C\uDFA4"
-            voiceManager.stop(); clearPartialBubble()
-        }
-    }
 
-    private fun showPartialBubble(text: String) {
-        if (partialBubble == null) {
-            val wrapper = LinearLayout(this).apply { gravity = Gravity.END; tag = "partial" }
-            partialBubble = TextView(this).apply {
-                textSize = 14f; setTextColor(Color.parseColor("#999999"))
-                setBackgroundResource(R.drawable.user_bubble_bg)
-                alpha = 0.5f
-                setPadding(dp(14), dp(10), dp(14), dp(10))
-            }
-            wrapper.addView(partialBubble!!, lp(WC, WC).apply { setMargins(dp(80), dp(2), 0, dp(2)) })
-            chatLayout.addView(wrapper)
-        }
-        partialBubble?.text = "🎤 $text"
-        scrollToBottom()
-    }
-
-    private fun clearPartialBubble() {
-        chatLayout.findViewWithTag<View>("partial")?.let { chatLayout.removeView(it) }
-        partialBubble = null
-    }
 
     private fun sendMessage(text: String) {
         val trimmed = text.trim()
@@ -1210,7 +1176,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             state?.let {
                 OnTheWayService.currentDir = it.destination
                 OnTheWayService.currentDest = it.destination
-                voiceManager.continuous = false; voiceManager.stop()
                 runOnUiThread {
                     micBtn.setBackgroundResource(R.drawable.mic_bg)
                     micBtn.text = "\uD83C\uDFA4"
@@ -1454,16 +1419,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun speak(text: String) {
-        if (!::tts.isInitialized || !::voiceManager.isInitialized) return
+        if (!::tts.isInitialized) return
         val clean = text.replace(Regex("[\\p{So}\\p{Cn}]+"), "").trim()
-        isSpeaking = true; voiceManager.isSpeaking = true; voiceManager.stop()
+        isSpeaking = true
         tts.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "utt")
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onDone(id: String?) {
-                isSpeaking = false; voiceManager.isSpeaking = false
-                if (voiceManager.continuous) mainHandler.postDelayed({ voiceManager.start() }, 500)
-            }
-            override fun onError(id: String?) { isSpeaking = false; voiceManager.isSpeaking = false }
+            override fun onDone(id: String?) { isSpeaking = false }
+            override fun onError(id: String?) { isSpeaking = false }
             override fun onStart(id: String?) {}
         })
     }
@@ -1493,7 +1455,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     override fun onPause() {
         super.onPause()
-        if (::voiceManager.isInitialized) { voiceManager.continuous = false; voiceManager.stop() }
         if (::micBtn.isInitialized) { micBtn.setBackgroundResource(R.drawable.mic_bg); micBtn.text = "\uD83C\uDFA4" }
     }
 
@@ -1510,7 +1471,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
-        if (::voiceManager.isInitialized) { voiceManager.stop() }
         if (::tts.isInitialized) { tts.stop(); tts.shutdown() }
         super.onDestroy()
     }

@@ -62,7 +62,10 @@
       "Bash(head -5 \"/c/Users/hjrha/AndroidStudioProjects/OnTheWay/app/src/main/java/com/vita/ontheway\"/*.kt)",
       "Bash(./gradlew clean:*)",
       "Bash(export 'JAVA_HOME=/c/Program Files/Android/Android Studio/jbr')",
-      "Bash(./gradlew testDebugUnitTest --tests \"com.vita.ontheway.CallSimulationTest\")"
+      "Bash(./gradlew testDebugUnitTest --tests \"com.vita.ontheway.CallSimulationTest\")",
+      "Bash(cd:*)",
+      "Bash(./gradlew compileDebugKotlin)",
+      "Bash(./gradlew testDebugUnitTest)"
     ]
   }
 }

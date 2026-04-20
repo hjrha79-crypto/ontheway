@@ -553,12 +553,6 @@ class SettingsActivity : AppCompatActivity() {
             FloatingOverlay.isEnabled(this)
         ) { checked -> FloatingOverlay.setEnabled(this, checked) })
 
-        // v3.5: 음성 제어
-        advCard.addView(advancedToggle(
-            "음성 제어",
-            "잡아/넘겨/오늘얼마/기준올려/기준내려 음성 명령",
-            VoiceControl.isEnabled(this)
-        ) { checked -> VoiceControl.setEnabled(this, checked) })
 
         // v3.5: 배터리 절약 모드
         advCard.addView(advancedToggle(

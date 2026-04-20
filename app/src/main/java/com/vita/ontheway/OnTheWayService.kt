@@ -65,7 +65,7 @@ class OnTheWayService : AccessibilityService() {
 
         // 수락 관련 상수
         val ACCEPT_BUTTON_TEXTS = listOf("배차수락", "배차 수락", "주문 수락", "주문수락", "수락하기", "모두 수락")
-        val VOICE_ACCEPT_COMMANDS = setOf("잡아", "수락", "이거")
+
         const val ACCEPT_TIMEOUT_MS = 30_000L
         const val AUTO_ACCEPT_COOLDOWN_MS = 60_000L
         const val NOTIF_CHANNEL_ID = "otw_service"
@@ -469,21 +469,6 @@ class OnTheWayService : AccessibilityService() {
         }
     }
 
-    /** 음성 명령으로 수락 시도 (외부 호출용) */
-    fun tryVoiceAccept(command: String): Boolean {
-        if (VOICE_ACCEPT_COMMANDS.any { command.contains(it) }) {
-            if (CallFilter.isVoiceAcceptEnabled(this)) {
-                // 실제 수락
-                acceptCurrentCall()
-            } else {
-                // 테스트 모드: TTS만, 실제 클릭 안 함
-                speakTts("수락하시겠습니까?")
-                Log.d("OnTheWay", "음성 수락 테스트 모드 - 실제 클릭 안 함")
-            }
-            return true
-        }
-        return false
-    }
 
     private fun findNodeByText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
         if (node.text?.toString()?.contains(text) == true) return node
@@ -960,7 +945,7 @@ class OnTheWayService : AccessibilityService() {
         return sb.toString()
     }
 
-    /** 외부에서 TTS 호출 (VoiceControl 등) */
+    /** 외부에서 TTS 호출 */
     fun speakTtsPublic(text: String) = speakTts(text)
 
     /** v3.1: TTS 설정 반영 (속도, 볼륨 부스트) */
@@ -1061,7 +1046,6 @@ class OnTheWayService : AccessibilityService() {
         // 각 모듈 초기화는 개별 try-catch (하나 실패해도 서비스 계속)
         try { startForegroundNotification() } catch (e: Exception) { Log.w("OnTheWay", "알림 초기화 실패: ${e.message}") }
         try { startGps() } catch (e: Exception) { Log.w("OnTheWay", "GPS 초기화 실패: ${e.message}") }
-        try { VoiceControl.start(this) } catch (e: Exception) { Log.w("OnTheWay", "음성제어 초기화 실패: ${e.message}") }
         try { CallLogDb.get(this).cleanup() } catch (e: Exception) { Log.w("OnTheWay", "DB 정리 실패: ${e.message}") }
         try { DiagnosticLog.init(this) } catch (e: Exception) { Log.w("OnTheWay", "DiagnosticLog 초기화 실패: ${e.message}") }
         try {
@@ -1193,7 +1177,6 @@ class OnTheWayService : AccessibilityService() {
         ttsReady = false
         try { locationManager?.removeUpdates(locationListener) } catch (e: Exception) {}
         gpsActive = false
-        try { VoiceControl.stop() } catch (e: Exception) {}
         try { FloatingOverlay.hide() } catch (e: Exception) {}
         BaeminBundleSession.reset()
         bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
