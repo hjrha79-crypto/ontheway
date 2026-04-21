@@ -35,15 +35,15 @@ class CallSimulationTest {
     // ---- 배민 단일 콜 ----
 
     @Test
-    fun `01 배민 저가 3000원 8P REJECT`() {
+    fun `01 배민 저가 3000원 8P ACCEPT`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 3,000원", "8.0P")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertEquals(3000, calls[0].price)
         assertEquals(8.0, calls[0].point!!, 0.01)
-        // 8P = 2km, 단가 1500원/km < 2000 -> REJECT
+        // v3.19: 포인트 테이블 제거 → 3000 >= minPrice(3000) → ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("01 PASS: ${result.reason}")
     }
 
@@ -94,13 +94,13 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `06 배민 고포인트 4000원 30P REJECT`() {
+    fun `06 배민 고포인트 4000원 30P ACCEPT`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 4,000원", "30.0P")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
-        // 30P > 25 -> 포인트구간 최소 5000원, 4000 < 5000 -> REJECT
+        // v3.19: 포인트 테이블 제거 → 4000 >= minPrice(3000) → ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("06 PASS: ${result.reason}")
     }
 
@@ -260,13 +260,13 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `22 배민 포인트구간 경계 16P 4000원 REJECT`() {
+    fun `22 배민 포인트구간 경계 16P 4000원 ACCEPT`() {
         val texts = listOf("맘스터치", "배달료 4,000원", "16.0P")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
-        // 16P → 16~25P 구간, 최소 4000원, 4000 ≤ 4000 → REJECT (초과만 ACCEPT)
+        // v3.19: 포인트 테이블 제거 → 4000 >= minPrice(3000) → ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("22 PASS: ${result.reason}")
     }
 
@@ -296,48 +296,46 @@ class CallSimulationTest {
     // ---- 추가: 포인트 구간 경계값 ----
 
     @Test
-    fun `25 배민 포인트 경계 15P 3000원 REJECT`() {
+    fun `25 배민 포인트 경계 15P 3000원 ACCEPT`() {
         val texts = listOf("맘스터치", "배달료 3,000원", "15.0P")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
-        // 15P=3.75km, pointMinPrice=3000, 3000>=3000 OK
-        // 환산단가 3000/3.75=800 < 2000 -> REJECT
+        // v3.19: 포인트 테이블 제거 → 3000 >= minPrice(3000) → ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("25 PASS: ${result.reason}")
     }
 
     @Test
-    fun `26 배민 포인트 16P 구간 3500원 REJECT`() {
+    fun `26 배민 포인트 16P 구간 3500원 ACCEPT`() {
         val texts = listOf("맘스터치", "배달료 3,500원", "16.0P")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
-        // 16P=4km, 15<16<=25 -> pointMinPrice=4000, 3500<4000 -> REJECT
+        // v3.19: 포인트 테이블 제거 → 3500 >= minPrice(3000) → ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("26 PASS: ${result.reason}")
     }
 
     @Test
-    fun `27 배민 포인트 경계 25P 4000원 REJECT`() {
+    fun `27 배민 포인트 경계 25P 4000원 ACCEPT`() {
         val texts = listOf("맘스터치", "배달료 4,000원", "25.0P")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
-        // 25P=6.25km, pointMinPrice=4000, 4000>=4000 OK
-        // 환산단가 4000/6.25=640 < 2000 -> REJECT
+        // v3.19: 포인트 테이블 제거 → 4000 >= minPrice(3000) → ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("27 PASS: ${result.reason}")
     }
 
     @Test
-    fun `28 배민 포인트 26P 구간 4500원 REJECT`() {
+    fun `28 배민 포인트 26P 구간 4500원 ACCEPT`() {
         val texts = listOf("맘스터치", "배달료 4,500원", "26.0P")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
-        // 26P>25 -> pointMinPrice=5000, 4500<5000 -> REJECT
+        // v3.19: 포인트 테이블 제거 → 4500 >= minPrice(3000) → ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("28 PASS: ${result.reason}")
     }
 
@@ -636,22 +634,64 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `48 슬라이더2500 구간3000 price2400 REJECT 슬라이더미달`() {
+    fun `48 슬라이더2500 price2400 REJECT 최소배달료미달`() {
         val sliderCtx = ctxWithSlider(2500)
         val call = DeliveryCall(price = 2400, distance = null, isMulti = false, platform = "baemin", point = 10.0)
         val result = CallFilter.judge(call, sliderCtx)
         assertEquals(CallFilter.Verdict.REJECT, result.verdict)
-        assertTrue("슬라이더 사유 포함", result.reason.contains("슬라이더"))
-        println("48 PASS: slider=2500, range=3000, price=2400 → ${result.verdict} (${result.reason})")
+        assertTrue("최소배달료 사유 포함", result.reason.contains("최소배달료"))
+        println("48 PASS: slider=2500, price=2400 → ${result.verdict} (${result.reason})")
     }
 
     @Test
-    fun `49 슬라이더2500 구간3000 price2700 REJECT 구간미달`() {
+    fun `49 슬라이더2500 price2700 ACCEPT 슬라이더통과`() {
         val sliderCtx = ctxWithSlider(2500)
         val call = DeliveryCall(price = 2700, distance = null, isMulti = false, platform = "baemin", point = 10.0)
         val result = CallFilter.judge(call, sliderCtx)
+        // v3.19: 포인트 테이블 제거 → 2700 >= slider(2500) → ACCEPT
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
+        println("49 PASS: slider=2500, price=2700 → ${result.verdict} (${result.reason})")
+    }
+
+    // ---- v3.19: 포인트 테이블 제거 검증 테스트 ----
+
+    @Test
+    fun `거리없는_콜_슬라이더_최소배달료_이상_통과`() {
+        // 사용자 설정: 최소배달료 3000원 (기본값)
+        // 콜: 배민 3500원, 거리 없음, 포인트 20P (이전엔 구간 4000원 적용되던 케이스)
+        // 기대: ACCEPT
+        val call = DeliveryCall(price = 3500, distance = null, isMulti = false, platform = "baemin", point = 20.0)
+        val result = CallFilter.judge(call, ctx)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
+        println("v3.19 PASS: 3500원/20P → ${result.verdict} (${result.reason})")
+    }
+
+    @Test
+    fun `거리없는_콜_슬라이더_최소배달료_미만_거절`() {
+        // 사용자 설정: 최소배달료 3000원 (기본값)
+        // 콜: 배민 2500원, 거리 없음
+        // 기대: REJECT, 사유에 "최소배달료" 포함, "구간" 미포함
+        val call = DeliveryCall(price = 2500, distance = null, isMulti = false, platform = "baemin", point = 15.0)
+        val result = CallFilter.judge(call, ctx)
         assertEquals(CallFilter.Verdict.REJECT, result.verdict)
-        println("49 PASS: slider=2500, range=3000, price=2700 → ${result.verdict} (${result.reason})")
+        assertTrue("최소배달료 사유 포함", result.reason.contains("최소배달료"))
+        assertFalse("구간 용어 없음", result.reason.contains("구간"))
+        println("v3.19 PASS: 2500원/15P → ${result.verdict} (${result.reason})")
+    }
+
+    @Test
+    fun `구간기준_용어_판정사유에_절대_없음`() {
+        val testCases = listOf(
+            DeliveryCall(price = 3000, distance = null, isMulti = false, platform = "baemin", point = 20.0),
+            DeliveryCall(price = 5000, distance = null, isMulti = false, platform = "baemin", point = 30.0),
+            DeliveryCall(price = 2000, distance = null, isMulti = false, platform = "baemin", point = 10.0),
+        )
+        for (call in testCases) {
+            val result = CallFilter.judge(call, ctx)
+            assertFalse("구간 단어 발견: ${result.reason}",
+                result.reason.contains("구간"))
+        }
+        println("v3.19 PASS: 구간 용어 완전 제거 확인")
     }
 
     @Test

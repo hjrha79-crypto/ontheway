@@ -176,44 +176,20 @@ object CallFilter {
         val pointTag = if (call.platform == "baemin" && call.point != null && call.point > 0)
             ", 포인트 ${"%.1f".format(call.point)}P (참고용)" else ""
 
-        // ── 배민 포인트 구간별 최소금액 (v3.6, v3.9 슬라이더 우선순위 통합) ──
-        // 거리 정보 없는 배민 콜은 포인트 구간별 최소금액 적용
+        // ── 배민 거리 없는 콜: 슬라이더 minPrice 기준 판정 (v3.19: 포인트 테이블 제거) ──
         if (call.platform == "baemin" && !hasDist) {
-            val point = call.point ?: 0.0
-            val pointMinPrice = when {
-                point <= 0 || point <= 15.0 -> 3000
-                point <= 25.0 -> 4000
-                else -> 5500
-            }
-            // 자동 기준 하향 적용
-            val reducedPointMin = (pointMinPrice - priceReduction).coerceAtLeast(MIN_PRICE_FLOOR)
-            // v3.9: 슬라이더와 구간 기준 중 더 엄격한 쪽 적용
-            val effectivePointMin = maxOf(minPrice, reducedPointMin)
-            val pointSegment = when {
-                point <= 0 -> "포인트없음"
-                point <= 15.0 -> "≤15P"
-                point <= 25.0 -> "16~25P"
-                else -> "≥26P"
-            }
-
             // 고액 콜 보호
             if (call.price >= 7000) {
                 return FilterResult(Verdict.ACCEPT,
                     "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
 
-            // v3.9: 슬라이더 미달 시 명확한 사유 표시
-            if (call.price < minPrice) {
-                return FilterResult(Verdict.REJECT,
-                    "금액 ${fmt.format(call.price)}원 < 슬라이더 기준 ${fmt.format(minPrice)}원 미달 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
-            }
-
-            if (call.price > effectivePointMin) {
+            if (call.price >= minPrice) {
                 return FilterResult(Verdict.ACCEPT,
-                    "금액 ${fmt.format(call.price)}원 > 구간기준 ${fmt.format(effectivePointMin)}원 ($pointSegment)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "최소배달료 통과 (${fmt.format(call.price)}원 ≥ ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             } else {
                 return FilterResult(Verdict.REJECT,
-                    "금액 ${fmt.format(call.price)}원 ≤ 구간기준 ${fmt.format(effectivePointMin)}원 미달 ($pointSegment, 슬라이더 ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "최소배달료 ${fmt.format(call.price)}원 미달 (설정: ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
         }
 
