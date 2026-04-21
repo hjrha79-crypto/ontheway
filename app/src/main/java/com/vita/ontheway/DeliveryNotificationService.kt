@@ -134,21 +134,27 @@ class DeliveryNotificationService : NotificationListenerService() {
             val priceKr = toKoreanNumber(call.price)
             val unitKr = toKoreanNumber(unitPrice)
 
-            if (result.verdict == CallFilter.Verdict.REJECT) {
+            val verdict = if (result.verdict == CallFilter.Verdict.REJECT) "넘기세요" else {
+                val isTop = unitPrice >= 2500 && call.distance != null && call.distance <= 3.0
+                if (isTop) "잡으세요" else "괜찮습니다"
+            }
+
+            if (verdict == "넘기세요") {
                 speakTts("$pName, 넘기세요, ${priceKr}원")
                 Log.d("DeliveryNoti", "REJECT: ${call.price}원 - ${result.reason}")
-            } else {
-                val isTop = unitPrice >= 2500 && call.distance != null && call.distance <= 3.0
-                if (isTop) {
-                    speakTts("$pName, 잡으세요, 단가 $unitKr")
-                    Log.d("DeliveryNoti", "ACCEPT(잡으세요): ${call.price}원")
-                } else if (CallFilter.isOkVoiceEnabled(this)) {
-                    var msg = "$pName, 괜찮습니다"
-                    if (unitPrice > 0) msg += ", 단가 $unitKr"
-                    speakTts(msg)
-                    Log.d("DeliveryNoti", "ACCEPT(괜찮습니다): ${call.price}원")
-                }
+            } else if (verdict == "잡으세요") {
+                speakTts("$pName, 잡으세요, 단가 $unitKr")
+                Log.d("DeliveryNoti", "ACCEPT(잡으세요): ${call.price}원")
+            } else if (CallFilter.isOkVoiceEnabled(this)) {
+                speakTts("$pName, 괜찮습니다" + if (unitPrice > 0) ", 단가 $unitKr" else "")
+                Log.d("DeliveryNoti", "ACCEPT(괜찮습니다): ${call.price}원")
             }
+
+            // v3.19: Notification fallback — Accessibility 미처리 시 FloatingOverlay 표시
+            val fmt = java.text.NumberFormat.getNumberInstance()
+            val overlayText = "$verdict ${fmt.format(call.price)}원"
+            FloatingOverlay.show(this, overlayText)
+            Log.d("NotiFallback", "[$pName] overlay: $overlayText (noti path)")
         }
 
         // 오래된 처리 기록 정리

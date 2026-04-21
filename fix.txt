@@ -1,78 +1,128 @@
-v3.19 쿠팡 누락 수정 - 옵션 B만 (극도 제한 범위)
+OnTheWay v3.19 오전 작업: 진단 로그 강화 (P0-2 Plan B + 쿠팡 재진단)
 
 [배경]
-쿠팡 진단 보고 완료. 가설 D 확증도 높음.
-"사용자가 OnTheWay 홈 보는 중 쿠팡 알림 → Accessibility 스킵 
- → Notification 경로가 TTS만 출력, FloatingOverlay 미호출 → 홈 미표시"
+- P0-2 Layer 2 uiautomator dump는 배민 완료내역 하루 삭제로 샘플 부족
+- 쿠팡 누락 어제 실측 실패, 가설 E/F(초기화 타이밍/재바인딩) 재진단 필요
+- 두 작업 모두 실제 운행에서 로그 수집해야 원인 확정 가능
 
-[중요 전제]
-- 가설 D는 확증도 높지만 실측 미확정
-- 오늘 밤 쿠팡 콜 없어서 수정 검증 불가
-- 내일 운행에서 실제 확인 필요
-- 따라서 변경은 최소 + rollback 용이해야 함
+[제약]
+- 코드 수정 없음. 로그 강화만.
+- 기존 기능 영향 금지
+- 기존 110개 테스트 전체 통과 유지
+- 11:00까지 완료 목표
 
-[채택 옵션: B만]
-Notification 경로(DeliveryNotificationService.kt)에 
-FloatingOverlay.show() 호출 추가.
-옵션 A(Accessibility fallback)는 리스크로 인해 채택 안 함.
+[작업 1: P0-2 진단 로그 모드 (Plan B)]
+
+목적: 실제 운행 중 Accessibility 이벤트의 View 구조를 자연 수집.
+    dump 대신 런타임에서 View 트리 기록.
+
+위치: OnTheWayService.kt extractText() 또는 인접 지점
+
+구현:
+- Accessibility 이벤트 수신 시 각 AccessibilityNodeInfo 노드에 대해:
+  * 깊이(depth)
+  * resource-id (android:id 형태)
+  * className
+  * text 내용 (20자 이내 요약)
+- 배민/쿠팡 패키지 이벤트일 때만 기록 (소음 방지)
+- Logcat 태그: "P0_2_DIAG"
+- DB 저장 NO (Logcat만). 과도한 저장 방지.
+
+샘플 로그 형식:
+P0_2_DIAG: pkg=com.woowahan.bros screen=NEW_CALL depth=3 
+           id=com.woowahan.bros:id/store_name class=TextView 
+           text="피나치공 장지점"
+
+P0_2_DIAG: pkg=com.woowahan.bros screen=NEW_CALL depth=4 
+           id=null class=TextView 
+           text="배달료 4,990원"
+
+빈도 제한:
+- 동일 이벤트 5초 내 재발생 시 skip (로그 폭주 방지)
+- 또는 신규 콜/배달 재개/완료 내역 화면에서만 기록
+
+[작업 2: 쿠팡 재진단 로그 강화]
+
+목적: 가설 E(초기화 타이밍) / 가설 F(재바인딩 윈도우) 확정 또는 반증.
+
+위치: DeliveryNotificationService.kt
+
+구현 2-A: onListenerConnected() 로그 + getActiveNotifications() 호출
+---
+override fun onListenerConnected() {
+    super.onListenerConnected()
+    Log.d("COUPANG_DBG", "onListenerConnected at ${System.currentTimeMillis()}")
+    
+    // 가설 F 대응: 재바인딩 시 활성 알림 복구
+    try {
+        val active = getActiveNotifications()
+        Log.d("COUPANG_DBG", "getActiveNotifications returned ${active?.size ?: 0}")
+        active?.forEach { sbn ->
+            if (sbn.packageName == PKG_COUPANG) {
+                Log.d("COUPANG_DBG", "Recovered coupang notification: ${sbn.id}")
+                // 기존 onNotificationPosted 로직 호출
+                onNotificationPosted(sbn)
+            }
+        }
+    } catch (e: Exception) {
+        Log.e("COUPANG_DBG", "getActiveNotifications failed", e)
+    }
+}
+
+구현 2-B: onNotificationPosted에 진단 로그
+---
+override fun onNotificationPosted(sbn: StatusBarNotification?) {
+    val now = System.currentTimeMillis()
+    Log.d("COUPANG_DBG", "onNotificationPosted: pkg=${sbn?.packageName} " +
+          "timeSinceConnect=${now - listenerConnectedAt}ms")
+    
+    // 기존 로직 이어서...
+}
+
+구현 2-C: onListenerDisconnected 로그 추가
+---
+override fun onListenerDisconnected() {
+    super.onListenerDisconnected()
+    Log.w("COUPANG_DBG", "onListenerDisconnected at ${System.currentTimeMillis()}")
+}
+
+추가:
+- listenerConnectedAt 멤버 변수 추가 (연결 시각 기록)
+- TARGET_PACKAGES에 쿠팡 포함 여부 로그로 한 번 찍기 (시작 시)
+
+[공통 원칙]
+- 로그 태그 명확히 구분: "P0_2_DIAG" / "COUPANG_DBG"
+- Log.d 사용 (debug 레벨)
+- 운행 후 adb logcat -s P0_2_DIAG COUPANG_DBG 로 추출 가능
+- 기존 Log.d/Log.w 호출 건드리지 않기
 
 [절대 금지]
-❌ OnTheWayService.kt:172-176 rootInActiveWindow 로직 수정 금지
-❌ findWindowRoot() 로직 변경 금지
-❌ 쿠팡 외 플랫폼 로직 수정 금지
-❌ 새로운 파일 생성 금지
-❌ FloatingOverlay 클래스 내부 수정 금지 (호출만 추가)
-❌ "이것도 같이 고치면" 류 제안 거절
-
-[허용 범위]
-✅ DeliveryNotificationService.kt에서 
-   쿠팡 알림 처리 후 FloatingOverlay.show() 호출 추가
-✅ 기존 Accessibility 경로 중복 호출 방지 로직 추가
-✅ Logcat에 "NotiFallback" 태그 추가 (누가 호출했는지 추적)
-✅ 기존 유닛테스트 전체 통과 확인
+- 기존 기능 로직 수정
+- 새로운 파일 생성
+- DB 스키마 변경
+- UI 변경
+- Accessibility XML 변경
 
 [작업 순서]
-
 1. Git 체크포인트 커밋
-   메시지: "checkpoint: before coupang notification fallback"
+   메시지: "checkpoint: before diagnostic logging"
+2. OnTheWayService.kt extractText() 로그 추가 (작업 1)
+3. DeliveryNotificationService.kt 로그 추가 (작업 2)
+4. 빌드
+5. 기존 110개 테스트 전체 통과 확인
+6. APK 생성
+7. 보고
 
-2. DeliveryNotificationService.kt 분석
-   - 쿠팡 알림 처리 마지막 단계 위치 확인 (TTS 호출 지점)
-   - 이 지점에 FloatingOverlay.show() 추가 가능한지
-   - Accessibility 경로가 이미 처리했으면 중복 호출 방지 필요
-
-3. 중복 호출 방지 메커니즘 제안
-   - SharedFlag 또는 recentCalls 기반
-   - Accessibility 경로가 10초 내 같은 쿠팡 콜 처리했으면 skip
-   - 이중 팝업 방지
-
-4. 수정 구현
-   - DeliveryNotificationService.kt에만 수정
-   - 변경 라인 10줄 이내 목표
-   - 변경 라인 20줄 넘으면 즉시 보고 + 중단
-
-5. 유닛테스트
-   - 기존 110개 전체 통과 확인
-   - 새 테스트 추가 최소 (쿠팡 Notification 경로 mock 어려움)
-
-6. 빌드 + 변경 요약 보고
-
-[Abort 조건]
-- 23:25까지 분석만 마치고 구현 불가 판단 시 → revert
-- 중복 호출 방지 로직 10분 내 설계 못 하면 → revert
-- 변경 라인 20줄 초과 → 즉시 중단
-- 기존 테스트 regression 1건이라도 → 즉시 revert
-
-[완료 보고 형식]
-- 변경 파일 (DeliveryNotificationService.kt만)
-- 변경 라인 수
-- 중복 호출 방지 방식
+[완료 보고]
+- 변경 파일 + 라인 수
+- 추가된 로그 태그 목록
 - 테스트 110개 통과 확인
 - APK 빌드 성공
-- 내일 실측 검증 방법
+- 운행 중 확인할 로그 명령어 제안:
+  adb logcat -s P0_2_DIAG COUPANG_DBG
 - 3줄 이내 핵심 요약
 
-현재 시각 23:08. 절대 마감 23:25. 17분 타임박스.
-분석 먼저. 수정 전에 설계 한 번 보고.
+[시간]
+현재 09:40. 목표 11:00. 80분 타임박스.
 
 시작.
