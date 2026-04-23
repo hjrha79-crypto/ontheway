@@ -15,7 +15,8 @@ object BaeminParser {
     private val PRICE_PATTERN = Regex("배달료\\s*([\\d,]+)\\s*원")
     private val AMOUNT_PATTERN = Regex("^([\\d,]+)\\s*원$")
     private val POINT_PATTERN = Regex("([\\d.]+)\\s*P", RegexOption.IGNORE_CASE)
-    private val STORE_PATTERN = Regex("^[가-힣a-zA-Z0-9\\s]{2,20}$")
+    // v3.20: 한자(秀), 특수문자(&/·-(),'') 허용, 길이 30까지
+    private val STORE_PATTERN = Regex("^[가-힣a-zA-Z0-9\\s\\u3400-\\u9FFF&/·\\-.(),']{2,30}$")
     private val DEST_PATTERN = Regex("^[가-힣]+(구|동|시|면|로|길).*")
     // 묶음배달 패턴: "묶음배달", "2건", "3건 묶음" 등
     private val BUNDLE_PATTERN = Regex("묶음|\\d+건", RegexOption.IGNORE_CASE)

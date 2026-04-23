@@ -19,7 +19,8 @@ object BaeminBundleSession {
 
     private var sessionStartTime: Long = 0
     private var finalizedAt: Long = 0
-    private const val FINALIZE_COOLDOWN_MS = 5_000L  // v3.12: 종료 후 5초 쿨다운
+    // v3.20: 배민 묶음 수락 타이머 최대 40초 → 30초로 재진입 차단
+    private const val FINALIZE_COOLDOWN_MS = 30_000L
     private var finalTotalPrice: Int = 0
     private var finalTotalPoint: Double = 0.0
     private var detectedBundleCount: Int = 0
@@ -180,20 +181,31 @@ object BaeminBundleSession {
     /** 묶음 내 개별 아이템의 suppression 키 목록 반환 ("가게명|가격" 형식) */
     fun getSuppressionKeys(): List<String> {
         val keys = mutableListOf<String>()
-        // 각 가게명+가격 조합
-        for (store in storeNames) {
-            for (price in collectedPrices) {
-                keys.add("$store|$price")
-            }
-        }
-        // 총액도 등록 (가게명 조합 + 총액)
         val totalPrice = if (finalTotalPrice > 0) finalTotalPrice else collectedPrices.sum()
-        if (totalPrice > 0) {
-            val combinedStore = storeNames.distinct().joinToString("+")
-            if (combinedStore.isNotEmpty()) {
+
+        if (storeNames.isNotEmpty()) {
+            // 각 가게명+가격 조합
+            for (store in storeNames) {
+                for (price in collectedPrices) {
+                    keys.add("$store|$price")
+                }
+            }
+            // 총액도 등록 (가게명 조합 + 총액)
+            if (totalPrice > 0) {
+                val combinedStore = storeNames.distinct().joinToString("+")
                 keys.add("$combinedStore|$totalPrice")
             }
         }
+
+        // v3.20: storeNames 수집 실패 시 fallback 키 (금액 기반)
+        if (keys.isEmpty() && totalPrice > 0) {
+            keys.add("__fallback__|baemin|$totalPrice")
+            // 개별 수집 금액도 fallback 등록
+            for (price in collectedPrices) {
+                keys.add("__fallback__|baemin|$price")
+            }
+        }
+
         return keys.distinct()
     }
 

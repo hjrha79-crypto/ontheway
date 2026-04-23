@@ -187,4 +187,81 @@ class SessionManagerSuppressionTest {
         // Then: null이면 기존 동작 (차단)
         assertTrue("Null currentSessionId must preserve old behavior", blocked)
     }
+
+    // ── v3.20: fallback 키 테스트 ──
+
+    @Test
+    fun suppression_fallbackKey_blocksWhenStoreNameEmpty() {
+        // Given: storeNames 수집 실패 → fallback 키 등록
+        sessionManager.registerBundleSuppression(
+            keys = listOf("__fallback__|baemin|7960"),
+            registeredBySessionId = "session_bundle"
+        )
+
+        // When: 빈 가게명 + 같은 금액으로 체크
+        val blocked = sessionManager.isSuppressed("", 7960, "session_other")
+
+        // Then: fallback 키로 차단되어야 함
+        assertTrue("Fallback key must block matching price", blocked)
+    }
+
+    @Test
+    fun suppression_fallbackKey_selfImmunity() {
+        // Given: fallback 키 등록
+        sessionManager.registerBundleSuppression(
+            keys = listOf("__fallback__|baemin|7960"),
+            registeredBySessionId = "session_bundle"
+        )
+
+        // When: 같은 세션 ID로 체크
+        val blocked = sessionManager.isSuppressed("", 7960, "session_bundle")
+
+        // Then: 자기 자신 면역
+        assertFalse("Fallback key self-immunity must work", blocked)
+    }
+
+    @Test
+    fun suppression_fallbackKey_differentPriceNotBlocked() {
+        // Given: fallback 키 등록 (7960원)
+        sessionManager.registerBundleSuppression(
+            keys = listOf("__fallback__|baemin|7960"),
+            registeredBySessionId = "session_bundle"
+        )
+
+        // When: 다른 금액으로 체크
+        val blocked = sessionManager.isSuppressed("", 5000, "session_other")
+
+        // Then: 금액 다르면 차단 안 됨
+        assertFalse("Different price must not be blocked by fallback", blocked)
+    }
+
+    @Test
+    fun suppression_fallbackKey_shortTTL() {
+        // Given: fallback 키 등록
+        sessionManager.registerBundleSuppression(
+            keys = listOf("__fallback__|baemin|7960"),
+            registeredBySessionId = "session_bundle"
+        )
+
+        // When: 즉시 체크 → 차단
+        assertTrue(sessionManager.isSuppressed("", 7960, "other"))
+
+        // Then: TTL은 10초 (FALLBACK_TTL_MS)
+        // 실시간 대기 불가하므로 등록 확인만 수행
+    }
+
+    @Test
+    fun suppression_normalKey_notAffectedByFallback() {
+        // Given: 정상 키 등록
+        sessionManager.registerBundleSuppression(
+            keys = listOf("비비큐 태전지구점|2300"),
+            registeredBySessionId = "session_A"
+        )
+
+        // When: 정상 키 체크
+        val blocked = sessionManager.isSuppressed("비비큐 태전지구점", 2300, "session_B")
+
+        // Then: 정상 차단
+        assertTrue("Normal key suppression must work", blocked)
+    }
 }

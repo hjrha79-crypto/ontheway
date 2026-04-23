@@ -22,11 +22,16 @@ class SessionManager(private val transitionLog: StateTransitionLog) {
 
     // 묶음 FINALIZED 후 낱개 재진입 차단용 suppression list
     // key: "정규화가게명|가격", value: SuppressionEntry(timestamp, registeredBySessionId)
-    data class SuppressionEntry(val timestamp: Long, val registeredBySessionId: String)
+    data class SuppressionEntry(
+        val timestamp: Long,
+        val registeredBySessionId: String,
+        val ttlMs: Long = 30_000L
+    )
     private val suppressionList = mutableMapOf<String, SuppressionEntry>()
-    private val SUPPRESSION_TTL_MS = 30_000L  // 30초간 차단
 
     companion object {
+        const val SUPPRESSION_TTL_MS = 30_000L  // 기본 30초간 차단
+        const val FALLBACK_TTL_MS = 10_000L     // fallback 키는 10초 (과차단 방지)
         /** storeName 정규화: trim + 연속 공백 제거 + lowercase */
         fun normalizeStoreName(s: String?): String =
             (s ?: "UNKNOWN").trim().replace(Regex("\\s+"), " ").lowercase()
@@ -42,22 +47,26 @@ class SessionManager(private val transitionLog: StateTransitionLog) {
      */
     fun isSuppressed(storeName: String?, price: Int, currentSessionId: String? = null): Boolean = synchronized(lock) {
         val now = System.currentTimeMillis()
-        suppressionList.entries.removeAll { (now - it.value.timestamp) > SUPPRESSION_TTL_MS }
+        suppressionList.entries.removeAll { (now - it.value.timestamp) > it.value.ttlMs }
 
         val key = buildSuppressionKey(storeName, price)
-        val entry = suppressionList[key] ?: return false
+        val entry = suppressionList[key]
+
+        // v3.20: 정규키가 없으면 fallback 키도 체크
+        val effectiveEntry = entry ?: suppressionList["__fallback__|baemin|$price"]
+        if (effectiveEntry == null) return false
 
         // 자기 자신의 세션이 등록한 suppression은 차단하지 않음
-        if (currentSessionId != null && entry.registeredBySessionId == currentSessionId) {
+        if (currentSessionId != null && effectiveEntry.registeredBySessionId == currentSessionId) {
             Log.d("SessionManager",
                 "isSuppressed=false (self-session skip): key=$key, sessionId=$currentSessionId")
             return false
         }
 
-        val elapsedSec = (now - entry.timestamp) / 1000.0
+        val elapsedSec = (now - effectiveEntry.timestamp) / 1000.0
         Log.w("SessionManager",
             "isSuppressed=true: key=$key, elapsed=${"%.1f".format(elapsedSec)}s, " +
-            "registeredBy=${entry.registeredBySessionId}, current=$currentSessionId")
+            "registeredBy=${effectiveEntry.registeredBySessionId}, current=$currentSessionId")
         return true
     }
 
@@ -76,12 +85,12 @@ class SessionManager(private val transitionLog: StateTransitionLog) {
         val now = System.currentTimeMillis()
         val eventId = EventIdGenerator.generate(storeName, price, now)
 
-        // 만료된 suppression 항목 정리
-        suppressionList.entries.removeAll { (now - it.value.timestamp) > SUPPRESSION_TTL_MS }
+        // 만료된 suppression 항목 정리 (개별 TTL 적용)
+        suppressionList.entries.removeAll { (now - it.value.timestamp) > it.value.ttlMs }
 
-        // 묶음 suppression 체크: 정규화된 키로 비교
+        // 묶음 suppression 체크: 정규화된 키로 비교 + fallback 키
         val suppressionKey = buildSuppressionKey(storeName, price)
-        val entry = suppressionList[suppressionKey]
+        val entry = suppressionList[suppressionKey] ?: suppressionList["__fallback__|baemin|$price"]
         if (entry != null) {
             // self-suppression 방지: 방금 finalize된 세션이 등록한 것이면 통과
             val recentFinalizedId = if ((now - lastFinalizedAt) < 5000) lastFinalizedSessionId else null
@@ -246,15 +255,18 @@ class SessionManager(private val transitionLog: StateTransitionLog) {
     fun registerBundleSuppression(keys: List<String>, registeredBySessionId: String = "") = synchronized(lock) {
         val now = System.currentTimeMillis()
         for (key in keys) {
-            // 등록 시에도 정규화 적용 (BaeminBundleSession에서 온 키 보정)
-            val parts = key.split("|", limit = 2)
-            val normalizedKey = if (parts.size == 2) {
-                "${normalizeStoreName(parts[0])}|${parts[1]}"
-            } else {
+            // fallback 키는 정규화 불필요, 짧은 TTL 적용
+            val isFallback = key.startsWith("__fallback__")
+            val normalizedKey = if (isFallback) {
                 key
+            } else {
+                // 등록 시에도 정규화 적용 (BaeminBundleSession에서 온 키 보정)
+                val parts = key.split("|", limit = 2)
+                if (parts.size == 2) "${normalizeStoreName(parts[0])}|${parts[1]}" else key
             }
-            suppressionList[normalizedKey] = SuppressionEntry(now, registeredBySessionId)
-            Log.d("SessionManager", "Suppression registered: $normalizedKey (30s TTL, session=$registeredBySessionId)")
+            val ttl = if (isFallback) FALLBACK_TTL_MS else SUPPRESSION_TTL_MS
+            suppressionList[normalizedKey] = SuppressionEntry(now, registeredBySessionId, ttl)
+            Log.d("SessionManager", "Suppression registered: $normalizedKey (${ttl/1000}s TTL, session=$registeredBySessionId)")
         }
     }
 
