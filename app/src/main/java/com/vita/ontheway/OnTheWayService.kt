@@ -45,6 +45,9 @@ class OnTheWayService : AccessibilityService() {
         val TARGET_PACKAGES = setOf(PKG_FLEXER, PKG_DRIVER, PKG_COUPANG, PKG_BAEMIN)
         val DELIVERY_PACKAGES = setOf(PKG_COUPANG, PKG_BAEMIN)
 
+        // P0-2 진단: 마지막 View 트리 로그 시각 (5초 쿨다운)
+        private var lastP02DiagTime: Long = 0
+
         // UI 텍스트 필터
         val IGNORE_TEXTS = setOf(
             "리스트 설정", "추천순", "신규",
@@ -154,6 +157,15 @@ class OnTheWayService : AccessibilityService() {
             val clickedText = event.text?.joinToString("") ?: event.contentDescription?.toString() ?: ""
             if (ACCEPT_BUTTON_TEXTS.any { clickedText.contains(it) }) {
                 onAcceptDetected()
+                // v3.20: AcceptDetectionLogger
+                if (FeatureFlags.acceptLoggerEnabled) {
+                    try {
+                        AcceptDetectionLogger.log(
+                            this, "click", pkg, clickedText,
+                            sessionManager?.getActiveSession()?.sessionId
+                        )
+                    } catch (_: Exception) {}
+                }
             }
         }
 
@@ -163,6 +175,22 @@ class OnTheWayService : AccessibilityService() {
             val evTexts = event.text?.joinToString(" ") ?: ""
             if (evTexts.contains("배달 완료") || evTexts.contains("배달완료") || evTexts.contains("배달이 완료되었습니다")) {
                 onDeliveryComplete()
+            }
+            // v3.20: 배달 시작 감지 (AcceptDetectionLogger)
+            if (FeatureFlags.acceptLoggerEnabled && evTexts.isNotBlank()) {
+                try {
+                    val isDeliveryStart = when (pkg) {
+                        PKG_COUPANG -> evTexts.contains("배달중") || evTexts.contains("픽업하러 이동")
+                        PKG_BAEMIN -> evTexts.contains("신규 배달 배정") || evTexts.contains("배달 시작")
+                        else -> false
+                    }
+                    if (isDeliveryStart) {
+                        AcceptDetectionLogger.log(
+                            this, "delivery_start", pkg, evTexts,
+                            sessionManager?.getActiveSession()?.sessionId
+                        )
+                    }
+                } catch (_: Exception) {}
             }
         }
 
@@ -174,6 +202,11 @@ class OnTheWayService : AccessibilityService() {
             root = findWindowRoot(pkg)
         }
         if (root == null) return
+
+        // ── P0-2 진단: 배민/쿠팡 이벤트 시 View 트리 기록 ──
+        if (pkg in DELIVERY_PACKAGES) {
+            logViewTreeForDiag(root, pkg)
+        }
 
         // ── 배달 플랫폼 분기 (쿠팡이츠/배민커넥트) ──
         if (pkg in DELIVERY_PACKAGES) {
@@ -486,6 +519,25 @@ class OnTheWayService : AccessibilityService() {
         }
     }
 
+    // ── P0-2 진단: View 트리 Logcat 기록 ──
+    private fun logViewTreeForDiag(root: AccessibilityNodeInfo, pkg: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastP02DiagTime < 5000) return  // 5초 쿨다운
+        lastP02DiagTime = now
+        logNodeRecursive(root, pkg, 0)
+    }
+
+    private fun logNodeRecursive(node: AccessibilityNodeInfo, pkg: String, depth: Int) {
+        if (depth > 8) return  // 과도한 깊이 방지
+        val id = node.viewIdResourceName ?: "null"
+        val cls = node.className?.toString()?.substringAfterLast('.') ?: "?"
+        val txt = node.text?.toString()?.take(20) ?: ""
+        Log.d("P0_2_DIAG", "pkg=$pkg depth=$depth id=$id class=$cls text=\"$txt\"")
+        for (i in 0 until node.childCount) {
+            node.getChild(i)?.let { logNodeRecursive(it, pkg, depth + 1) }
+        }
+    }
+
     /** getWindows()를 순회하여 지정 패키지의 root를 찾는다 */
     private fun findWindowRoot(targetPkg: String): AccessibilityNodeInfo? {
         return try {
@@ -558,6 +610,11 @@ class OnTheWayService : AccessibilityService() {
             if (screen.type != ScreenTypeDetector.ScreenType.NEW_CALL &&
                 screen.type != ScreenTypeDetector.ScreenType.BUNDLE_SESSION) {
                 Log.d("ScreenFilter", "[$platformName] skip: ${screen.type} (${screen.confidence})")
+                if (FeatureFlags.screenFilterLogging) {
+                    com.vita.ontheway.logger.ScreenFilterLogger.log(
+                        this, pkg, screen.type.name, screen.confidence.name, joined
+                    )
+                }
                 return
             }
         }
@@ -606,7 +663,8 @@ class OnTheWayService : AccessibilityService() {
                     SessionStats.onBundleFinalized(this)
                     // v3.19: 묶음 suppression 등록 (finalize 전에 키 추출)
                     val suppressionKeys = BaeminBundleSession.getSuppressionKeys()
-                    sessionManager?.registerBundleSuppression(suppressionKeys)
+                    val currentSessId = sessionManager?.getActiveSession()?.sessionId ?: ""
+                    sessionManager?.registerBundleSuppression(suppressionKeys, currentSessId)
                     // v3.18: SessionManager 경유
                     sessionManager?.finalizeActiveSession("bundle_finalized")
                     val bundleCall = BaeminBundleSession.finalize()
@@ -752,7 +810,8 @@ class OnTheWayService : AccessibilityService() {
                 SessionStats.onBundleTimeout(this)
                 // v3.19: 타임아웃에서도 suppression 등록
                 val suppressionKeys = BaeminBundleSession.getSuppressionKeys()
-                sessionManager?.registerBundleSuppression(suppressionKeys)
+                val timeoutSessId = sessionManager?.getActiveSession()?.sessionId ?: ""
+                sessionManager?.registerBundleSuppression(suppressionKeys, timeoutSessId)
                 sessionManager?.finalizeActiveSession("bundle_timeout")
                 val bundleCall = BaeminBundleSession.finalizeOnTimeout()
                 if (bundleCall != null) {
@@ -776,6 +835,13 @@ class OnTheWayService : AccessibilityService() {
         val pickupDistKm = pending.pickupDistKm
         val platformName = call.platform
 
+        // v3.20: 묶음 suppression 조기 체크 (TTS 큐잉 전)
+        val sessId = sessionManager?.getCurrentOrLastSessionId()
+        if (sessionManager?.isSuppressed(call.storeName, call.price, sessId) == true) {
+            Log.d("DeliveryFilter", "묶음 suppression 차단: ${call.storeName}|${call.price}")
+            return
+        }
+
         val callKey = "${call.platform}_${call.price}_${call.distance ?: 0}"
 
         // 안전 조건: 1콜 1음성
@@ -795,7 +861,7 @@ class OnTheWayService : AccessibilityService() {
             TtsDeduplicator.recordBundleTotal(call.platform, call.price)
         }
 
-        // v3.18: SessionManager 경유
+        // v3.18: SessionManager 경유 (세션 생성/추적용, suppression은 위에서 이미 처리)
         val callSessionEvt = sessionManager?.onEventReceived(
             platformName, call.storeName, call.price, "delivery_process"
         )
@@ -828,6 +894,8 @@ class OnTheWayService : AccessibilityService() {
         } else null
         val pickupTtsExtra = if (pickupEtaMin != null) ", 픽업 ${pickupEtaMin}분 거리" else ""
 
+        val ttsMode = TtsFormatMode.BASIC  // TODO: SettingsActivity에서 읽어오도록 변경 예정
+
         if (result.verdict == CallFilter.Verdict.REJECT) {
             callSpeakHistory[callKey] = now
             lastSpeakTime = now
@@ -835,7 +903,8 @@ class OnTheWayService : AccessibilityService() {
             lastDeliveryVerdict = "넘기세요"
             lastDeliveryPlatform = platformName
             if (!TtsPrefs.isGrabOnlyEnabled(this)) {
-                speakTts("$pName, 넘기세요, ${priceStr}원")
+                val msg = "$pName, 넘기세요, ${priceStr}원"
+                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
             }
             Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
         } else {
@@ -856,7 +925,8 @@ class OnTheWayService : AccessibilityService() {
 
             if (isTopAccept) {
                 lastSpeakTime = now
-                speakTts("$pName, 잡으세요, ${priceStr}원$pickupTtsExtra")
+                val msg = "$pName, 잡으세요, ${priceStr}원$pickupTtsExtra"
+                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                 Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
                 tryAutoAccept()
             } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
@@ -866,7 +936,7 @@ class OnTheWayService : AccessibilityService() {
                 if (unitPrice > 0) ttsMsg += ", 단가 $unitKorean"
                 if (call.distance != null && call.distance > 3.0) ttsMsg += " 픽업 멉니다"
                 if (baeminPoint != null && baeminPoint >= 25.0) ttsMsg += ", 먼 거리입니다"
-                speakTts(ttsMsg)
+                speakTts(TtsMessageBuilder.build(ttsMode, call, result, ttsMsg))
                 Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
             } else {
                 Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
@@ -881,11 +951,26 @@ class OnTheWayService : AccessibilityService() {
         consecutiveRejectCount = CallFilter.getConsecutiveRejectCount()
 
         if (call.storeName.isNotEmpty() && StoreManager.isFavorite(this, call.storeName)) {
-            speakTts("단골 가게입니다")
+            speakTts("단골이네요")
         }
 
         val overlayText = "$lastDeliveryVerdict ${java.text.NumberFormat.getNumberInstance().format(call.price)}원"
         FloatingOverlay.show(this, overlayText)
+
+        // v3.20: 판정 오버레이 (2줄, 2초 자동 소멸)
+        if (FeatureFlags.overlayEnabled) {
+            try {
+                val fmt = java.text.NumberFormat.getNumberInstance()
+                OverlayManager.show(
+                    context = this,
+                    verdict = lastDeliveryVerdict,
+                    line1 = "$pName ${fmt.format(call.price)}원",
+                    line2 = call.storeName.takeIf { it.isNotBlank() }
+                )
+            } catch (e: Exception) {
+                Log.w("DeliveryFilter", "OverlayManager 실패: ${e.message}")
+            }
+        }
 
         try {
             val db = CallLogDb.get(this)
@@ -973,7 +1058,7 @@ class OnTheWayService : AccessibilityService() {
         if (!AdvancedPrefs.isDeliveryCompleteEnabled(this)) return
         val earnings = EarningsTracker.getToday(this)
         val fmt = java.text.NumberFormat.getNumberInstance()
-        speakTts("배달 완료. 오늘 ${earnings.acceptedCount}건 완료, 매출 ${fmt.format(earnings.totalRevenue)}원")
+        speakTts("완료. 오늘 ${earnings.acceptedCount}건, ${toKoreanNumber(earnings.totalRevenue)}원")
         Log.d("OnTheWay", "배달 완료 감지")
 
         // 소요시간 기록
@@ -1014,16 +1099,17 @@ class OnTheWayService : AccessibilityService() {
         val progress = GoalManager.getProgress(this)
         if (progress >= 1.0f && !GoalManager.wasFullAlerted(this)) {
             GoalManager.markFullAlerted(this)
-            speakTts("오늘 목표 달성! 수고하셨습니다!")
+            speakTts("목표 달성! 오늘 수고 많으셨어요")
         } else if (progress >= 0.5f && !GoalManager.wasHalfAlerted(this)) {
             GoalManager.markHalfAlerted(this)
-            speakTts("목표 절반 달성!")
+            speakTts("절반 왔습니다")
         }
     }
 
     override fun onInterrupt() { instance = null }
     override fun onServiceConnected() {
         instance = this
+        try { FeatureFlags.load(this) } catch (e: Exception) { Log.w("OnTheWay", "FeatureFlags 로드 실패: ${e.message}") }
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.KOREAN

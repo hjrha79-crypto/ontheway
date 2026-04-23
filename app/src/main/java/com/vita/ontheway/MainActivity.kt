@@ -535,6 +535,43 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     /** v3.15: 콜 상세 다이얼로그 — 판정 컬러 + 섹션 구조 + 사유 간결화 */
+    /** v3.20: 피드백 이유 선택 → 저장 (신규 or 덮어쓰기) */
+    private fun showFeedbackAndSave(
+        isUp: Boolean, emoji: String, platformCode: String,
+        storeName: String, price: Int, dist: Double,
+        verdictKr: String, reason: String, feedbackSessionId: String
+    ) {
+        FeedbackReasonDialog.show(this, isUp) { reasons ->
+            val fb = if (isUp) "up" else "down"
+            val existing = FeedbackLogger.findBySessionId(this, feedbackSessionId)
+            if (existing != null) {
+                // 덮어쓰기
+                val updated = existing.copy(
+                    feedback = fb,
+                    reasons = reasons
+                )
+                FeedbackLogger.updateBySessionId(this, feedbackSessionId, updated)
+                android.widget.Toast.makeText(this, "$emoji 덮어쓰기 완료", android.widget.Toast.LENGTH_SHORT).show()
+            } else {
+                // 신규 저장
+                FeedbackLogger.log(
+                    this,
+                    platform = platformCode,
+                    store = storeName,
+                    price = price,
+                    distanceKm = if (dist >= 0) dist else 0.0,
+                    verdict = verdictKr,
+                    reason = reason,
+                    sessionId = feedbackSessionId,
+                    feedback = fb,
+                    reasons = reasons
+                )
+                val toast = if (reasons.isEmpty()) "피드백만 기록됨" else "$emoji 기록됨"
+                android.widget.Toast.makeText(this, toast, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun showCallDetail(entry: org.json.JSONObject) {
         val nf = java.text.NumberFormat.getNumberInstance()
         val ts = formatRelativeTime(entry.getLong("ts"))
@@ -672,6 +709,47 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         // 시각 (라벨 + 값)
         addSection("감지", ts)
+
+        // v3.19: 👍 👎 피드백 버튼
+        addDivider()
+        val feedbackRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        val feedbackSessionId = "s_${System.currentTimeMillis()}"
+        fun makeFeedbackButton(emoji: String, isUp: Boolean): TextView {
+            return TextView(this@MainActivity).apply {
+                text = emoji
+                textSize = 20f
+                gravity = Gravity.CENTER
+                setBackgroundColor(Color.parseColor("#F0F0F0"))
+                setPadding(dp(24), dp(8), dp(24), dp(8))
+                setOnClickListener {
+                    try {
+                        // v3.20: 중복 체크
+                        val existing = FeedbackLogger.findBySessionId(this@MainActivity, feedbackSessionId)
+                        if (existing != null) {
+                            val prevFb = if (existing.feedback == "up") "\uD83D\uDC4D" else "\uD83D\uDC4E"
+                            val prevReasons = existing.reasons.joinToString(", ")
+                            android.app.AlertDialog.Builder(this@MainActivity)
+                                .setTitle("이미 기록된 피드백")
+                                .setMessage("이전: $prevFb · $prevReasons\n다시 기록하시겠어요?")
+                                .setPositiveButton("덮어쓰기") { _, _ ->
+                                    showFeedbackAndSave(isUp, emoji, platformCode, storeName, price, dist, verdictKr, reason, feedbackSessionId)
+                                }
+                                .setNegativeButton("취소", null)
+                                .show()
+                        } else {
+                            showFeedbackAndSave(isUp, emoji, platformCode, storeName, price, dist, verdictKr, reason, feedbackSessionId)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+        feedbackRow.addView(makeFeedbackButton("\uD83D\uDC4D", true), LinearLayout.LayoutParams(WC, WC).apply { marginEnd = dp(12) })
+        feedbackRow.addView(makeFeedbackButton("\uD83D\uDC4E", false))
+        container.addView(feedbackRow, LinearLayout.LayoutParams(MP, WC))
 
         // 다이얼로그 빌드
         val dlg = AlertDialog.Builder(this)
@@ -1479,7 +1557,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (!::tts.isInitialized) return
         if (status == TextToSpeech.SUCCESS) {
             tts.language = Locale.KOREAN
-            mainHandler.postDelayed({ speak("어디로 가세요?") }, 500)
+            mainHandler.postDelayed({ speak("오늘도 안전 운행하세요") }, 500)
         }
     }
 }

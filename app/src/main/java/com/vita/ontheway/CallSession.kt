@@ -17,7 +17,11 @@ data class CallSession(
     var bundleCount: Int = 1,
 
     // 파싱 원본 보관 (디버깅용)
-    var lastRawTexts: List<String> = emptyList()
+    var lastRawTexts: List<String> = emptyList(),
+
+    // v3.20: 연결성 분석용 (기록만, TTS/판정/UI 반영 금지)
+    var completedAt: Long? = null,
+    var nextCallWaitMs: Long? = null
 ) {
     fun isExpired(now: Long = System.currentTimeMillis()): Boolean {
         return (now - startedAt) > 30_000L  // 30초 timeout

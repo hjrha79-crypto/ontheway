@@ -39,6 +39,7 @@ object CallFilter {
             minPrice = (minPrice - priceReduction).coerceAtLeast(MIN_PRICE_FLOOR)
         }
         val minUnitPrice = getMinUnitPrice(ctx)
+        val highPriceThreshold = TtsPrefs.getHighPriceThreshold(ctx)
         val fmt = java.text.NumberFormat.getNumberInstance()
 
         val hasDist = call.distance != null && call.distance > 0
@@ -178,10 +179,10 @@ object CallFilter {
 
         // ── 배민 거리 없는 콜: 슬라이더 minPrice 기준 판정 (v3.19: 포인트 테이블 제거) ──
         if (call.platform == "baemin" && !hasDist) {
-            // 고액 콜 보호
-            if (call.price >= 7000) {
+            // 고액 콜 자동 통과 (v3.20: 사용자 설정값 참조)
+            if (call.price >= highPriceThreshold) {
                 return FilterResult(Verdict.ACCEPT,
-                    "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "고액 콜 ${fmt.format(call.price)}원 ≥ ${fmt.format(highPriceThreshold)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
 
             if (call.price >= minPrice) {
@@ -195,10 +196,10 @@ object CallFilter {
 
         // ── 단건 판정 (거리 있음 또는 배민 외 플랫폼) ──
 
-        // 고액 콜 보호: 7,000원 이상이면 단가 무관 통과
-        if (call.price >= 7000) {
+        // 고액 콜 자동 통과 (v3.20: 사용자 설정값 참조)
+        if (call.price >= highPriceThreshold) {
             return FilterResult(Verdict.ACCEPT,
-                "고액 콜 ${fmt.format(call.price)}원 ≥ 7,000원 (단가 무관 통과)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                "고액 콜 ${fmt.format(call.price)}원 ≥ ${fmt.format(highPriceThreshold)}원 (단가 무관 통과)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
 
         // 최소 배달료 미달

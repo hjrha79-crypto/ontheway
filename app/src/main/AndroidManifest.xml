@@ -33,6 +33,7 @@
         <activity android:name=".StatsActivity" android:exported="false" />
         <activity android:name=".OnboardingActivity" android:exported="false" />
 	<activity android:name=".SettingsActivity" />
+        <activity android:name=".DeveloperOptionsActivity" android:exported="false" />
 
         <service
             android:name=".OnTheWayService"

@@ -12,7 +12,8 @@ object CoupangParser {
     private val DISTANCE_PATTERN = Regex("배달\\s*거리\\s*(\\d+\\.?\\d*)\\s*km", RegexOption.IGNORE_CASE)
     private val MULTI_PATTERN = Regex("멀티|주문\\s*두\\s*건|대량", RegexOption.IGNORE_CASE)
 
-    private val STORE_PATTERN = Regex("^[가-힣a-zA-Z0-9\\s]{2,20}$")
+    // v3.20: 특수문자 허용 + 길이 30으로 상향 (긴 가게명 대비)
+    private val STORE_PATTERN = Regex("^[가-힣a-zA-Z0-9\\s.,\\-()'/&]{2,30}$")
 
     // 비콜 화면 키워드 (이 텍스트가 포함되면 콜이 아닌 UI 화면)
     private val NON_CALL_KEYWORDS = setOf(
@@ -49,7 +50,7 @@ object CoupangParser {
 
         // 가게명 추출: 금액/거리/키워드가 아닌 짧은 한글 텍스트
         val storeName = texts.firstOrNull { t ->
-            t.length in 2..20 &&
+            t.length in 2..30 &&
             !PRICE_PATTERN.containsMatchIn(t) &&
             !DISTANCE_PATTERN.containsMatchIn(t) &&
             !MULTI_PATTERN.containsMatchIn(t) &&

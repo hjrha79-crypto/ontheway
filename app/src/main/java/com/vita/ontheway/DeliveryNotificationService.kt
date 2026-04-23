@@ -4,7 +4,9 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.speech.tts.TextToSpeech
 import android.util.Log
+import java.io.File
 import java.util.Locale
+import org.json.JSONObject
 
 /**
  * 배민/쿠팡 알림 수신 시 즉시 파싱 → TTS.
@@ -27,6 +29,7 @@ class DeliveryNotificationService : NotificationListenerService() {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var sessionManager: SessionManager? = null
+    private var listenerConnectedAt: Long = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -53,18 +56,42 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        listenerConnectedAt = System.currentTimeMillis()
         Log.d("DeliveryNoti", "알림 서비스 연결됨")
         Log.d("DeliveryNoti", "onListenerConnected")
+        Log.d("COUPANG_DBG", "onListenerConnected at $listenerConnectedAt")
+        Log.d("COUPANG_DBG", "TARGET_PACKAGES=$TARGET_PACKAGES")
+
+        // 가설 F 대응: 재바인딩 시 활성 알림 복구
+        try {
+            val active = activeNotifications
+            Log.d("COUPANG_DBG", "getActiveNotifications returned ${active?.size ?: 0}")
+            active?.forEach { sbn ->
+                if (sbn.packageName == PKG_COUPANG) {
+                    Log.d("COUPANG_DBG", "Recovered coupang notification: ${sbn.id}")
+                    onNotificationPosted(sbn)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("COUPANG_DBG", "getActiveNotifications failed", e)
+        }
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        Log.w("COUPANG_DBG", "onListenerDisconnected at ${System.currentTimeMillis()}")
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
+        val now = System.currentTimeMillis()
+        Log.d("COUPANG_DBG", "onNotificationPosted: pkg=${sbn.packageName} " +
+              "timeSinceConnect=${now - listenerConnectedAt}ms")
         val pkg = sbn.packageName ?: return
         if (pkg !in TARGET_PACKAGES) return
 
         // 중복 알림 체크 (같은 key 10초 이내 무시)
         val notiKey = "${sbn.key}_${sbn.id}"
-        val now = System.currentTimeMillis()
         if (processedNotifs[notiKey]?.let { now - it < 10_000 } == true) return
         processedNotifs[notiKey] = now
 
@@ -87,6 +114,11 @@ class DeliveryNotificationService : NotificationListenerService() {
                 handleKakaoTCalls(kakaoCalls, now)
             }
             return
+        }
+
+        // v3.20: 쿠팡 알림 원문 로깅 (가게명 데이터 수집)
+        if (pkg == PKG_COUPANG) {
+            logCoupangNotifRaw(title, text, bigText)
         }
 
         // 플랫폼별 파싱 (배민 + 쿠팡 병행)
@@ -134,19 +166,23 @@ class DeliveryNotificationService : NotificationListenerService() {
             val priceKr = toKoreanNumber(call.price)
             val unitKr = toKoreanNumber(unitPrice)
 
+            val ttsMode = TtsFormatMode.BASIC  // TODO: SettingsActivity에서 읽어오도록 변경 예정
             val verdict = if (result.verdict == CallFilter.Verdict.REJECT) "넘기세요" else {
                 val isTop = unitPrice >= 2500 && call.distance != null && call.distance <= 3.0
                 if (isTop) "잡으세요" else "괜찮습니다"
             }
 
             if (verdict == "넘기세요") {
-                speakTts("$pName, 넘기세요, ${priceKr}원")
+                val msg = "$pName, 넘기세요, ${priceKr}원"
+                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                 Log.d("DeliveryNoti", "REJECT: ${call.price}원 - ${result.reason}")
             } else if (verdict == "잡으세요") {
-                speakTts("$pName, 잡으세요, 단가 $unitKr")
+                val msg = "$pName, 잡으세요, 단가 $unitKr"
+                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                 Log.d("DeliveryNoti", "ACCEPT(잡으세요): ${call.price}원")
             } else if (CallFilter.isOkVoiceEnabled(this)) {
-                speakTts("$pName, 괜찮습니다" + if (unitPrice > 0) ", 단가 $unitKr" else "")
+                val msg = "$pName, 괜찮습니다" + if (unitPrice > 0) ", 단가 $unitKr" else ""
+                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                 Log.d("DeliveryNoti", "ACCEPT(괜찮습니다): ${call.price}원")
             }
 
@@ -203,12 +239,15 @@ class DeliveryNotificationService : NotificationListenerService() {
 
             if (!TtsDeduplicator.shouldSpeak("kakaot", call.price)) continue
 
+            val ttsMode = TtsFormatMode.BASIC  // TODO: SettingsActivity에서 읽어오도록 변경 예정
             val priceKr = toKoreanNumber(call.price)
             if (result.verdict == CallFilter.Verdict.REJECT) {
-                speakTts("카카오, 넘기세요, ${priceKr}원")
+                val msg = "카카오, 넘기세요, ${priceKr}원"
+                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                 Log.d("DeliveryNoti", "카카오T REJECT: ${call.price}원")
             } else {
-                speakTts("카카오, 잡으세요, ${priceKr}원")
+                val msg = "카카오, 잡으세요, ${priceKr}원"
+                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                 Log.d("DeliveryNoti", "카카오T ACCEPT: ${call.price}원")
             }
         }
@@ -229,6 +268,29 @@ class DeliveryNotificationService : NotificationListenerService() {
             price = price, distance = distance, isMulti = isMulti,
             platform = "coupang", rawText = text
         ))
+    }
+
+    /** v3.20: 쿠팡 알림 원문 로깅 (가게명 추출 데이터 수집용) */
+    private fun logCoupangNotifRaw(title: String, text: String, bigText: String) {
+        try {
+            val entry = JSONObject().apply {
+                put("ts", System.currentTimeMillis())
+                put("pkg", PKG_COUPANG)
+                put("title", title)
+                put("text", text)
+                if (bigText.isNotBlank()) put("bigText", bigText)
+            }
+            val file = File(filesDir, "coupang_notif_raw.jsonl")
+            file.appendText(entry.toString() + "\n")
+
+            // 200건 롤링: 초과 시 오래된 것부터 삭제
+            val lines = file.readLines()
+            if (lines.size > 200) {
+                file.writeText(lines.takeLast(200).joinToString("\n") + "\n")
+            }
+        } catch (e: Exception) {
+            Log.w("DeliveryNoti", "쿠팡 알림 로깅 실패: ${e.message}")
+        }
     }
 
     // ── 배민 알림 파싱 ──

@@ -1,7 +1,9 @@
 package com.vita.ontheway
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.*
 import android.widget.*
 import java.text.SimpleDateFormat
@@ -153,8 +155,18 @@ class SettingsActivity : AppCompatActivity() {
 
         val minPriceBar = filterSeekBar(filterCard, "최소 배달료", CallFilter.getMinPrice(this), 1000, 5000, 500, "원")
         val minUnitBar = filterSeekBar(filterCard, "최소 단가", CallFilter.getMinUnitPrice(this), 1000, 3000, 100, "원/km")
-        val highPriceBar = filterSeekBar(filterCard, "고액 콜 기준", TtsPrefs.getHighPriceThreshold(this), 5000, 15000, 1000, "원")
+        val highPriceBar = filterSeekBar(filterCard, "고액 자동 통과", TtsPrefs.getHighPriceThreshold(this), 5000, 15000, 1000, "원")
+        filterCard.addView(TextView(this).apply {
+            text = "이 금액 이상이면 단가 무관 자동 ACCEPT"
+            textSize = 12f; setTextColor(Color.parseColor("#888888"))
+            setPadding(dp(16), 0, dp(16), dp(8))
+        })
         val grabBar = filterSeekBar(filterCard, "잡으세요 기준", TtsPrefs.getGrabThreshold(this), 7000, 20000, 1000, "원")
+        filterCard.addView(TextView(this).apply {
+            text = "이 금액 이상이면 무조건 '잡으세요' TTS"
+            textSize = 12f; setTextColor(Color.parseColor("#888888"))
+            setPadding(dp(16), 0, dp(16), dp(8))
+        })
         val multiMinBar = filterSeekBar(filterCard, "묶음 2건 최소", CallFilter.getMultiMinPrice(this), 3000, 8000, 500, "원")
 
         // "괜찮습니다" 음성 ON/OFF 토글
@@ -217,6 +229,172 @@ class SettingsActivity : AppCompatActivity() {
         })
 
         root.addView(filterCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── v3.19: 블랙리스트 관리 ───
+        root.addView(sectionTitle("블랙리스트 관리"))
+        val blacklistCard = card()
+        val blacklist = StoreManager.getBlacklist(this)
+        if (blacklist.isEmpty()) {
+            blacklistCard.addView(TextView(this).apply {
+                text = "등록된 가게가 없습니다"
+                textSize = 14f; setTextColor(Color.parseColor("#999999"))
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+            })
+        } else {
+            blacklist.forEach { entry ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(16), dp(10), dp(16), dp(10))
+                }
+                val platformLabel = when (entry.platform) {
+                    "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> ""
+                }
+                row.addView(TextView(this@SettingsActivity).apply {
+                    text = if (platformLabel.isNotEmpty()) "${entry.name} ($platformLabel)" else entry.name
+                    textSize = 14f; setTextColor(Color.BLACK)
+                }, lp(0, WC, 1f))
+                row.addView(TextView(this@SettingsActivity).apply {
+                    text = "해제"
+                    textSize = 13f; setTextColor(Color.parseColor("#E53935"))
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                    setOnClickListener {
+                        android.app.AlertDialog.Builder(this@SettingsActivity)
+                            .setMessage("'${entry.name}' 블랙리스트 해제하시겠습니까?")
+                            .setPositiveButton("확인") { _, _ ->
+                                StoreManager.removeBlacklist(this@SettingsActivity, entry.name)
+                                Toast.makeText(this@SettingsActivity, "${entry.name} 해제됨", Toast.LENGTH_SHORT).show()
+                                recreate()
+                            }
+                            .setNegativeButton("취소", null)
+                            .show()
+                    }
+                })
+                blacklistCard.addView(row)
+                blacklistCard.addView(View(this).apply {
+                    setBackgroundColor(Color.parseColor("#F0F0F0"))
+                }, lp(MP, dp(1)))
+            }
+        }
+        root.addView(blacklistCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── v3.19: 즐겨찾기 관리 ───
+        root.addView(sectionTitle("즐겨찾기 관리"))
+        val favCard = card()
+        val favorites = StoreManager.getFavorites(this)
+        if (favorites.isEmpty()) {
+            favCard.addView(TextView(this).apply {
+                text = "등록된 가게가 없습니다"
+                textSize = 14f; setTextColor(Color.parseColor("#999999"))
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+            })
+        } else {
+            favorites.forEach { entry ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(16), dp(10), dp(16), dp(10))
+                }
+                val platformLabel = when (entry.platform) {
+                    "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> ""
+                }
+                row.addView(TextView(this@SettingsActivity).apply {
+                    text = if (platformLabel.isNotEmpty()) "${entry.name} ($platformLabel)" else entry.name
+                    textSize = 14f; setTextColor(Color.BLACK)
+                }, lp(0, WC, 1f))
+                row.addView(TextView(this@SettingsActivity).apply {
+                    text = "해제"
+                    textSize = 13f; setTextColor(Color.parseColor("#E53935"))
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                    setOnClickListener {
+                        android.app.AlertDialog.Builder(this@SettingsActivity)
+                            .setMessage("'${entry.name}' 즐겨찾기 해제하시겠습니까?")
+                            .setPositiveButton("확인") { _, _ ->
+                                StoreManager.removeFavorite(this@SettingsActivity, entry.name)
+                                Toast.makeText(this@SettingsActivity, "${entry.name} 해제됨", Toast.LENGTH_SHORT).show()
+                                recreate()
+                            }
+                            .setNegativeButton("취소", null)
+                            .show()
+                    }
+                })
+                favCard.addView(row)
+                favCard.addView(View(this).apply {
+                    setBackgroundColor(Color.parseColor("#F0F0F0"))
+                }, lp(MP, dp(1)))
+            }
+        }
+        root.addView(favCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── v3.20: 피드백 내역 ───
+        root.addView(sectionTitle("피드백 내역"))
+        val fbCard = card()
+        val recentFeedback = FeedbackLogger.getRecent(this, 10)
+        if (recentFeedback.isEmpty()) {
+            fbCard.addView(TextView(this).apply {
+                text = "아직 피드백이 없습니다"
+                textSize = 14f; setTextColor(Color.parseColor("#999999"))
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+            })
+        } else {
+            val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            for (fb in recentFeedback) {
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(16), dp(8), dp(16), dp(8))
+                }
+                // 👍/👎 아이콘
+                val isUp = fb.feedback == "up"
+                row.addView(TextView(this@SettingsActivity).apply {
+                    text = if (isUp) "\uD83D\uDC4D" else "\uD83D\uDC4E"
+                    textSize = 18f
+                }, lp(WC, WC).apply { marginEnd = dp(8) })
+
+                // 시간 + 플랫폼 + 가게명 + 금액 + 이유
+                val infoCol = LinearLayout(this@SettingsActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
+                val platformLabel = when (fb.platform) {
+                    "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> fb.platform
+                }
+                val timeStr = sdf.format(java.util.Date(fb.ts))
+                val storeTxt = if (fb.storeName.isNotBlank()) fb.storeName else "(가게명 없음)"
+                infoCol.addView(TextView(this@SettingsActivity).apply {
+                    text = "$timeStr  $platformLabel  $storeTxt"
+                    textSize = 13f; setTextColor(Color.BLACK); setSingleLine(true)
+                })
+                infoCol.addView(TextView(this@SettingsActivity).apply {
+                    text = "${fmt(fb.price)}원 · ${fb.reasons.joinToString(", ").ifEmpty { "-" }}"
+                    textSize = 12f; setTextColor(Color.parseColor("#666666")); setSingleLine(true)
+                })
+                row.addView(infoCol, lp(0, WC, 1f))
+
+                // 덮어쓰기 표시
+                if (fb.overwroteTs != null) {
+                    row.addView(TextView(this@SettingsActivity).apply {
+                        text = "수정됨"
+                        textSize = 11f; setTextColor(Color.parseColor("#FF9800"))
+                    })
+                }
+
+                fbCard.addView(row)
+                fbCard.addView(View(this).apply {
+                    setBackgroundColor(Color.parseColor("#F0F0F0"))
+                }, lp(MP, dp(1)))
+            }
+
+            // 요약 행
+            val allFb = FeedbackLogger.getAll(this)
+            val upCount = allFb.count { it.feedback == "up" }
+            val downCount = allFb.count { it.feedback == "down" }
+            fbCard.addView(TextView(this).apply {
+                text = "전체 ${allFb.size}건 (\uD83D\uDC4D $upCount / \uD83D\uDC4E $downCount)"
+                textSize = 12f; setTextColor(Color.parseColor("#999999"))
+                setPadding(dp(16), dp(8), dp(16), dp(12))
+            })
+        }
+        root.addView(fbCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── 음성 안내 (TTS) 설정 ───
         root.addView(sectionTitle("음성 안내"))
@@ -317,6 +495,38 @@ class SettingsActivity : AppCompatActivity() {
         })
         displayCard.addView(darkRow)
         root.addView(displayCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── v3.20: 오버레이 권한 ───
+        root.addView(sectionTitle("오버레이 권한"))
+        val overlayPermCard = card()
+        val hasOverlayPerm = Settings.canDrawOverlays(this)
+        overlayPermCard.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            addView(TextView(this@SettingsActivity).apply {
+                text = if (hasOverlayPerm) "오버레이 권한: 허용됨" else "오버레이 권한: 미허용"
+                textSize = 14f
+                setTextColor(if (hasOverlayPerm) Color.parseColor("#4CAF50") else Color.parseColor("#E53935"))
+            }, lp(0, WC, 1f))
+            if (!hasOverlayPerm) {
+                addView(TextView(this@SettingsActivity).apply {
+                    text = "권한 허용"
+                    textSize = 14f; setTypeface(null, Typeface.BOLD)
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(Color.parseColor("#5B6ABF"))
+                    setPadding(dp(16), dp(10), dp(16), dp(10))
+                    setOnClickListener {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:$packageName")
+                        )
+                        startActivity(intent)
+                    }
+                })
+            }
+        })
+        root.addView(overlayPermCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── 음성 수락 ON/OFF ───
         val voiceAcceptRow = LinearLayout(this).apply {
@@ -677,6 +887,58 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(dp(16), dp(16), dp(16), dp(16))
         })
         root.addView(shadowCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── v3.20: 실험 기능 (Experimental flags, 최대 5개) ───
+        FeatureFlags.load(this)
+        root.addView(sectionTitle("실험 기능"))
+        val expCard = card()
+        expCard.addView(advancedToggle(
+            "오버레이 표시",
+            "콜 판정 시 화면 상단에 2초간 오버레이 표시",
+            FeatureFlags.overlayEnabled
+        ) { checked -> FeatureFlags.overlayEnabled = checked; FeatureFlags.save(this) })
+        expCard.addView(advancedToggle(
+            "수락 로그 수집",
+            "수락 버튼 클릭 및 배달 시작 이벤트 자동 기록",
+            FeatureFlags.acceptLoggerEnabled
+        ) { checked -> FeatureFlags.acceptLoggerEnabled = checked; FeatureFlags.save(this) })
+        expCard.addView(advancedToggle(
+            "피드백 시스템",
+            "콜 결과에 👍👎 피드백 기록 기능",
+            FeatureFlags.feedbackSystemEnabled
+        ) { checked -> FeatureFlags.feedbackSystemEnabled = checked; FeatureFlags.save(this) })
+        expCard.addView(advancedToggle(
+            "TTS 레벨 토글",
+            "현재 작동하지 않음 (예비 슬롯)",
+            FeatureFlags.ttsLevelToggle
+        ) { checked -> FeatureFlags.ttsLevelToggle = checked; FeatureFlags.save(this) })
+        expCard.addView(advancedToggle(
+            "화면 필터 로그 수집",
+            "배민 화면 감지 실패 시 텍스트 기록 (진단용)",
+            FeatureFlags.screenFilterLogging
+        ) { checked -> FeatureFlags.screenFilterLogging = checked; FeatureFlags.save(this) })
+        root.addView(expCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
+        // ─── 버전 번호 (5회 탭 → 개발자 옵션) ───
+        var devTapCount = 0
+        var lastDevTapTime = 0L
+        root.addView(TextView(this).apply {
+            text = "OnTheWay v${BuildConfig.VERSION_NAME}"
+            textSize = 12f; setTextColor(Color.parseColor("#BBBBBB"))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(20), 0, dp(20))
+            setOnClickListener {
+                val now = System.currentTimeMillis()
+                if (now - lastDevTapTime > 3000) devTapCount = 0
+                lastDevTapTime = now
+                devTapCount++
+                if (devTapCount >= 5) {
+                    devTapCount = 0
+                    Toast.makeText(this@SettingsActivity, "개발자 옵션이 활성화되었습니다", Toast.LENGTH_SHORT).show()
+                    startActivity(Intent(this@SettingsActivity, DeveloperOptionsActivity::class.java))
+                }
+            }
+        }, lp(MP, WC))
 
         scrollView.addView(root)
         setContentView(scrollView)
