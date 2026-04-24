@@ -256,6 +256,12 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     // ── 쿠팡 알림 파싱 ──
     private fun parseCoupangNotification(text: String): List<DeliveryCall> {
+        // 프로모션/미션 알림 필터 (CoupangParser와 동일 키워드)
+        if (CoupangParser.NON_CALL_KEYWORDS.any { text.contains(it) }) {
+            Log.d("DeliveryNoti", "쿠팡 프로모션/미션 알림 스킵: ${text.take(50)}")
+            return emptyList()
+        }
+
         val priceMatch = Regex("([\\d,]+)\\s*원").find(text) ?: return emptyList()
         val price = priceMatch.groupValues[1].replace(",", "").toIntOrNull() ?: return emptyList()
         if (price !in 1000..100000) return emptyList()

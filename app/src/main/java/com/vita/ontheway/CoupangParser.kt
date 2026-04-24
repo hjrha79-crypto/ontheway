@@ -16,7 +16,7 @@ object CoupangParser {
     private val STORE_PATTERN = Regex("^[가-힣a-zA-Z0-9\\s.,\\-()'/&]{2,30}$")
 
     // 비콜 화면 키워드 (이 텍스트가 포함되면 콜이 아닌 UI 화면)
-    private val NON_CALL_KEYWORDS = setOf(
+    val NON_CALL_KEYWORDS = setOf(
         "배달 현황", "출근하기", "퇴근하기", "배달 완료",
         "고객에게 전달", "픽업 완료", "가게 도착", "고객 도착",
         "배달 중", "픽업 중", "주문 현황", "정산", "공지사항",
