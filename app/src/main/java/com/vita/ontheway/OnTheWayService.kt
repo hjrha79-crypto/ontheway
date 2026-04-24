@@ -147,6 +147,30 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
+        // v3.19.3: 쿠팡이츠 Flutter 접근성 트리 진단 로깅
+        if (pkg == PKG_COUPANG && FeatureFlags.coupangDiagnosticLogging) {
+            try {
+                val diagRoot = rootInActiveWindow ?: event.source
+                if (diagRoot != null) {
+                    com.vita.ontheway.diagnostic.CoupangDiagnosticLogger.logEvent(diagRoot, event.eventType)
+                }
+            } catch (e: Exception) {
+                Log.w("CoupangDiag", "진단 로깅 실패: ${e.message}")
+            }
+        }
+
+        // v3.21: 배민 접근성 트리 진단 로깅 (거리 탐색용)
+        if (pkg == PKG_BAEMIN && FeatureFlags.baeminDiagnosticLogging) {
+            try {
+                val diagRoot = rootInActiveWindow ?: event.source
+                if (diagRoot != null) {
+                    com.vita.ontheway.diagnostic.BaeminDiagnosticLogger.logEvent(diagRoot, event.eventType)
+                }
+            } catch (e: Exception) {
+                Log.w("BaeminDiag", "진단 로깅 실패: ${e.message}")
+            }
+        }
+
         // 카카오 관련 패키지는 별도 경고 로그
         if (pkg.contains("kakaomobility") || pkg.contains("flexer") || pkg.contains("kakao")) {
             Log.w("OTW_KAKAO", "★ 카카오: pkg=$pkg, type=${event.eventType}, count=${packageEventCount[pkg]}, source=${event.source != null}, root=${rootInActiveWindow != null}")
@@ -514,6 +538,8 @@ class OnTheWayService : AccessibilityService() {
 
     private fun extractText(node: AccessibilityNodeInfo, results: MutableList<String>) {
         node.text?.toString()?.takeIf { it.isNotBlank() }?.let { results.add(it) }
+        // 2026-04-24: 배민 "배달료기준거리"가 contentDescription에만 있는 케이스 커버.
+        node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { results.add(it) }
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { extractText(it, results) }
         }
@@ -873,12 +899,6 @@ class OnTheWayService : AccessibilityService() {
         // 마지막 감지 시각 기록 (상태 표시용)
         lastCallDetectedTime = now
 
-        // ── TTS 3단계 판정 (중복 방지) ──
-        if (!TtsDeduplicator.shouldSpeak(call.platform, call.price)) {
-            Log.d("DeliveryFilter", "TtsDeduplicator 중복 스킵: ${call.platform} ${call.price}원")
-            return
-        }
-
         // 단가 계산
         val effectiveDist = enrichedCall.distance
             val unitPrice = if (effectiveDist != null && effectiveDist > 0)
@@ -887,28 +907,13 @@ class OnTheWayService : AccessibilityService() {
         val priceStr = formatPrice(call.price)
         val unitKorean = toKoreanNumber(unitPrice)
 
-        // 픽업 예상 시간
-        val pickupEtaMin = if (pickupDistKm != null && pickupDistKm > 0) {
-            val speedKmh = if (currentSpeed > 1f) currentSpeed * 3.6 else 30.0
-            (pickupDistKm / speedKmh * 60).toInt().coerceAtLeast(1)
-        } else null
-        val pickupTtsExtra = if (pickupEtaMin != null) ", 픽업 ${pickupEtaMin}분 거리" else ""
-
-        val ttsMode = TtsFormatMode.BASIC  // TODO: SettingsActivity에서 읽어오도록 변경 예정
-
+        // 판정 결과 → 상태 변수 설정 (TTS 여부와 무관하게 항상 실행)
+        callSpeakHistory[callKey] = now
         if (result.verdict == CallFilter.Verdict.REJECT) {
-            callSpeakHistory[callKey] = now
-            lastSpeakTime = now
             lastDeliveryCall = call
             lastDeliveryVerdict = "넘기세요"
             lastDeliveryPlatform = platformName
-            if (!TtsPrefs.isGrabOnlyEnabled(this)) {
-                val msg = "$pName, 넘기세요, ${priceStr}원"
-                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
-            }
-            Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
         } else {
-            callSpeakHistory[callKey] = now
             val grabThreshold = TtsPrefs.getGrabThreshold(this)
             val isTopAccept = when {
                 call.price >= grabThreshold -> true
@@ -922,40 +927,74 @@ class OnTheWayService : AccessibilityService() {
             lastDeliveryCall = call
             lastDeliveryPlatform = platformName
             lastDeliveryVerdict = if (isTopAccept) "잡으세요" else "괜찮습니다"
+        }
 
-            if (isTopAccept) {
-                lastSpeakTime = now
-                val msg = "$pName, 잡으세요, ${priceStr}원$pickupTtsExtra"
-                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
-                Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
-                tryAutoAccept()
-            } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
-                && CallFilter.isOkVoiceEnabled(this)) {
-                lastSpeakTime = now
-                var ttsMsg = "$pName, 괜찮습니다"
-                if (unitPrice > 0) ttsMsg += ", 단가 $unitKorean"
-                if (call.distance != null && call.distance > 3.0) ttsMsg += " 픽업 멉니다"
-                if (baeminPoint != null && baeminPoint >= 25.0) ttsMsg += ", 먼 거리입니다"
-                speakTts(TtsMessageBuilder.build(ttsMode, call, result, ttsMsg))
-                Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
+        // ── TTS 3단계 판정 (중복 방지) — TTS만 스킵, 오버레이/DB/로그는 항상 실행 ──
+        val shouldSpeak = TtsDeduplicator.shouldSpeak(call.platform, call.price)
+        if (!shouldSpeak) {
+            Log.d("DeliveryFilter", "TtsDeduplicator 중복 → TTS 스킵, 오버레이/DB는 실행: ${call.platform} ${call.price}원")
+        }
+
+        if (shouldSpeak) {
+            val pickupEtaMin = if (pickupDistKm != null && pickupDistKm > 0) {
+                val speedKmh = if (currentSpeed > 1f) currentSpeed * 3.6 else 30.0
+                (pickupDistKm / speedKmh * 60).toInt().coerceAtLeast(1)
+            } else null
+            val pickupTtsExtra = if (pickupEtaMin != null) ", 픽업 ${pickupEtaMin}분 거리" else ""
+            val ttsMode = TtsFormatMode.BASIC
+
+            lastSpeakTime = now
+
+            if (result.verdict == CallFilter.Verdict.REJECT) {
+                if (!TtsPrefs.isGrabOnlyEnabled(this)) {
+                    val msg = "$pName, 넘기세요, ${priceStr}원"
+                    speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
+                }
+                Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
             } else {
-                Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
+                val isTopAccept = lastDeliveryVerdict == "잡으세요"
+                if (isTopAccept) {
+                    val msg = "$pName, 잡으세요, ${priceStr}원$pickupTtsExtra"
+                    speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
+                    Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
+                    tryAutoAccept()
+                } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
+                    && CallFilter.isOkVoiceEnabled(this)) {
+                    var ttsMsg = "$pName, 괜찮습니다"
+                    if (unitPrice > 0) ttsMsg += ", 단가 $unitKorean"
+                    if (call.distance != null && call.distance > 3.0) ttsMsg += " 픽업 멉니다"
+                    if (baeminPoint != null && baeminPoint >= 25.0) ttsMsg += ", 먼 거리입니다"
+                    speakTts(TtsMessageBuilder.build(ttsMode, call, result, ttsMsg))
+                    Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
+                } else {
+                    Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
+                }
+            }
+
+            // v3.6: 연속 REJECT 자동 기준 하향
+            val streakMsg = CallFilter.updateRejectStreak(result.verdict, this)
+            if (streakMsg != null) {
+                speakTts(streakMsg)
+            }
+            consecutiveRejectCount = CallFilter.getConsecutiveRejectCount()
+
+            if (call.storeName.isNotEmpty() && StoreManager.isFavorite(this, call.storeName)) {
+                speakTts("단골이네요")
             }
         }
 
-        // v3.6: 연속 REJECT 자동 기준 하향
-        val streakMsg = CallFilter.updateRejectStreak(result.verdict, this)
-        if (streakMsg != null) {
-            speakTts(streakMsg)
-        }
-        consecutiveRejectCount = CallFilter.getConsecutiveRejectCount()
-
-        if (call.storeName.isNotEmpty() && StoreManager.isFavorite(this, call.storeName)) {
-            speakTts("단골이네요")
-        }
-
         val overlayText = "$lastDeliveryVerdict ${java.text.NumberFormat.getNumberInstance().format(call.price)}원"
-        FloatingOverlay.show(this, overlayText)
+        val hasOverlayPermission = android.provider.Settings.canDrawOverlays(this)
+        val floatingEnabled = FloatingOverlay.isEnabled(this)
+        val overlayFlagEnabled = FeatureFlags.overlayEnabled
+        Log.d("DialogTrigger", "show: platform=${call.platform}, price=${call.price}, verdict=$lastDeliveryVerdict, store=${call.storeName}")
+        Log.d("DialogTrigger", "path: overlayPermission=$hasOverlayPermission, floatingEnabled=$floatingEnabled, overlayFlagEnabled=$overlayFlagEnabled")
+
+        try {
+            FloatingOverlay.show(this, overlayText)
+        } catch (e: Exception) {
+            Log.w("DialogTrigger", "FloatingOverlay 실패: ${e.message}")
+        }
 
         // v3.20: 판정 오버레이 (2줄, 2초 자동 소멸)
         if (FeatureFlags.overlayEnabled) {
@@ -967,9 +1006,12 @@ class OnTheWayService : AccessibilityService() {
                     line1 = "$pName ${fmt.format(call.price)}원",
                     line2 = call.storeName.takeIf { it.isNotBlank() }
                 )
+                Log.d("DialogTrigger", "OverlayManager 표시 성공")
             } catch (e: Exception) {
-                Log.w("DeliveryFilter", "OverlayManager 실패: ${e.message}")
+                Log.w("DialogTrigger", "OverlayManager 실패: ${e.message}")
             }
+        } else {
+            Log.d("DialogTrigger", "OverlayManager 스킵: overlayEnabled=false")
         }
 
         try {
@@ -1122,6 +1164,8 @@ class OnTheWayService : AccessibilityService() {
         try { startGps() } catch (e: Exception) { Log.w("OnTheWay", "GPS 초기화 실패: ${e.message}") }
         try { CallLogDb.get(this).cleanup() } catch (e: Exception) { Log.w("OnTheWay", "DB 정리 실패: ${e.message}") }
         try { DiagnosticLog.init(this) } catch (e: Exception) { Log.w("OnTheWay", "DiagnosticLog 초기화 실패: ${e.message}") }
+        try { com.vita.ontheway.diagnostic.CoupangDiagnosticLogger.init(this) } catch (e: Exception) { Log.w("OnTheWay", "CoupangDiagnosticLogger 초기화 실패: ${e.message}") }
+        try { com.vita.ontheway.diagnostic.BaeminDiagnosticLogger.init(this) } catch (e: Exception) { Log.w("OnTheWay", "BaeminDiagnosticLogger 초기화 실패: ${e.message}") }
         try {
             val transitionLog = StateTransitionLog(this)
             sessionManager = SessionManager(transitionLog)

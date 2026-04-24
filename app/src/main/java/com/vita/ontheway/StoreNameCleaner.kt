@@ -50,7 +50,19 @@ object StoreNameCleaner {
         "수락하기", "거절하기",
         "가맹점 도착", "고객 도착", "고객에게 전달",
         "배민배달", "배민커넥트",
-        "조리완료", "조리 완료"
+        "조리완료", "조리 완료",
+        // v3.21: 12:07 혼입 사례 추가
+        "지도를 준비중입니다", "잠시만 기다려주세요",
+        "고객 요청사항이 변경되었어요",
+        "배달이 많은 지역을 볼수 있어요",
+        "배달 이어서 하기"
+    )
+
+    // v3.21: 부분 매칭 키워드 (가게명에 포함되면 차단)
+    private val STORE_SUBSTRING_BLACKLIST = listOf(
+        "지도를 준비", "잠시만 기다", "현재 위치와 가까운",
+        "고객 요청사항", "배달이 많은 지역", "배차를 찾고",
+        "지도 확대 기능"
     )
 
     /** 공백 제거한 정규화 블랙리스트 (공백 불일치 대응) */
@@ -72,6 +84,13 @@ object StoreNameCleaner {
         if (trimmed in STORE_BLACKLIST) return true
         if (trimmed.replace("\\s+".toRegex(), "") in NORMALIZED_BLACKLIST) return true
         if (INVALID_STORE_PATTERNS.any { it.containsMatchIn(trimmed) }) return true
+        // v3.21: 부분 매칭 키워드
+        if (STORE_SUBSTRING_BLACKLIST.any { trimmed.contains(it) }) return true
+        // v3.21: UI 문장 의심 패턴 (~요, ~니다, ~습니다)
+        if (trimmed.endsWith("요") || trimmed.endsWith("니다") || trimmed.endsWith("습니다")) {
+            android.util.Log.d("StoreNameFilter", "UI 문장 의심: '$trimmed'")
+            return true
+        }
         return false
     }
 

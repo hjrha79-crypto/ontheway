@@ -92,13 +92,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private val sdfHm = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
     private val sdfMdHm = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
 
-    /** 상대 날짜 시각 표시: 오늘→"HH:mm:ss", 어제→"어제 HH:mm", 이전→"MM-dd HH:mm" */
+    /** 상대 날짜 시각 표시: 오늘→"오늘 HH:mm:ss", 어제→"어제 HH:mm", 이전→"MM-dd HH:mm" */
     private fun formatRelativeTime(ts: Long): String {
         val tsCal = java.util.Calendar.getInstance().apply { timeInMillis = ts }
         val today = java.util.Calendar.getInstance()
         if (tsCal.get(java.util.Calendar.YEAR) == today.get(java.util.Calendar.YEAR) &&
             tsCal.get(java.util.Calendar.DAY_OF_YEAR) == today.get(java.util.Calendar.DAY_OF_YEAR)) {
-            return sdfHms.format(java.util.Date(ts))
+            return "오늘 ${sdfHms.format(java.util.Date(ts))}"
         }
         today.add(java.util.Calendar.DAY_OF_YEAR, -1)
         if (tsCal.get(java.util.Calendar.YEAR) == today.get(java.util.Calendar.YEAR) &&
@@ -773,22 +773,50 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (storeKey.isNotEmpty()) {
             if (StoreManager.isFavorite(this, storeKey)) {
                 dlg.setNeutralButton("즐겨찾기 해제") { _, _ ->
-                    StoreManager.removeFavorite(this, storeKey)
-                    android.widget.Toast.makeText(this, "$displayName 즐겨찾기 해제", android.widget.Toast.LENGTH_SHORT).show()
+                    AlertDialog.Builder(this)
+                        .setTitle("즐겨찾기 해제")
+                        .setMessage("$displayName 을(를) 즐겨찾기에서 해제하시겠습니까?")
+                        .setPositiveButton("해제") { _, _ ->
+                            StoreManager.removeFavorite(this, storeKey)
+                            android.widget.Toast.makeText(this, "$displayName 즐겨찾기 해제", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        .setNegativeButton("취소", null)
+                        .show()
                 }
             } else if (StoreManager.isBlacklisted(this, storeKey)) {
                 dlg.setNeutralButton("블랙리스트 해제") { _, _ ->
-                    StoreManager.removeBlacklist(this, storeKey)
-                    android.widget.Toast.makeText(this, "$displayName 블랙리스트 해제", android.widget.Toast.LENGTH_SHORT).show()
+                    AlertDialog.Builder(this)
+                        .setTitle("블랙리스트 해제")
+                        .setMessage("$displayName 을(를) 블랙리스트에서 해제하시겠습니까?")
+                        .setPositiveButton("해제") { _, _ ->
+                            StoreManager.removeBlacklist(this, storeKey)
+                            android.widget.Toast.makeText(this, "$displayName 블랙리스트 해제", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        .setNegativeButton("취소", null)
+                        .show()
                 }
             } else {
                 dlg.setNeutralButton("즐겨찾기") { _, _ ->
-                    StoreManager.addFavorite(this, storeKey, platformCode)
-                    android.widget.Toast.makeText(this, "$displayName 즐겨찾기 추가", android.widget.Toast.LENGTH_SHORT).show()
+                    AlertDialog.Builder(this)
+                        .setTitle("즐겨찾기 추가")
+                        .setMessage("$displayName 을(를) 즐겨찾기에 추가하시겠습니까?\n(최소배달료 기준 1,000원 완화)")
+                        .setPositiveButton("추가") { _, _ ->
+                            StoreManager.addFavorite(this, storeKey, platformCode)
+                            android.widget.Toast.makeText(this, "$displayName 즐겨찾기 추가", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        .setNegativeButton("취소", null)
+                        .show()
                 }
                 dlg.setNegativeButton("블랙리스트") { _, _ ->
-                    StoreManager.addBlacklist(this, storeKey, platformCode)
-                    android.widget.Toast.makeText(this, "$displayName 블랙리스트 추가", android.widget.Toast.LENGTH_SHORT).show()
+                    AlertDialog.Builder(this)
+                        .setTitle("블랙리스트 추가")
+                        .setMessage("$displayName 을(를) 블랙리스트에 추가하시겠습니까?\n(앞으로 이 가게 콜은 '넘기세요'로 판정)")
+                        .setPositiveButton("추가") { _, _ ->
+                            StoreManager.addBlacklist(this, storeKey, platformCode)
+                            android.widget.Toast.makeText(this, "$displayName 블랙리스트 추가", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        .setNegativeButton("취소", null)
+                        .show()
                 }
             }
         }
@@ -803,9 +831,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 val match = Regex("""구간기준\s*([\d,]+)원""").find(raw)
                 if (match != null) "구간 기준 ${match.groupValues[1]}원 미달" else raw
             }
-            verdict == "REJECT" && raw.contains("슬라이더") -> {
-                val match = Regex("""슬라이더[^\d]*([\d,]+)원""").find(raw)
-                if (match != null) "슬라이더 기준 ${match.groupValues[1]}원 미달" else "슬라이더 기준 미달"
+            verdict == "REJECT" && raw.contains("묶음 최소") -> {
+                val match = Regex("""묶음 최소\s*([\d,]+)원""").find(raw)
+                if (match != null) "묶음 최소 ${match.groupValues[1]}원 미달" else raw
             }
             verdict == "REJECT" && raw.contains("최소기준") -> {
                 val match = Regex("""최소기준\s*([\d,]+)원""").find(raw)

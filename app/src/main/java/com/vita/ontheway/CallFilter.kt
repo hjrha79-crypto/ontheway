@@ -42,6 +42,10 @@ object CallFilter {
         val highPriceThreshold = TtsPrefs.getHighPriceThreshold(ctx)
         val fmt = java.text.NumberFormat.getNumberInstance()
 
+        Log.d("JudgeLogic", "==== 판정 시작 ====")
+        Log.d("JudgeLogic", "settings: minPrice=$minPrice, minUnitPrice=$minUnitPrice, highPrice=$highPriceThreshold, multiMin=${getMultiMinPrice(ctx)}")
+        Log.d("JudgeLogic", "call: platform=${call.platform}, price=${call.price}, distance=${call.distance}, point=${call.point}, isMulti=${call.isMulti}, storeName=${call.storeName}")
+
         val hasDist = call.distance != null && call.distance > 0
         val unitPrice = if (hasDist) (call.price / call.distance!!).toInt() else 0
 
@@ -128,9 +132,9 @@ object CallFilter {
                 bundleCount >= 2 -> 7000
                 else -> 0
             } else 0
-            // v3.9: 슬라이더 묶음 최소금액과 내장 기준 중 더 엄격한 쪽 적용
-            val sliderMultiMin = getMultiMinPrice(ctx)
-            val effectiveMin = maxOf(bundleMin, multiPickupMin, sliderMultiMin)
+            // v3.9: 설정 묶음 최소금액과 내장 기준 중 더 엄격한 쪽 적용
+            val settingMultiMin = getMultiMinPrice(ctx)
+            val effectiveMin = maxOf(bundleMin, multiPickupMin, settingMultiMin)
             val multiPickupTag = if (call.isMultiPickup) ", 다중 픽업" else ""
 
             // 고액 묶음 보호
@@ -139,10 +143,10 @@ object CallFilter {
                     "고액 묶음 ${fmt.format(call.price)}원 ≥ ${fmt.format(bundleHigh)}원 ($bundleTag$multiPickupTag)")
             }
 
-            // v3.9: 슬라이더 묶음 미달 시 명확한 사유
-            if (call.price < sliderMultiMin) {
+            // v3.9: 설정 묶음 최소금액 미달 시 명확한 사유
+            if (call.price < settingMultiMin) {
                 return FilterResult(Verdict.REJECT,
-                    "슬라이더 묶음 기준 ${fmt.format(sliderMultiMin)}원 미달 ${fmt.format(call.price)}원 ($bundleTag$multiPickupTag)")
+                    "묶음 최소 ${fmt.format(settingMultiMin)}원 미달 ${fmt.format(call.price)}원 ($bundleTag$multiPickupTag)")
             }
 
             // 최소금액 미달
@@ -173,25 +177,38 @@ object CallFilter {
                 "묶음 통과 ${fmt.format(call.price)}원 ($bundleTag$multiPickupTag)")
         }
 
-        // ── 포인트 참고 태그 (거리 환산에는 미사용) ──
-        val pointTag = if (call.platform == "baemin" && call.point != null && call.point > 0)
-            ", 포인트 ${"%.1f".format(call.point)}P (참고용)" else ""
+        // ── 포인트 참고: Dialog 거리 필드에서 표시하므로 사유에서는 제거 ──
+        val pointTag = ""
 
-        // ── 배민 거리 없는 콜: 슬라이더 minPrice 기준 판정 (v3.19: 포인트 테이블 제거) ──
+        // ── 배민 거리 없는 콜: minPrice + 포인트 환산 단가 판정 ──
         if (call.platform == "baemin" && !hasDist) {
-            // 고액 콜 자동 통과 (v3.20: 사용자 설정값 참조)
+            // 포인트 → 거리 환산 (보조 판정용, 부정확할 수 있음)
+            val estimatedKm = if (call.point != null && call.point > 0) BaeminParser.convertPointToKm(call.point) else 0.0
+            val estimatedUnitPrice = if (estimatedKm > 0) (call.price / estimatedKm).toInt() else 0
+            val estimateTag = if (estimatedKm > 0) ", 추정거리 ${"%.1f".format(estimatedKm)}km, 추정단가 ${fmt.format(estimatedUnitPrice)}원/km" else ""
+
+            Log.d("JudgeLogic", "baemin_no_dist: price=${call.price}, point=${call.point}, estimatedKm=${"%.1f".format(estimatedKm)}, estimatedUnitPrice=$estimatedUnitPrice, minUnitPrice=$minUnitPrice")
+
+            // 고액 콜 자동 통과
             if (call.price >= highPriceThreshold) {
                 return FilterResult(Verdict.ACCEPT,
-                    "고액 콜 ${fmt.format(call.price)}원 ≥ ${fmt.format(highPriceThreshold)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "고액 콜 ${fmt.format(call.price)}원 ≥ ${fmt.format(highPriceThreshold)}원$estimateTag$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
 
-            if (call.price >= minPrice) {
-                return FilterResult(Verdict.ACCEPT,
-                    "최소배달료 통과 (${fmt.format(call.price)}원 ≥ ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
-            } else {
+            // 최소배달료 미달
+            if (call.price < minPrice) {
                 return FilterResult(Verdict.REJECT,
-                    "최소배달료 ${fmt.format(call.price)}원 미달 (설정: ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "최소배달료 ${fmt.format(call.price)}원 미달 (설정: ${fmt.format(minPrice)}원)$estimateTag$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
+
+            // 단가 미달 (포인트 환산 성공 시만)
+            if (estimatedKm > 0 && estimatedUnitPrice < minUnitPrice) {
+                return FilterResult(Verdict.REJECT,
+                    "단가 ${fmt.format(estimatedUnitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달 (거리 추정)$estimateTag$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+            }
+
+            return FilterResult(Verdict.ACCEPT,
+                "최소배달료 통과 (${fmt.format(call.price)}원 ≥ ${fmt.format(minPrice)}원)$estimateTag$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
 
         // ── 단건 판정 (거리 있음 또는 배민 외 플랫폼) ──

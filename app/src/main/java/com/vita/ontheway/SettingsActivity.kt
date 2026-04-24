@@ -919,6 +919,52 @@ class SettingsActivity : AppCompatActivity() {
         ) { checked -> FeatureFlags.screenFilterLogging = checked; FeatureFlags.save(this) })
         root.addView(expCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
+        // ─── v3.19.4: 개발자 도구 ───
+        root.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#DDDDDD"))
+        }, lp(MP, dp(1)).apply { setMargins(dp(16), dp(16), dp(16), 0) })
+        root.addView(sectionTitle("개발자 도구"))
+        val devToolCard = card()
+        devToolCard.addView(TextView(this).apply {
+            text = "쿠팡 진단 로그 보기"
+            textSize = 15f; setTextColor(Color.parseColor("#5B6ABF"))
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F0F0F0"))
+            setPadding(0, dp(16), 0, dp(16))
+            setOnClickListener {
+                startActivity(Intent(this@SettingsActivity, CoupangDiagnosticViewerActivity::class.java))
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(12), dp(16), dp(12)) })
+        devToolCard.addView(TextView(this).apply {
+            text = "쿠팡이츠 Flutter 접근성 트리 진단 데이터를 확인합니다"
+            textSize = 12f; setTextColor(Color.parseColor("#999999"))
+            setPadding(dp(16), 0, dp(16), dp(12))
+        })
+
+        // 배민 진단 로그 보기
+        devToolCard.addView(TextView(this).apply {
+            text = "배민 진단 로그 보기"
+            textSize = 15f; setTextColor(Color.parseColor("#5B6ABF"))
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F0F0F0"))
+            setPadding(0, dp(16), 0, dp(16))
+            setOnClickListener {
+                startActivity(Intent(this@SettingsActivity, CoupangDiagnosticViewerActivity::class.java).apply {
+                    putExtra(CoupangDiagnosticViewerActivity.EXTRA_FILE_NAME, "baemin_diagnostic.jsonl")
+                    putExtra(CoupangDiagnosticViewerActivity.EXTRA_TITLE, "배민 진단 로그")
+                })
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(12), dp(16), dp(12)) })
+        devToolCard.addView(TextView(this).apply {
+            text = "배민 접근성 트리 진단 (거리 텍스트 탐색용, FeatureFlags ON 필요)"
+            textSize = 12f; setTextColor(Color.parseColor("#999999"))
+            setPadding(dp(16), 0, dp(16), dp(12))
+        })
+
+        root.addView(devToolCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
         // ─── 버전 번호 (5회 탭 → 개발자 옵션) ───
         var devTapCount = 0
         var lastDevTapTime = 0L

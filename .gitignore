@@ -13,3 +13,15 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Claude Code 로컬 설정
+.claude/
+
+# 디버깅 메모
+fix.txt
+today_full.txt
+
+# 임시 로그/리포트
+logs/
+reports/
+feedback_logs_backup_*.jsonl

@@ -104,4 +104,37 @@ class StoreNameCleanerTest {
     fun validate_blank() {
         assertEquals("", StoreNameCleaner.validateStoreName(""))
     }
+
+    // ── v3.21: UI 텍스트 혼입 필터 강화 ──
+
+    @Test
+    fun blacklist_1207_ui_texts() {
+        // 12:07 실측 혼입 사례 전부 차단
+        assertTrue(StoreNameCleaner.isBlacklisted("지도를 준비중입니다"))
+        assertTrue(StoreNameCleaner.isBlacklisted("잠시만 기다려주세요"))
+        assertTrue(StoreNameCleaner.isBlacklisted("현재 위치와 가까운 배차를 찾고 있어요"))
+        assertTrue(StoreNameCleaner.isBlacklisted("고객 요청사항이 변경되었어요"))
+        assertTrue(StoreNameCleaner.isBlacklisted("배달이 많은 지역을 볼수 있어요"))
+        assertTrue(StoreNameCleaner.isBlacklisted("배달 이어서 하기"))
+        assertTrue(StoreNameCleaner.isBlacklisted("지도 확대 기능이 꺼졌습니다"))
+    }
+
+    @Test
+    fun blacklist_sentence_ending_patterns() {
+        // ~요, ~니다, ~습니다 종결어미 패턴
+        assertTrue(StoreNameCleaner.isBlacklisted("배달이 시작되었어요"))
+        assertTrue(StoreNameCleaner.isBlacklisted("새로운 배달이 도착했습니다"))
+        assertTrue(StoreNameCleaner.isBlacklisted("조리가 완료되었습니다"))
+    }
+
+    @Test
+    fun blacklist_real_stores_not_caught() {
+        // 정상 가게명은 차단되지 않아야 함
+        assertFalse(StoreNameCleaner.isBlacklisted("제비 파스타&리조또 태전점"))
+        assertFalse(StoreNameCleaner.isBlacklisted("미아리우동집 태전점"))
+        assertFalse(StoreNameCleaner.isBlacklisted("맘스터치 경기광주태전센트힐점"))
+        assertFalse(StoreNameCleaner.isBlacklisted("이디야커피 경기광주태전점"))
+        assertFalse(StoreNameCleaner.isBlacklisted("호랑이떡볶이 광주태전점"))
+        assertFalse(StoreNameCleaner.isBlacklisted("GS25 태전점"))
+    }
 }
