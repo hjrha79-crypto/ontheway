@@ -12,6 +12,14 @@ object BaeminParser {
     /** 배민 포인트 → 추정 거리(km) 변환 */
     fun convertPointToKm(points: Double): Double = points * BAEMIN_POINT_TO_KM
 
+    /**
+     * 배민 앱 UI의 "배달료기준거리 (1,065m)" 텍스트 파싱용 정규식.
+     * 2026-04-24: 저녁 진단 로거 분석으로 Case A 확정.
+     * - 매칭 시: 해당 거리(m)를 km로 변환하여 distance 설정
+     * - 미매칭 시: 기존 포인트×0.15 추정 유지 (fallback)
+     */
+    private val DISTANCE_PATTERN = Regex("""배달료기준거리\s*\(([0-9,]+)m\)""")
+
     private val PRICE_PATTERN = Regex("배달료\\s*([\\d,]+)\\s*원")
     private val AMOUNT_PATTERN = Regex("^([\\d,]+)\\s*원$")
     private val POINT_PATTERN = Regex("([\\d.]+)\\s*P", RegexOption.IGNORE_CASE)
@@ -21,6 +29,19 @@ object BaeminParser {
     // 묶음배달 패턴: "묶음배달", "2건", "3건 묶음" 등
     private val BUNDLE_PATTERN = Regex("묶음|\\d+건", RegexOption.IGNORE_CASE)
     private val BUNDLE_COUNT_PATTERN = Regex("(\\d+)\\s*건")
+
+    /**
+     * texts 리스트에서 "배달료기준거리 (X,XXXm)" 패턴 찾아 km로 반환.
+     * 없으면 null.
+     */
+    private fun extractActualDistance(texts: List<String>): Double? {
+        val joined = texts.joinToString(" ")
+        val match = DISTANCE_PATTERN.find(joined) ?: return null
+        val meters = match.groupValues[1].replace(",", "").toIntOrNull() ?: return null
+        val km = meters / 1000.0
+        Log.d("BaeminDistance", "parsed ${meters}m = ${km}km")
+        return km
+    }
 
     fun parse(texts: List<String>): List<DeliveryCall> {
         val results = mutableListOf<DeliveryCall>()
@@ -53,6 +74,7 @@ object BaeminParser {
                 STORE_PATTERN.matches(tt)
             }
         }.map { it.trim() }.distinct()
+            .filter { StoreNameCleaner.validateStoreName(it).isNotEmpty() }
 
         val rawStoreName = storeAfterPickup ?: storeNames.firstOrNull() ?: ""
         val storeName = StoreNameCleaner.validateStoreName(rawStoreName)
@@ -70,7 +92,7 @@ object BaeminParser {
             val price = match.groupValues[1].replace(",", "").toIntOrNull() ?: continue
             if (price in 500..100000 && results.none { it.price == price }) {
                 results.add(DeliveryCall(
-                    price = price, distance = null, isMulti = false, platform = "baemin",
+                    price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
                     rawText = joined, storeName = storeName, destination = destination,
                     point = point
                 ))
@@ -87,7 +109,7 @@ object BaeminParser {
                 val price = match.groupValues[1].replace(",", "").toIntOrNull() ?: continue
                 if (price in 500..100000 && results.none { it.price == price }) {
                     results.add(DeliveryCall(
-                        price = price, distance = null, isMulti = false, platform = "baemin",
+                        price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
                         point = point
                     ))
@@ -103,7 +125,7 @@ object BaeminParser {
                 val price = match.groupValues[1].replace(",", "").toIntOrNull()
                 if (price != null && price in 500..100000) {
                     results.add(DeliveryCall(
-                        price = price, distance = null, isMulti = false, platform = "baemin",
+                        price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
                         point = point
                     ))
@@ -127,7 +149,7 @@ object BaeminParser {
             Log.d("BaeminParser", "묶음배달 감지: ${bundleCount}건 합산 ${totalPrice}원, 다중픽업=$isMultiPickup")
             return listOf(DeliveryCall(
                 price = totalPrice,
-                distance = null,
+                distance = extractActualDistance(texts),
                 isMulti = true,
                 platform = "baemin",
                 rawText = joined,
