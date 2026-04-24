@@ -190,6 +190,21 @@ class DeliveryNotificationService : NotificationListenerService() {
             val fmt = java.text.NumberFormat.getNumberInstance()
             val overlayText = "$verdict ${fmt.format(call.price)}원"
             FloatingOverlay.show(this, overlayText)
+
+            // 2026-04-24: Accessibility 경로와 동일하게 OverlayManager 표시
+            if (FeatureFlags.overlayEnabled) {
+                try {
+                    OverlayManager.show(
+                        context = this,
+                        verdict = verdict,
+                        line1 = "$pName ${fmt.format(call.price)}원",
+                        line2 = call.storeName.takeIf { it.isNotBlank() }
+                    )
+                } catch (e: Exception) {
+                    Log.w("NotiFallback", "OverlayManager 실패: ${e.message}")
+                }
+            }
+
             Log.d("NotiFallback", "[$pName] overlay: $overlayText (noti path)")
         }
 
