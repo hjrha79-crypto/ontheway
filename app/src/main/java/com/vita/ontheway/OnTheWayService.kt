@@ -94,10 +94,12 @@ class OnTheWayService : AccessibilityService() {
     // v3.0: 자동 수락 쿨다운
     private var lastAutoAcceptTime: Long = 0
 
-    // v3.0: 마지막 판정 정보 (수락 감지용)
-    private var lastDeliveryCall: DeliveryCall? = null
-    private var lastDeliveryVerdict: String = ""  // "잡으세요", "괜찮습니다", "넘기세요"
-    private var lastDeliveryPlatform: String = ""
+    // v3.0: 마지막 판정 정보 (수락 감지용 + 오버레이 피드백)
+    var lastDeliveryCall: DeliveryCall? = null
+    var lastDeliveryVerdict: String = ""  // "잡으세요", "괜찮습니다", "넘기세요"
+    var lastDeliveryPlatform: String = ""
+    var lastDeliveryReason: String? = null
+    var lastDeliverySessionId: String? = null
 
     // v3.3: 연속 REJECT 카운터
     var consecutiveRejectCount: Int = 0
@@ -909,6 +911,8 @@ class OnTheWayService : AccessibilityService() {
 
         // 판정 결과 → 상태 변수 설정 (TTS 여부와 무관하게 항상 실행)
         callSpeakHistory[callKey] = now
+        lastDeliveryReason = result.reason
+        lastDeliverySessionId = callSessionEvt?.eventId
         if (result.verdict == CallFilter.Verdict.REJECT) {
             lastDeliveryCall = call
             lastDeliveryVerdict = "넘기세요"

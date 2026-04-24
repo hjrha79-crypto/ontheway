@@ -84,17 +84,24 @@ object OverlayManager {
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 else
                     @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                 y = 150
             }
 
+            // 👍👎 클릭 리스너
+            overlayView!!.findViewById<View>(R.id.overlay_thumbs_up)?.setOnClickListener {
+                recordFeedback(context, "up")
+            }
+            overlayView!!.findViewById<View>(R.id.overlay_thumbs_down)?.setOnClickListener {
+                recordFeedback(context, "down")
+            }
+
             windowManager?.addView(overlayView, params)
 
-            // 2초 후 자동 제거
+            // 8초 후 자동 제거
             handler.removeCallbacks(hideRunnable)
             handler.postDelayed(hideRunnable, OVERLAY_DURATION_MS)
 
@@ -102,6 +109,41 @@ object OverlayManager {
         } catch (e: Exception) {
             Log.w("OverlayManager", "오버레이 표시 실패: ${e.message}")
         }
+    }
+
+    private fun recordFeedback(context: Context, feedback: String) {
+        val service = OnTheWayService.instance
+        val call = service?.lastDeliveryCall
+        val verdict = service?.lastDeliveryVerdict ?: ""
+        val reason = service?.lastDeliveryReason ?: ""
+        val sessionId = service?.lastDeliverySessionId ?: ""
+
+        if (call == null) {
+            Log.w("OverlayFeedback", "call missing — skip")
+            hide()
+            return
+        }
+
+        try {
+            FeedbackLogger.log(
+                context,
+                platform = call.platform,
+                store = call.storeName,
+                price = call.price,
+                distanceKm = call.distance ?: 0.0,
+                verdict = verdict,
+                reason = reason,
+                sessionId = sessionId,
+                feedback = feedback,
+                reasons = emptyList()
+            )
+            android.widget.Toast.makeText(context, "기록됨", android.widget.Toast.LENGTH_SHORT).show()
+            Log.d("OverlayFeedback", "logged: feedback=$feedback platform=${call.platform} price=${call.price}")
+        } catch (e: Exception) {
+            Log.e("OverlayFeedback", "save failed", e)
+        }
+
+        hide()
     }
 
     fun hide() {
