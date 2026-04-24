@@ -22,6 +22,13 @@ import android.widget.TextView
  */
 object OverlayManager {
 
+    /**
+     * 오버레이 자동 닫힘 타이머 (ms).
+     * 2026-04-24: 2초 → 8초 (사용자가 정보 읽기 + 👍👎 탭 가능하도록).
+     * 향후 SettingsActivity에서 조정 가능하도록 상수로 분리.
+     */
+    const val OVERLAY_DURATION_MS = 8000L
+
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -89,7 +96,7 @@ object OverlayManager {
 
             // 2초 후 자동 제거
             handler.removeCallbacks(hideRunnable)
-            handler.postDelayed(hideRunnable, 2000)
+            handler.postDelayed(hideRunnable, OVERLAY_DURATION_MS)
 
             Log.d("OverlayManager", "오버레이 표시: $line1 / $line2 ($verdict)")
         } catch (e: Exception) {
