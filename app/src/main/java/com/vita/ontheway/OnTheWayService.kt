@@ -129,6 +129,9 @@ class OnTheWayService : AccessibilityService() {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
 
+        // 2026-04-25 P0: 자기 패키지 즉시 차단 (자기 참조 유령 세션 방지)
+        if (pkg == "com.vita.ontheway") return
+
         // v2.2: 진단 모드 — 모든 패키지별 이벤트 카운트
         packageEventCount[pkg] = (packageEventCount[pkg] ?: 0) + 1
 
@@ -539,6 +542,9 @@ class OnTheWayService : AccessibilityService() {
     }
 
     private fun extractText(node: AccessibilityNodeInfo, results: MutableList<String>) {
+        // 2026-04-25 P0: 자기 패키지 노드는 텍스트 수집 스킵 (자기 참조 방지)
+        if (node.packageName?.toString() == "com.vita.ontheway") return
+
         node.text?.toString()?.takeIf { it.isNotBlank() }?.let { results.add(it) }
         // 2026-04-24: 배민 "배달료기준거리"가 contentDescription에만 있는 케이스 커버.
         node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { results.add(it) }
@@ -570,7 +576,11 @@ class OnTheWayService : AccessibilityService() {
     private fun findWindowRoot(targetPkg: String): AccessibilityNodeInfo? {
         return try {
             windows?.firstNotNullOfOrNull { w ->
-                w.root?.takeIf { it.packageName?.toString() == targetPkg }
+                w.root?.takeIf {
+                    val winPkg = it.packageName?.toString()
+                    // 2026-04-25 P0: OnTheWay 자기 윈도우 제외 (자기 참조 방지)
+                    winPkg == targetPkg && winPkg != "com.vita.ontheway"
+                }
             }
         } catch (e: Exception) {
             Log.w("OTW_DEBUG", "getWindows fallback 실패: ${e.message}")
