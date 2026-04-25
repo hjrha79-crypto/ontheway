@@ -18,7 +18,8 @@ data class FeedbackEntry(
     val reason: String,
     val feedback: String,       // "up" / "down"
     val reasons: List<String>,  // ["pickup", "delivery", ...]
-    val overwroteTs: Long? = null
+    val overwroteTs: Long? = null,
+    val driverAction: String = "unknown"
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("ts", ts)
@@ -32,6 +33,7 @@ data class FeedbackEntry(
         put("feedback", feedback)
         put("reasons", JSONArray().also { arr -> reasons.forEach { arr.put(it) } })
         if (overwroteTs != null) put("overwrote_ts", overwroteTs)
+        put("driver_action", driverAction)
     }
 
     companion object {
@@ -54,7 +56,8 @@ data class FeedbackEntry(
                 reason = json.optString("reason", ""),
                 feedback = json.optString("feedback", ""),
                 reasons = reasonsList,
-                overwroteTs = if (json.has("overwrote_ts")) json.getLong("overwrote_ts") else null
+                overwroteTs = if (json.has("overwrote_ts")) json.getLong("overwrote_ts") else null,
+                driverAction = json.optString("driver_action", "unknown")
             )
         } catch (e: Exception) {
             Log.w("FeedbackLogger", "엔트리 파싱 실패: ${e.message}")
@@ -70,7 +73,8 @@ object FeedbackLogger {
 
     fun log(ctx: Context, platform: String, store: String, price: Int,
             distanceKm: Double, verdict: String, reason: String,
-            sessionId: String, feedback: String, reasons: List<String>) {
+            sessionId: String, feedback: String, reasons: List<String>,
+            driverAction: String = "unknown") {
         try {
             val entry = FeedbackEntry(
                 ts = System.currentTimeMillis(),
@@ -82,7 +86,8 @@ object FeedbackLogger {
                 verdict = verdict,
                 reason = reason,
                 feedback = feedback,
-                reasons = reasons
+                reasons = reasons,
+                driverAction = driverAction
             )
             val file = File(ctx.filesDir, FILE_NAME)
             file.appendText(entry.toJson().toString() + "\n")

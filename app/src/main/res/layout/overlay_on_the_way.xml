@@ -6,64 +6,206 @@
     android:orientation="vertical"
     android:background="@drawable/overlay_bg"
     android:padding="16dp"
-    android:minWidth="200dp">
+    android:minWidth="280dp">
 
+    <!-- 공통 헤더 -->
     <TextView
         android:id="@+id/overlay_line1"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:maxWidth="280dp"
         android:textSize="18sp"
-        android:textColor="#FFFFFF"
         android:textStyle="bold"
+        android:textColor="#FFFFFFFF"
         android:singleLine="true"
-        android:ellipsize="end"
-        android:maxWidth="280dp" />
+        android:ellipsize="end" />
 
     <TextView
         android:id="@+id/overlay_line2"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:maxWidth="280dp"
         android:textSize="14sp"
         android:textColor="#CCFFFFFF"
         android:singleLine="true"
         android:ellipsize="end"
-        android:maxWidth="280dp"
-        android:paddingTop="2dp" />
+        android:layout_marginTop="4dp" />
 
+    <!-- Step 1: 수락/거절 -->
     <LinearLayout
+        android:id="@+id/overlay_step1"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center"
-        android:paddingTop="8dp"
-        android:paddingBottom="4dp">
+        android:layout_marginTop="12dp"
+        android:visibility="visible">
 
         <TextView
-            android:id="@+id/overlay_thumbs_up"
+            android:id="@+id/overlay_accept"
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
             android:layout_marginEnd="4dp"
             android:gravity="center"
-            android:text="👍"
-            android:textSize="24sp"
-            android:background="#40FFFFFF"
+            android:text="수락"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFFFF"
+            android:background="#4CAF50"
             android:clickable="true"
             android:focusable="true" />
 
         <TextView
-            android:id="@+id/overlay_thumbs_down"
+            android:id="@+id/overlay_reject"
             android:layout_width="0dp"
             android:layout_height="48dp"
             android:layout_weight="1"
             android:layout_marginStart="4dp"
             android:gravity="center"
-            android:text="👎"
-            android:textSize="24sp"
-            android:background="#40FFFFFF"
+            android:text="거절"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFFFF"
+            android:background="#F44336"
             android:clickable="true"
             android:focusable="true" />
+    </LinearLayout>
 
+    <!-- Step 2: 거절 시 👍👎 + 사유 -->
+    <LinearLayout
+        android:id="@+id/overlay_step2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="판정 평가"
+            android:textSize="12sp"
+            android:textColor="#CCFFFFFF" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:id="@+id/overlay_thumbs_up"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:gravity="center"
+                android:text="👍"
+                android:textSize="20sp"
+                android:background="#40FFFFFF"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/overlay_thumbs_down"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:gravity="center"
+                android:text="👎"
+                android:textSize="20sp"
+                android:background="#40FFFFFF"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="사유 (다중 선택)"
+            android:textSize="12sp"
+            android:textColor="#CCFFFFFF"
+            android:layout_marginTop="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp">
+
+            <TextView
+                android:id="@+id/overlay_reason_price"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="2dp"
+                android:gravity="center"
+                android:text="단가"
+                android:textSize="13sp"
+                android:textColor="#FFFFFFFF"
+                android:background="#40FFFFFF"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/overlay_reason_distance"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:gravity="center"
+                android:text="거리"
+                android:textSize="13sp"
+                android:textColor="#FFFFFFFF"
+                android:background="#40FFFFFF"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/overlay_reason_pickup"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp"
+                android:gravity="center"
+                android:text="픽업"
+                android:textSize="13sp"
+                android:textColor="#FFFFFFFF"
+                android:background="#40FFFFFF"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/overlay_reason_other"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginStart="2dp"
+                android:gravity="center"
+                android:text="기타"
+                android:textSize="13sp"
+                android:textColor="#FFFFFFFF"
+                android:background="#40FFFFFF"
+                android:clickable="true"
+                android:focusable="true" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/overlay_save"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:text="저장"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFFFF"
+            android:background="#2196F3"
+            android:clickable="true"
+            android:focusable="true" />
     </LinearLayout>
 
 </LinearLayout>

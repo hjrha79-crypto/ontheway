@@ -111,6 +111,18 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 3) {
 
     data class SimCallRow(val ts: Long, val price: Int)
 
+    /** v1: 사용자 [수락]/[거절] 탭 시 driver_action 덮어쓰기 */
+    fun updateDriverAction(price: Int, platform: String, action: String) {
+        try {
+            writableDatabase.execSQL(
+                "UPDATE $TABLE SET driver_action=? WHERE id=(SELECT id FROM $TABLE WHERE price=? AND platform=? ORDER BY timestamp DESC LIMIT 1)",
+                arrayOf(action, price.toString(), platform)
+            )
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "updateDriverAction 실패: ${e.message}")
+        }
+    }
+
     fun markAccepted(price: Int, platform: String) {
         try {
             writableDatabase.execSQL(

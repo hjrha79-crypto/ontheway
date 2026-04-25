@@ -14,19 +14,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
+import android.widget.Toast
 
 /**
- * v3.20: 콜 판정 결과 오버레이 (2줄, 2초 자동 소멸)
- * - TTS와 동시 또는 +0.3초 지연으로 표시
- * - 판정별 색상: ACCEPT 초록, REJECT 빨강, 기타 회색
+ * v1: 콜 판정 오버레이 — [수락]/[거절] + 거절 시 👍👎 + 사유
  */
 object OverlayManager {
 
-    /**
-     * 오버레이 자동 닫힘 타이머 (ms).
-     * 2026-04-24: 2초 → 8초 (사용자가 정보 읽기 + 👍👎 탭 가능하도록).
-     * 향후 SettingsActivity에서 조정 가능하도록 상수로 분리.
-     */
     const val OVERLAY_DURATION_MS = 8000L
 
     private var windowManager: WindowManager? = null
@@ -38,6 +32,10 @@ object OverlayManager {
     private const val COLOR_REJECT = "#E74C3C"
     private const val COLOR_DEFAULT = "#95A5A6"
 
+    // step2 상태
+    private var selectedFeedback: String? = null
+    private val selectedReasons = mutableSetOf<String>()
+
     fun show(context: Context, verdict: String, line1: String, line2: String?) {
         if (!Settings.canDrawOverlays(context)) {
             Log.w("OverlayManager", "오버레이 권한 없음 - 스킵")
@@ -45,15 +43,14 @@ object OverlayManager {
         }
 
         try {
-            // 기존 뷰 제거
             hide()
 
             windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-
             overlayView = LayoutInflater.from(context).inflate(R.layout.overlay_on_the_way, null)
+            val view = overlayView!!
 
-            val line1View = overlayView!!.findViewById<TextView>(R.id.overlay_line1)
-            val line2View = overlayView!!.findViewById<TextView>(R.id.overlay_line2)
+            val line1View = view.findViewById<TextView>(R.id.overlay_line1)
+            val line2View = view.findViewById<TextView>(R.id.overlay_line2)
 
             line1View.text = line1
             if (line2.isNullOrBlank()) {
@@ -63,16 +60,15 @@ object OverlayManager {
                 line2View.visibility = View.VISIBLE
             }
 
-            // 판정별 배경 색상 적용
+            // 판정별 배경 색상
             val colorHex = when {
                 verdict.contains("잡으세요") || verdict == "ACCEPT" -> COLOR_ACCEPT
                 verdict.contains("넘기세요") || verdict == "REJECT" -> COLOR_REJECT
                 else -> COLOR_DEFAULT
             }
-            val bg = overlayView!!.background
+            val bg = view.background
             if (bg is GradientDrawable) {
                 bg.setColor(Color.parseColor(colorHex).let { color ->
-                    // 반투명 적용 (alpha CC = 80%)
                     Color.argb(0xCC, Color.red(color), Color.green(color), Color.blue(color))
                 })
             }
@@ -91,17 +87,51 @@ object OverlayManager {
                 y = 150
             }
 
-            // 👍👎 클릭 리스너
-            overlayView!!.findViewById<View>(R.id.overlay_thumbs_up)?.setOnClickListener {
-                recordFeedback(context, "up")
+            // Step 1: 수락/거절
+            val step1 = view.findViewById<View>(R.id.overlay_step1)
+            val step2 = view.findViewById<View>(R.id.overlay_step2)
+
+            view.findViewById<View>(R.id.overlay_accept).setOnClickListener {
+                updateDriverAction(context, "simulated_accept")
+                Toast.makeText(context, "수락 기록", Toast.LENGTH_SHORT).show()
+                hide()
             }
-            overlayView!!.findViewById<View>(R.id.overlay_thumbs_down)?.setOnClickListener {
-                recordFeedback(context, "down")
+
+            view.findViewById<View>(R.id.overlay_reject).setOnClickListener {
+                updateDriverAction(context, "simulated_reject")
+                step1.visibility = View.GONE
+                step2.visibility = View.VISIBLE
+                handler.removeCallbacks(hideRunnable) // 사용자 입력 시간 확보
+            }
+
+            // Step 2: 👍👎
+            val thumbsUp = view.findViewById<View>(R.id.overlay_thumbs_up)
+            val thumbsDown = view.findViewById<View>(R.id.overlay_thumbs_down)
+
+            thumbsUp.setOnClickListener {
+                selectedFeedback = "up"
+                thumbsUp.alpha = 1.0f
+                thumbsDown.alpha = 0.5f
+            }
+            thumbsDown.setOnClickListener {
+                selectedFeedback = "down"
+                thumbsDown.alpha = 1.0f
+                thumbsUp.alpha = 0.5f
+            }
+
+            // Step 2: 사유 토글
+            setupReasonToggle(view.findViewById(R.id.overlay_reason_price), "단가")
+            setupReasonToggle(view.findViewById(R.id.overlay_reason_distance), "거리")
+            setupReasonToggle(view.findViewById(R.id.overlay_reason_pickup), "픽업")
+            setupReasonToggle(view.findViewById(R.id.overlay_reason_other), "기타")
+
+            // Step 2: 저장
+            view.findViewById<View>(R.id.overlay_save).setOnClickListener {
+                saveRejectFeedback(context)
             }
 
             windowManager?.addView(overlayView, params)
 
-            // 8초 후 자동 제거
             handler.removeCallbacks(hideRunnable)
             handler.postDelayed(hideRunnable, OVERLAY_DURATION_MS)
 
@@ -111,7 +141,32 @@ object OverlayManager {
         }
     }
 
-    private fun recordFeedback(context: Context, feedback: String) {
+    private fun setupReasonToggle(button: View, reason: String) {
+        button.alpha = 0.5f
+        button.setOnClickListener {
+            if (selectedReasons.contains(reason)) {
+                selectedReasons.remove(reason)
+                button.alpha = 0.5f
+            } else {
+                selectedReasons.add(reason)
+                button.alpha = 1.0f
+            }
+        }
+    }
+
+    private fun updateDriverAction(context: Context, action: String) {
+        val service = OnTheWayService.instance ?: return
+        val call = service.lastDeliveryCall ?: return
+
+        try {
+            CallLogDb.get(context).updateDriverAction(call.price, call.platform, action)
+            Log.d("OverlayV1", "driver_action 덮어쓰기: ${call.platform} ${call.price}원 → $action")
+        } catch (e: Exception) {
+            Log.e("OverlayV1", "driver_action 덮어쓰기 실패", e)
+        }
+    }
+
+    private fun saveRejectFeedback(context: Context) {
         val service = OnTheWayService.instance
         val call = service?.lastDeliveryCall
         val verdict = service?.lastDeliveryVerdict ?: ""
@@ -119,10 +174,12 @@ object OverlayManager {
         val sessionId = service?.lastDeliverySessionId ?: ""
 
         if (call == null) {
-            Log.w("OverlayFeedback", "call missing — skip")
             hide()
             return
         }
+
+        val feedback = selectedFeedback ?: "down"
+        val reasonsList = selectedReasons.toList()
 
         try {
             FeedbackLogger.log(
@@ -135,12 +192,13 @@ object OverlayManager {
                 reason = reason,
                 sessionId = sessionId,
                 feedback = feedback,
-                reasons = emptyList()
+                reasons = reasonsList,
+                driverAction = "simulated_reject"
             )
-            android.widget.Toast.makeText(context, "기록됨", android.widget.Toast.LENGTH_SHORT).show()
-            Log.d("OverlayFeedback", "logged: feedback=$feedback platform=${call.platform} price=${call.price}")
+            Toast.makeText(context, "거절 기록", Toast.LENGTH_SHORT).show()
+            Log.d("OverlayV1", "거절 저장: feedback=$feedback reasons=$reasonsList")
         } catch (e: Exception) {
-            Log.e("OverlayFeedback", "save failed", e)
+            Log.e("OverlayV1", "저장 실패", e)
         }
 
         hide()
@@ -149,6 +207,8 @@ object OverlayManager {
     fun hide() {
         try {
             handler.removeCallbacks(hideRunnable)
+            selectedFeedback = null
+            selectedReasons.clear()
             if (overlayView != null) {
                 windowManager?.removeView(overlayView)
                 overlayView = null
