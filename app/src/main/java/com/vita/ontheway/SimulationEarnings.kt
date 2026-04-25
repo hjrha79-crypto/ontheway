@@ -40,7 +40,7 @@ object SimulationEarnings {
         val totalPrice = rows.sumOf { it.price }
         val activeSeconds = calcActiveSeconds(rows.map { it.ts })
 
-        if (activeSeconds <= 0) return 0
+        if (activeSeconds < 300) return 0 // 5분 미만 = 표본 부족
         return (totalPrice * 3600.0 / activeSeconds).toInt()
     }
 
