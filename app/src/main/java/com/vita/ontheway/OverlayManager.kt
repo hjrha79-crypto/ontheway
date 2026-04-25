@@ -119,11 +119,19 @@ object OverlayManager {
                 thumbsUp.alpha = 0.5f
             }
 
-            // Step 2: 사유 토글
-            setupReasonToggle(view.findViewById(R.id.overlay_reason_price), "단가")
-            setupReasonToggle(view.findViewById(R.id.overlay_reason_distance), "거리")
-            setupReasonToggle(view.findViewById(R.id.overlay_reason_pickup), "픽업")
-            setupReasonToggle(view.findViewById(R.id.overlay_reason_other), "기타")
+            // Step 2: 사유 토글 (5개, 영문 코드, 배타 로직)
+            val reasonPickup = view.findViewById<View>(R.id.overlay_reason_pickup)
+            val reasonDelivery = view.findViewById<View>(R.id.overlay_reason_delivery)
+            val reasonPrice = view.findViewById<View>(R.id.overlay_reason_price)
+            val reasonOther = view.findViewById<View>(R.id.overlay_reason_other)
+            val reasonVerdict = view.findViewById<View>(R.id.overlay_reason_verdict)
+            val detailButtons = listOf(reasonPickup, reasonDelivery, reasonPrice, reasonOther)
+
+            setupDetailReasonToggle(reasonPickup, "pickup", reasonVerdict)
+            setupDetailReasonToggle(reasonDelivery, "delivery", reasonVerdict)
+            setupDetailReasonToggle(reasonPrice, "price", reasonVerdict)
+            setupDetailReasonToggle(reasonOther, "other", reasonVerdict)
+            setupVerdictReasonToggle(reasonVerdict, detailButtons)
 
             // Step 2: 저장
             view.findViewById<View>(R.id.overlay_save).setOnClickListener {
@@ -141,14 +149,35 @@ object OverlayManager {
         }
     }
 
-    private fun setupReasonToggle(button: View, reason: String) {
+    /** 세부 사유 토글 — 선택 시 verdict 자동 해제 */
+    private fun setupDetailReasonToggle(button: View, code: String, verdictButton: View) {
         button.alpha = 0.5f
         button.setOnClickListener {
-            if (selectedReasons.contains(reason)) {
-                selectedReasons.remove(reason)
+            if (selectedReasons.contains(code)) {
+                selectedReasons.remove(code)
                 button.alpha = 0.5f
             } else {
-                selectedReasons.add(reason)
+                if (selectedReasons.contains("verdict")) {
+                    selectedReasons.remove("verdict")
+                    verdictButton.alpha = 0.5f
+                }
+                selectedReasons.add(code)
+                button.alpha = 1.0f
+            }
+        }
+    }
+
+    /** verdict 토글 — 선택 시 세부 4개 자동 해제 */
+    private fun setupVerdictReasonToggle(button: View, detailButtons: List<View>) {
+        button.alpha = 0.5f
+        button.setOnClickListener {
+            if (selectedReasons.contains("verdict")) {
+                selectedReasons.remove("verdict")
+                button.alpha = 0.5f
+            } else {
+                listOf("pickup", "delivery", "price", "other").forEach { selectedReasons.remove(it) }
+                detailButtons.forEach { it.alpha = 0.5f }
+                selectedReasons.add("verdict")
                 button.alpha = 1.0f
             }
         }
