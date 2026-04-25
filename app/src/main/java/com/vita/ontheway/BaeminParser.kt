@@ -94,7 +94,7 @@ object BaeminParser {
                 results.add(DeliveryCall(
                     price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
                     rawText = joined, storeName = storeName, destination = destination,
-                    point = point
+                    point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
                 ))
                 Log.d("BaeminParser", "파싱(단일): ${price}원, point=${point}P, store=$storeName")
             }
@@ -111,7 +111,7 @@ object BaeminParser {
                     results.add(DeliveryCall(
                         price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
-                        point = point
+                        point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
                     ))
                     Log.d("BaeminParser", "파싱(분리노드): ${price}원")
                 }
@@ -127,7 +127,7 @@ object BaeminParser {
                     results.add(DeliveryCall(
                         price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
-                        point = point
+                        point = point, parsingMethod = V2Event.PARSING_TEXT_REGEX
                     ))
                     Log.d("BaeminParser", "파싱(join): ${price}원")
                 }
@@ -157,7 +157,8 @@ object BaeminParser {
                 destination = destination,
                 bundleCount = bundleCount,
                 isMultiPickup = isMultiPickup,
-                point = point
+                point = point,
+                parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
             ))
         }
 

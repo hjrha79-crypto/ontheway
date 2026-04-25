@@ -945,6 +945,7 @@ class OnTheWayService : AccessibilityService() {
 
         // ── TTS 3단계 판정 (중복 방지) — TTS만 스킵, 오버레이/DB/로그는 항상 실행 ──
         val shouldSpeak = TtsDeduplicator.shouldSpeak(call.platform, call.price)
+        var ttsActuallySpoken = false // v2.2: TTS 실제 발화 추적
         if (!shouldSpeak) {
             Log.d("DeliveryFilter", "TtsDeduplicator 중복 → TTS 스킵, 오버레이/DB는 실행: ${call.platform} ${call.price}원")
         }
@@ -963,6 +964,7 @@ class OnTheWayService : AccessibilityService() {
                 if (!TtsPrefs.isGrabOnlyEnabled(this)) {
                     val msg = "$pName, 넘기세요, ${priceStr}원"
                     speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
+                    ttsActuallySpoken = true
                 }
                 Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
             } else {
@@ -970,6 +972,7 @@ class OnTheWayService : AccessibilityService() {
                 if (isTopAccept) {
                     val msg = "$pName, 잡으세요, ${priceStr}원$pickupTtsExtra"
                     speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
+                    ttsActuallySpoken = true
                     Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
                     tryAutoAccept()
                 } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
@@ -979,6 +982,7 @@ class OnTheWayService : AccessibilityService() {
                     if (call.distance != null && call.distance > 3.0) ttsMsg += " 픽업 멉니다"
                     if (baeminPoint != null && baeminPoint >= 25.0) ttsMsg += ", 먼 거리입니다"
                     speakTts(TtsMessageBuilder.build(ttsMode, call, result, ttsMsg))
+                    ttsActuallySpoken = true
                     Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
                 } else {
                     Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
@@ -1038,7 +1042,10 @@ class OnTheWayService : AccessibilityService() {
                 point = baeminPoint, verdict = result.verdict.name,
                 reason = result.reason, bundleCount = call.bundleCount,
                 isMultiPickup = call.isMultiPickup, storeName = call.storeName,
-                destination = call.destination, pickupKm = pickupDistKm
+                destination = call.destination, pickupKm = pickupDistKm,
+                ttsSuppressed = !ttsActuallySpoken,
+                sourceType = V2Event.mapSourceType(call.platform),
+                parsingMethod = call.parsingMethod
             )
         } catch (e: Exception) { Log.w("DeliveryFilter", "DB 저장 실패: ${e.message}") }
 

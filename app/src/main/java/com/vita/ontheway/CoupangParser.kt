@@ -86,7 +86,8 @@ object CoupangParser {
                     isMulti = isMulti,
                     platform = "coupang",
                     rawText = joined,
-                    storeName = storeName
+                    storeName = storeName,
+                    parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
                 ))
                 Log.d("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti")
             }
@@ -104,7 +105,7 @@ object CoupangParser {
 
             val d = DISTANCE_PATTERN.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
             val m = MULTI_PATTERN.containsMatchIn(text)
-            results.add(DeliveryCall(price = p, distance = d, isMulti = m, platform = "coupang", rawText = text, storeName = storeName))
+            results.add(DeliveryCall(price = p, distance = d, isMulti = m, platform = "coupang", rawText = text, storeName = storeName, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT))
             Log.d("CoupangParser", "추가 파싱: ${p}원, ${d}km, multi=$m")
         }
 

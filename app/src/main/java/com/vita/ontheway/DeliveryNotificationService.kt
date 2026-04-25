@@ -236,7 +236,8 @@ class DeliveryNotificationService : NotificationListenerService() {
         return listOf(DeliveryCall(
             price = price, distance = distance, isMulti = false,
             platform = "kakaot", rawText = text,
-            storeName = from, destination = to
+            storeName = from, destination = to,
+            parsingMethod = V2Event.PARSING_NOTIFICATION
         ))
     }
 
@@ -287,7 +288,8 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         return listOf(DeliveryCall(
             price = price, distance = distance, isMulti = isMulti,
-            platform = "coupang", rawText = text
+            platform = "coupang", rawText = text,
+            parsingMethod = V2Event.PARSING_NOTIFICATION
         ))
     }
 
@@ -323,7 +325,8 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         return listOf(DeliveryCall(
             price = price, distance = null, isMulti = false,
-            platform = "baemin", rawText = text
+            platform = "baemin", rawText = text,
+            parsingMethod = V2Event.PARSING_NOTIFICATION
         ))
     }
 

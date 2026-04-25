@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 1) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 2) {
 
     companion object {
         const val TABLE = "call_logs"
@@ -37,20 +37,34 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 1) {
                 pickupKm REAL,
                 accepted INTEGER DEFAULT 0,
                 completed INTEGER DEFAULT 0,
-                deliveryTimeMin INTEGER DEFAULT 0
+                deliveryTimeMin INTEGER DEFAULT 0,
+                judge_version TEXT DEFAULT '${V2Event.JUDGE_VERSION}',
+                tts_suppressed INTEGER DEFAULT 0,
+                source_type TEXT DEFAULT 'unknown',
+                parsing_method TEXT DEFAULT 'unknown'
             )
         """)
         db.execSQL("CREATE INDEX idx_timestamp ON $TABLE(timestamp)")
         db.execSQL("CREATE INDEX idx_platform ON $TABLE(platform)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {}
+    override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
+        if (old < 2) {
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN judge_version TEXT DEFAULT '${V2Event.JUDGE_VERSION}'")
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN tts_suppressed INTEGER DEFAULT 0")
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN source_type TEXT DEFAULT 'unknown'")
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN parsing_method TEXT DEFAULT 'unknown'")
+        }
+    }
 
     fun insert(
         platform: String, price: Int, distance: Double?, unitPrice: Int,
         point: Double?, verdict: String, reason: String,
         bundleCount: Int = 1, isMultiPickup: Boolean = false,
-        storeName: String = "", destination: String = "", pickupKm: Double? = null
+        storeName: String = "", destination: String = "", pickupKm: Double? = null,
+        ttsSuppressed: Boolean = false,
+        sourceType: String = V2Event.SOURCE_UNKNOWN,
+        parsingMethod: String = V2Event.PARSING_UNKNOWN
     ) {
         val cv = ContentValues().apply {
             put("timestamp", System.currentTimeMillis())
@@ -66,6 +80,10 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 1) {
             put("storeName", storeName)
             put("destination", destination)
             put("pickupKm", pickupKm ?: -1.0)
+            put("judge_version", V2Event.JUDGE_VERSION)
+            put("tts_suppressed", if (ttsSuppressed) 1 else 0)
+            put("source_type", sourceType)
+            put("parsing_method", parsingMethod)
         }
         writableDatabase.insert(TABLE, null, cv)
     }
