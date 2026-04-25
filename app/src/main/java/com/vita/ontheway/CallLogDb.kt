@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 2) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 3) {
 
     companion object {
         const val TABLE = "call_logs"
@@ -41,7 +41,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 2) {
                 judge_version TEXT DEFAULT '${V2Event.JUDGE_VERSION}',
                 tts_suppressed INTEGER DEFAULT 0,
                 source_type TEXT DEFAULT 'unknown',
-                parsing_method TEXT DEFAULT 'unknown'
+                parsing_method TEXT DEFAULT 'unknown',
+                driver_action TEXT DEFAULT 'unknown'
             )
         """)
         db.execSQL("CREATE INDEX idx_timestamp ON $TABLE(timestamp)")
@@ -55,6 +56,9 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 2) {
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN source_type TEXT DEFAULT 'unknown'")
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN parsing_method TEXT DEFAULT 'unknown'")
         }
+        if (old < 3) {
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN driver_action TEXT DEFAULT 'unknown'")
+        }
     }
 
     fun insert(
@@ -64,7 +68,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 2) {
         storeName: String = "", destination: String = "", pickupKm: Double? = null,
         ttsSuppressed: Boolean = false,
         sourceType: String = V2Event.SOURCE_UNKNOWN,
-        parsingMethod: String = V2Event.PARSING_UNKNOWN
+        parsingMethod: String = V2Event.PARSING_UNKNOWN,
+        driverAction: String = "unknown"
     ) {
         val cv = ContentValues().apply {
             put("timestamp", System.currentTimeMillis())
@@ -84,9 +89,27 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 2) {
             put("tts_suppressed", if (ttsSuppressed) 1 else 0)
             put("source_type", sourceType)
             put("parsing_method", parsingMethod)
+            put("driver_action", driverAction)
         }
         writableDatabase.insert(TABLE, null, cv)
     }
+
+    /** 시뮬레이션 ACCEPT 콜 조회 (driver_action == "simulated_accept") */
+    fun getSimulatedAcceptCalls(sinceMs: Long): List<SimCallRow> {
+        val rows = mutableListOf<SimCallRow>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT timestamp, price FROM $TABLE WHERE driver_action = ? AND timestamp >= ? ORDER BY timestamp ASC",
+            arrayOf("simulated_accept", sinceMs.toString())
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                rows.add(SimCallRow(ts = it.getLong(0), price = it.getInt(1)))
+            }
+        }
+        return rows
+    }
+
+    data class SimCallRow(val ts: Long, val price: Int)
 
     fun markAccepted(price: Int, platform: String) {
         try {

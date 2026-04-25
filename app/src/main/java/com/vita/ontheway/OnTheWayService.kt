@@ -1045,7 +1045,12 @@ class OnTheWayService : AccessibilityService() {
                 destination = call.destination, pickupKm = pickupDistKm,
                 ttsSuppressed = !ttsActuallySpoken,
                 sourceType = V2Event.mapSourceType(call.platform),
-                parsingMethod = call.parsingMethod
+                parsingMethod = call.parsingMethod,
+                driverAction = when (lastDeliveryVerdict) {
+                    "잡으세요", "괜찮습니다" -> "simulated_accept"
+                    "넘기세요" -> "simulated_reject"
+                    else -> "unknown"
+                }
             )
         } catch (e: Exception) { Log.w("DeliveryFilter", "DB 저장 실패: ${e.message}") }
 

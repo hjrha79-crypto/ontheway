@@ -49,6 +49,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var hourlyRateCard: LinearLayout
     private lateinit var recentHourlyRate: TextView
     private lateinit var cumulativeHourlyRate: TextView
+    private lateinit var simulationHourlyCard: LinearLayout
+    private lateinit var simRecentHourlyRate: TextView
+    private lateinit var simCumulativeHourlyRate: TextView
     private lateinit var appCheckText: TextView
     private var currentTab = "status"  // "status" or "chat"
 
@@ -156,6 +159,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         hourlyRateCard = findViewById(R.id.hourlyRateCard)
         recentHourlyRate = findViewById(R.id.recentHourlyRate)
         cumulativeHourlyRate = findViewById(R.id.cumulativeHourlyRate)
+        simulationHourlyCard = findViewById(R.id.simulationHourlyCard)
+        simRecentHourlyRate = findViewById(R.id.simRecentHourlyRate)
+        simCumulativeHourlyRate = findViewById(R.id.simCumulativeHourlyRate)
         appCheckText = findViewById(R.id.appCheckText)
 
         val statsBtn = findViewById<TextView>(R.id.statsBtn)
@@ -930,6 +936,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         hourlyRateCard.visibility = View.VISIBLE
         recentHourlyRate.text = if (recent >= 0) "${fmt(recent)}원/h" else "—원/h"
         cumulativeHourlyRate.text = if (cumulative >= 0) "${fmt(cumulative)}원/h" else "—원/h"
+
+        // 시뮬레이션 시급 카드
+        val simRecent = SimulationEarnings.getRecentHourlyRate(this)
+        val simCumulative = SimulationEarnings.getCumulativeHourlyRate(this)
+        simulationHourlyCard.visibility = View.VISIBLE
+        simRecentHourlyRate.text = if (simRecent > 0) "${fmt(simRecent)}원/h" else "—원/h"
+        simCumulativeHourlyRate.text = if (simCumulative > 0) "${fmt(simCumulative)}원/h" else "—원/h"
     }
 
     private fun updateAppCheckDisplay() {
