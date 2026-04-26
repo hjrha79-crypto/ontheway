@@ -1191,6 +1191,13 @@ class OnTheWayService : AccessibilityService() {
         // 각 모듈 초기화는 개별 try-catch (하나 실패해도 서비스 계속)
         try { startForegroundNotification() } catch (e: Exception) { Log.w("OnTheWay", "알림 초기화 실패: ${e.message}") }
         try { startGps() } catch (e: Exception) { Log.w("OnTheWay", "GPS 초기화 실패: ${e.message}") }
+        // [Hotfix-1] DrivingMode 상태 복구 (프로세스 kill 후 SP=DRIVING + isTracking=false 불일치 대응)
+        try {
+            if (DrivingModeManager.getMode(this) == DrivingMode.DRIVING && !LocationTracker.isActive()) {
+                Log.d("OTW_DRIVING_MODE", "프로세스 재시작 감지 → GPS 수집 재개")
+                LocationTracker.startTracking(this)
+            }
+        } catch (e: Exception) { Log.w("OTW_DRIVING_MODE", "DrivingMode 복구 실패: ${e.message}") }
         try { CallLogDb.get(this).cleanup() } catch (e: Exception) { Log.w("OnTheWay", "DB 정리 실패: ${e.message}") }
         try { DiagnosticLog.init(this) } catch (e: Exception) { Log.w("OnTheWay", "DiagnosticLog 초기화 실패: ${e.message}") }
         try { com.vita.ontheway.diagnostic.CoupangDiagnosticLogger.init(this) } catch (e: Exception) { Log.w("OnTheWay", "CoupangDiagnosticLogger 초기화 실패: ${e.message}") }
