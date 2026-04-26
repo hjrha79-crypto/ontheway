@@ -18,6 +18,13 @@ class SettingsActivity : AppCompatActivity() {
     private var testTts: TextToSpeech? = null
     private var testTtsReady = false
 
+    // Sprint 5: GPS status display
+    private var gpsModeTv: TextView? = null
+    private var gpsLastLocTv: TextView? = null
+    private var gpsCountTv: TextView? = null
+    private var gpsDurationTv: TextView? = null
+    private var gpsIntervalTv: TextView? = null
+
     private val ttsTestMessages = listOf(
         "201동 1203호, 문 앞",
         "305동 702호",
@@ -848,6 +855,48 @@ class SettingsActivity : AppCompatActivity() {
 
         root.addView(advCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
+        // ─── v3.22 Sprint 5: GPS 상태 ───
+        root.addView(sectionTitle("GPS 상태"))
+        val gpsCard = card()
+
+        fun gpsRow(label: String): TextView {
+            val row = LinearLayout(this@SettingsActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+            }
+            row.addView(TextView(this@SettingsActivity).apply {
+                text = label; textSize = 13f; setTextColor(Color.parseColor("#666666"))
+            }, lp(0, WC, 1f))
+            val valueTv = TextView(this@SettingsActivity).apply {
+                text = "-"; textSize = 13f; setTextColor(Color.BLACK)
+                setTypeface(null, Typeface.BOLD)
+            }
+            row.addView(valueTv, lp(0, WC, 2f))
+            gpsCard.addView(row)
+            gpsCard.addView(View(this@SettingsActivity).apply {
+                setBackgroundColor(Color.parseColor("#F0F0F0"))
+            }, lp(MP, dp(1)))
+            return valueTv
+        }
+
+        gpsModeTv = gpsRow("현재 모드")
+        gpsLastLocTv = gpsRow("마지막 위치")
+        gpsCountTv = gpsRow("누적 위치 수")
+        gpsDurationTv = gpsRow("오늘 운행 시간")
+        gpsIntervalTv = gpsRow("GPS 간격")
+
+        gpsCard.addView(TextView(this).apply {
+            text = "새로고침"
+            textSize = 14f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#2196F3"))
+            setPadding(0, dp(12), 0, dp(12))
+            setOnClickListener { refreshGpsStatus() }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(12)) })
+
+        root.addView(gpsCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
+
         // ─── v3.3: 목표 설정 섹션 ───
         root.addView(sectionTitle("목표 설정"))
         val goalSettCard = card()
@@ -1043,6 +1092,40 @@ class SettingsActivity : AppCompatActivity() {
                 testTtsReady = true
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshGpsStatus()
+    }
+
+    private fun refreshGpsStatus() {
+        try {
+            val mode = DrivingModeManager.getMode(this)
+            gpsModeTv?.text = if (mode == DrivingMode.DRIVING) "DRIVING" else "IDLE"
+
+            val traces = CallLogDb.get(this).getRecentTraces(1)
+            if (traces.isNotEmpty()) {
+                val t = traces[0]
+                val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+                    .format(java.util.Date(t.ts))
+                gpsLastLocTv?.text = String.format("%.5f, %.5f (%s)", t.lat, t.lng, ts)
+            } else {
+                gpsLastLocTv?.text = "(없음)"
+            }
+
+            gpsCountTv?.text = "${CallLogDb.get(this).getTraceCount()}건"
+
+            val ms = DrivingModeManager.getTodayDrivingTimeMs(this)
+            val h = ms / 3_600_000; val m = (ms % 3_600_000) / 60_000; val s = (ms % 60_000) / 1000
+            gpsDurationTv?.text = "${h}시간 ${m}분 ${s}초"
+
+            val interval = LocationTracker.getCurrentIntervalMs()
+            gpsIntervalTv?.text = when (interval) {
+                5000L -> "5초 (주행)"; 10000L -> "10초 (저속)"; 30000L -> "30초 (정지)"
+                else -> "${interval}ms"
+            }
+        } catch (_: Exception) {}
     }
 
     override fun onDestroy() {

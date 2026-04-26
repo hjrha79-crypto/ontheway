@@ -201,6 +201,13 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 4) {
         return traces
     }
 
+    fun getTraceCount(): Int {
+        return try {
+            val cursor = readableDatabase.rawQuery("SELECT COUNT(*) FROM location_trace", null)
+            cursor.use { if (it.moveToFirst()) it.getInt(0) else 0 }
+        } catch (e: Exception) { 0 }
+    }
+
     /** 90일 이상 오래된 데이터 정리 */
     fun cleanup() {
         val cutoff = System.currentTimeMillis() - 90L * 24 * 3600 * 1000

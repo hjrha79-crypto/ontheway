@@ -100,6 +100,7 @@ object LocationTracker {
     }
 
     fun isActive(): Boolean = isTracking
+    fun getCurrentIntervalMs(): Long = currentInterval
 
     private fun handleLocation(location: Location) {
         val ctx = appContext ?: return
