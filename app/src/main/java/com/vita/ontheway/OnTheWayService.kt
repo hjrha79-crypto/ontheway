@@ -22,7 +22,20 @@ import java.util.Locale
 
 class OnTheWayService : AccessibilityService() {
 
+    // [Hotfix-2 P0-1] 윈도우 재추적 갱신 관리
+    private var lastRefreshTime: Long = 0L
+    private val REFRESH_COOLDOWN_MS = 3000L
+    private var refreshCount: Int = 0
+    private val windowEventRing = mutableListOf<String>()
+    private val WINDOW_EVENT_RING_SIZE = 50
+
     companion object {
+        private const val TAG_ACCESSIBILITY = "OTW_ACCESSIBILITY"
+
+        private val REFRESH_TARGET_PACKAGES = setOf(
+            PKG_COUPANG, PKG_BAEMIN, PKG_FLEXER
+        )
+
         var currentDir: String = ""
         var currentDest: String = ""
         var departureTime: String = ""
@@ -128,6 +141,19 @@ class OnTheWayService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
+
+        // [Hotfix-2 P0-1] 타겟 앱 윈도우 상태 변경 감지 + 자동 재연결
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            && pkg in REFRESH_TARGET_PACKAGES) {
+            recordWindowEvent(pkg, event.eventType)
+            val now = System.currentTimeMillis()
+            if (now - lastRefreshTime > REFRESH_COOLDOWN_MS) {
+                refreshAccessibilityConnection(pkg)
+                lastRefreshTime = now
+            } else {
+                Log.d(TAG_ACCESSIBILITY, "쿨다운 중, 재할당 스킵: pkg=$pkg, elapsed=${now - lastRefreshTime}ms")
+            }
+        }
 
         // 2026-04-25 P0: 자기 패키지 즉시 차단 (자기 참조 유령 세션 방지)
         if (pkg == "com.vita.ontheway") return
@@ -1177,8 +1203,54 @@ class OnTheWayService : AccessibilityService() {
         }
     }
 
+    /** [Hotfix-2 P0-1] AccessibilityService 윈도우 추적 강제 갱신 */
+    private fun refreshAccessibilityConnection(triggerPkg: String) {
+        try {
+            val info = serviceInfo
+            if (info == null) {
+                Log.e(TAG_ACCESSIBILITY, "serviceInfo null, 재할당 불가: trigger=$triggerPkg")
+                return
+            }
+            Log.d(TAG_ACCESSIBILITY, "재연결 트리거 발동: pkg=$triggerPkg, count=${refreshCount + 1}")
+            serviceInfo = info
+            refreshCount++
+            val rootCheck = rootInActiveWindow
+            Log.d(TAG_ACCESSIBILITY, "재연결 결과: pkg=$triggerPkg, root=${if (rootCheck != null) "OK" else "NULL"}, totalCount=$refreshCount")
+        } catch (e: Exception) {
+            Log.e(TAG_ACCESSIBILITY, "재연결 실패: pkg=$triggerPkg", e)
+        }
+    }
+
+    /** [Hotfix-2 P0-1] 윈도우 이벤트 Ring buffer 기록 */
+    private fun recordWindowEvent(pkg: String, eventType: Int) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val eventName = when (eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_STATE"
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "WINDOW_CONTENT"
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> "WINDOWS_CHANGED"
+            else -> "OTHER_$eventType"
+        }
+        val entry = "[$timestamp] $eventName $pkg"
+        synchronized(windowEventRing) {
+            windowEventRing.add(entry)
+            if (windowEventRing.size > WINDOW_EVENT_RING_SIZE) {
+                windowEventRing.removeAt(0)
+            }
+        }
+        Log.d(TAG_ACCESSIBILITY, entry)
+    }
+
+    /** [Hotfix-2 P0-1] Ring buffer 덤프 (외부 호출용) */
+    fun dumpWindowEventRing(): List<String> {
+        return synchronized(windowEventRing) { windowEventRing.toList() }
+    }
+
     override fun onInterrupt() { instance = null }
     override fun onServiceConnected() {
+        Log.d(TAG_ACCESSIBILITY, "onServiceConnected: 접근성 서비스 연결됨, refreshCount 리셋")
+        refreshCount = 0
+        lastRefreshTime = 0L
         instance = this
         try { FeatureFlags.load(this) } catch (e: Exception) { Log.w("OnTheWay", "FeatureFlags 로드 실패: ${e.message}") }
         tts = TextToSpeech(this) { status ->
