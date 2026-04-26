@@ -21,7 +21,9 @@ import android.widget.Toast
  */
 object OverlayManager {
 
-    const val OVERLAY_DURATION_MS = 8000L
+    private const val OVERLAY_VISIBLE_MS = 12000L   // 12초 완전 불투명
+    private const val OVERLAY_FADE_MS = 8000L      // 8초 페이드
+    const val OVERLAY_TOTAL_MS = 20000L             // 총 20초
 
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
@@ -102,6 +104,12 @@ object OverlayManager {
                 step1.visibility = View.GONE
                 step2.visibility = View.VISIBLE
                 handler.removeCallbacks(hideRunnable) // 사용자 입력 시간 확보
+
+                // 페이드 진행 중이면 취소 + 알파 복원
+                overlayView?.let {
+                    it.animate().cancel()
+                    it.alpha = 1.0f
+                }
             }
 
             // Step 2: 👍👎
@@ -141,7 +149,12 @@ object OverlayManager {
             windowManager?.addView(overlayView, params)
 
             handler.removeCallbacks(hideRunnable)
-            handler.postDelayed(hideRunnable, OVERLAY_DURATION_MS)
+            // 12초 후 페이드 시작
+            handler.postDelayed({
+                overlayView?.let { startFadeOut(it) }
+            }, OVERLAY_VISIBLE_MS)
+            // 20초 후 완전 hide
+            handler.postDelayed(hideRunnable, OVERLAY_TOTAL_MS)
 
             Log.d("OverlayManager", "오버레이 표시: $line1 / $line2 ($verdict)")
         } catch (e: Exception) {
@@ -233,9 +246,20 @@ object OverlayManager {
         hide()
     }
 
+    private fun startFadeOut(view: View) {
+        view.animate()
+            .alpha(0.4f)
+            .setDuration(OVERLAY_FADE_MS)
+            .start()
+    }
+
     fun hide() {
         try {
             handler.removeCallbacks(hideRunnable)
+            overlayView?.let {
+                it.animate().cancel()  // 페이드 애니메이션 취소
+                it.alpha = 1.0f         // 다음 표시 위해 초기화
+            }
             selectedFeedback = null
             selectedReasons.clear()
             if (overlayView != null) {
