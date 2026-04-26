@@ -53,6 +53,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var simRecentHourlyRate: TextView
     private lateinit var simCumulativeHourlyRate: TextView
     private lateinit var appCheckText: TextView
+    private var drivingModeSwitch: Switch? = null
+    private var drivingModeStatusTv: TextView? = null
+    private var drivingModeDurationTv: TextView? = null
     private var currentTab = "status"  // "status" or "chat"
 
     private val messages = mutableListOf<Pair<String, String>>()
@@ -163,6 +166,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         simRecentHourlyRate = findViewById(R.id.simRecentHourlyRate)
         simCumulativeHourlyRate = findViewById(R.id.simCumulativeHourlyRate)
         appCheckText = findViewById(R.id.appCheckText)
+
+        // Sprint 6: 운행 모드
+        drivingModeSwitch = findViewById(R.id.drivingModeSwitch)
+        drivingModeStatusTv = findViewById(R.id.drivingModeStatusTv)
+        drivingModeDurationTv = findViewById(R.id.drivingModeDurationTv)
+        drivingModeSwitch?.setOnCheckedChangeListener { _, isChecked ->
+            val mode = if (isChecked) DrivingMode.DRIVING else DrivingMode.IDLE
+            DrivingModeManager.setMode(this, mode)
+            updateDrivingModeUi()
+            Toast.makeText(this, if (isChecked) "운행 시작" else "운행 종료", Toast.LENGTH_SHORT).show()
+        }
 
         val statsBtn = findViewById<TextView>(R.id.statsBtn)
         val favBtn   = findViewById<TextView>(R.id.favBtn)
@@ -1587,6 +1601,33 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         SessionStats.onAppChecked(this)
         updateHourlyRateDisplay()
         updateAppCheckDisplay()
+        updateDrivingModeUi()
+    }
+
+    private fun updateDrivingModeUi() {
+        try {
+            val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
+            drivingModeSwitch?.let { sw ->
+                if (sw.isChecked != isDriving) {
+                    sw.setOnCheckedChangeListener(null)
+                    sw.isChecked = isDriving
+                    sw.setOnCheckedChangeListener { _, isChecked ->
+                        val mode = if (isChecked) DrivingMode.DRIVING else DrivingMode.IDLE
+                        DrivingModeManager.setMode(this, mode)
+                        updateDrivingModeUi()
+                        Toast.makeText(this, if (isChecked) "운행 시작" else "운행 종료", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            drivingModeStatusTv?.text = if (isDriving) "운행 모드: ON" else "운행 모드: OFF"
+            drivingModeStatusTv?.setTextColor(if (isDriving) Color.parseColor("#2E7D32") else Color.parseColor("#000000"))
+            findViewById<LinearLayout>(R.id.drivingModeCard)?.setBackgroundColor(
+                if (isDriving) Color.parseColor("#E8F5E9") else Color.parseColor("#F5F5F5")
+            )
+            val ms = DrivingModeManager.getTodayDrivingTimeMs(this)
+            val h = ms / 3_600_000; val m = (ms % 3_600_000) / 60_000
+            drivingModeDurationTv?.text = if (h > 0) "오늘 운행: ${h}시간 ${m}분" else "오늘 운행: ${m}분"
+        } catch (_: Exception) {}
     }
 
     override fun onDestroy() {

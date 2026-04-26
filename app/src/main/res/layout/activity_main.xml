@@ -112,6 +112,50 @@
         </FrameLayout>
     </LinearLayout>
 
+    <!-- ═══ Sprint 6: 운행 모드 카드 ═══ -->
+    <LinearLayout
+        android:id="@+id/drivingModeCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="6dp"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:background="#F5F5F5"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/drivingModeStatusTv"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="운행 모드: OFF"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:textColor="#000000" />
+
+            <TextView
+                android:id="@+id/drivingModeDurationTv"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="오늘 운행: 0분"
+                android:textSize="12sp"
+                android:textColor="#666666"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
+        <Switch
+            android:id="@+id/drivingModeSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+    </LinearLayout>
+
     <!-- ═══ MoneyMap 시급 2종 카드 (v3.13) ═══ -->
     <LinearLayout
         android:id="@+id/hourlyRateCard"
