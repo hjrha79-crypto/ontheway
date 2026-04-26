@@ -22,6 +22,11 @@ import java.util.Locale
 
 class OnTheWayService : AccessibilityService() {
 
+    // [Hotfix-2 P0-3] DB I/O 비동기화 executor
+    private val dbExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "OTW-DB-IO").apply { isDaemon = true }
+    }
+
     // [Hotfix-2 P0-1] 윈도우 재추적 갱신 관리
     private var lastRefreshTime: Long = 0L
     private val REFRESH_COOLDOWN_MS = 3000L
@@ -1061,27 +1066,39 @@ class OnTheWayService : AccessibilityService() {
             Log.d("DialogTrigger", "OverlayManager 스킵: overlayEnabled=false")
         }
 
-        try {
-            val db = CallLogDb.get(this)
-            val up = if (enrichedCall.distance != null && enrichedCall.distance > 0)
-                (enrichedCall.price / enrichedCall.distance).toInt() else 0
-            db.insert(
-                platform = call.platform, price = call.price,
-                distance = enrichedCall.distance, unitPrice = up,
-                point = baeminPoint, verdict = result.verdict.name,
-                reason = result.reason, bundleCount = call.bundleCount,
-                isMultiPickup = call.isMultiPickup, storeName = call.storeName,
-                destination = call.destination, pickupKm = pickupDistKm,
-                ttsSuppressed = !ttsActuallySpoken,
-                sourceType = V2Event.mapSourceType(call.platform),
-                parsingMethod = call.parsingMethod,
-                driverAction = when (lastDeliveryVerdict) {
-                    "잡으세요", "괜찮습니다" -> "simulated_accept"
-                    "넘기세요" -> "simulated_reject"
-                    else -> "unknown"
-                }
-            )
-        } catch (e: Exception) { Log.w("DeliveryFilter", "DB 저장 실패: ${e.message}") }
+        // [Hotfix-2 P0-3] DB INSERT를 executor에 위임 (메인 스레드 블로킹 방지)
+        val ctx = this
+        val dbPlatform = call.platform; val dbPrice = call.price
+        val dbDistance = enrichedCall.distance; val dbPoint = baeminPoint
+        val dbVerdict = result.verdict.name; val dbReason = result.reason
+        val dbBundleCount = call.bundleCount; val dbIsMultiPickup = call.isMultiPickup
+        val dbStoreName = call.storeName; val dbDestination = call.destination
+        val dbPickupKm = pickupDistKm; val dbTtsSuppressed = !ttsActuallySpoken
+        val dbSourceType = V2Event.mapSourceType(call.platform)
+        val dbParsingMethod = call.parsingMethod
+        val dbDriverAction = when (lastDeliveryVerdict) {
+            "잡으세요", "괜찮습니다" -> "simulated_accept"
+            "넘기세요" -> "simulated_reject"
+            else -> "unknown"
+        }
+        val dbUp = if (dbDistance != null && dbDistance > 0)
+            (dbPrice / dbDistance).toInt() else 0
+        dbExecutor.execute {
+            try {
+                CallLogDb.get(ctx).insert(
+                    platform = dbPlatform, price = dbPrice,
+                    distance = dbDistance, unitPrice = dbUp,
+                    point = dbPoint, verdict = dbVerdict,
+                    reason = dbReason, bundleCount = dbBundleCount,
+                    isMultiPickup = dbIsMultiPickup, storeName = dbStoreName,
+                    destination = dbDestination, pickupKm = dbPickupKm,
+                    ttsSuppressed = dbTtsSuppressed,
+                    sourceType = dbSourceType,
+                    parsingMethod = dbParsingMethod,
+                    driverAction = dbDriverAction
+                )
+            } catch (e: Exception) { Log.w("DeliveryFilter", "DB 저장 실패: ${e.message}") }
+        }
 
         playCallSound(lastDeliveryVerdict)
         vibrate(lastDeliveryVerdict)
@@ -1406,6 +1423,7 @@ class OnTheWayService : AccessibilityService() {
         try { FloatingOverlay.hide() } catch (e: Exception) {}
         BaeminBundleSession.reset()
         bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
+        try { dbExecutor.shutdown() } catch (_: Exception) {}
         super.onDestroy()
     }
 }

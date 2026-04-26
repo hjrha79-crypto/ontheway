@@ -26,6 +26,11 @@ class DeliveryNotificationService : NotificationListenerService() {
         private val processedNotifs = mutableMapOf<String, Long>()
     }
 
+    // [Hotfix-2 P0-3] 메인 스레드 I/O 분리용 executor
+    private val ioExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "DeliveryNLS-IO").apply { isDaemon = true }
+    }
+
     private var tts: TextToSpeech? = null
     private var ttsReady = false
     private var sessionManager: SessionManager? = null
@@ -51,6 +56,7 @@ class DeliveryNotificationService : NotificationListenerService() {
         tts?.shutdown()
         tts = null
         ttsReady = false
+        try { ioExecutor.shutdown() } catch (_: Exception) {}
         super.onDestroy()
     }
 
@@ -295,24 +301,31 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     /** v3.20: 쿠팡 알림 원문 로깅 (가게명 추출 데이터 수집용) */
     private fun logCoupangNotifRaw(title: String, text: String, bigText: String) {
-        try {
-            val entry = JSONObject().apply {
+        // [Hotfix-2 P0-3] 메인 스레드에서 데이터만 캡처, 파일 I/O는 executor 위임
+        val entryStr = try {
+            JSONObject().apply {
                 put("ts", System.currentTimeMillis())
                 put("pkg", PKG_COUPANG)
                 put("title", title)
                 put("text", text)
                 if (bigText.isNotBlank()) put("bigText", bigText)
-            }
-            val file = File(filesDir, "coupang_notif_raw.jsonl")
-            file.appendText(entry.toString() + "\n")
-
-            // 200건 롤링: 초과 시 오래된 것부터 삭제
-            val lines = file.readLines()
-            if (lines.size > 200) {
-                file.writeText(lines.takeLast(200).joinToString("\n") + "\n")
-            }
+            }.toString()
         } catch (e: Exception) {
-            Log.w("DeliveryNoti", "쿠팡 알림 로깅 실패: ${e.message}")
+            Log.w("DeliveryNoti", "쿠팡 알림 JSON 생성 실패: ${e.message}")
+            return
+        }
+        val dir = filesDir
+        ioExecutor.execute {
+            try {
+                val file = File(dir, "coupang_notif_raw.jsonl")
+                file.appendText(entryStr + "\n")
+                val lines = file.readLines()
+                if (lines.size > 200) {
+                    file.writeText(lines.takeLast(200).joinToString("\n") + "\n")
+                }
+            } catch (e: Exception) {
+                Log.w("DeliveryNoti", "쿠팡 알림 로깅 실패: ${e.message}")
+            }
         }
     }
 
