@@ -9,9 +9,22 @@ import android.widget.*
 import java.text.SimpleDateFormat
 import android.graphics.*
 import android.graphics.drawable.ColorDrawable
+import android.speech.tts.TextToSpeech
 import androidx.appcompat.app.AppCompatActivity
+import java.util.Locale
 
 class SettingsActivity : AppCompatActivity() {
+
+    private var testTts: TextToSpeech? = null
+    private var testTtsReady = false
+
+    private val ttsTestMessages = listOf(
+        "201동 1203호, 문 앞",
+        "305동 702호",
+        "벨 누르지 마세요",
+        "비대면, 문 앞",
+        "전화 주세요"
+    )
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private val MP = ViewGroup.LayoutParams.MATCH_PARENT
@@ -445,6 +458,16 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(dp(16), dp(8), dp(16), dp(2))
         })
         ttsCard.addView(priceReadRow)
+
+        // v3.22 Sprint 4: TTS 테스트 버튼
+        ttsCard.addView(TextView(this).apply {
+            text = "TTS 테스트 (헬멧 BT 확인)"
+            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#4CAF50"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener { playTtsTest() }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(4), dp(16), dp(4)) })
 
         ttsCard.addView(TextView(this).apply {
             text = "TTS 설정 저장"
@@ -1012,6 +1035,31 @@ class SettingsActivity : AppCompatActivity() {
 
         scrollView.addView(root)
         setContentView(scrollView)
+
+        // v3.22 Sprint 4: TTS 테스트 엔진 초기화
+        testTts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                testTts?.language = Locale.KOREAN
+                testTtsReady = true
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        testTts?.stop()
+        testTts?.shutdown()
+        testTts = null
+        super.onDestroy()
+    }
+
+    private fun playTtsTest() {
+        if (!testTtsReady) {
+            Toast.makeText(this, "TTS 준비 중. 잠시 후 다시 시도하세요.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val msg = ttsTestMessages.random()
+        testTts?.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "tts_test_${System.currentTimeMillis()}")
+        Toast.makeText(this, "\"$msg\"", Toast.LENGTH_SHORT).show()
     }
 
     private fun applyDarkMode(mode: String) {
