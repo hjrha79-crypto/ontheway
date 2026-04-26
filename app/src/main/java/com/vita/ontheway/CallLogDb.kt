@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 3) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 4) {
 
     companion object {
         const val TABLE = "call_logs"
@@ -47,6 +47,24 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 3) {
         """)
         db.execSQL("CREATE INDEX idx_timestamp ON $TABLE(timestamp)")
         db.execSQL("CREATE INDEX idx_platform ON $TABLE(platform)")
+
+        createLocationTraceTable(db)
+    }
+
+    private fun createLocationTraceTable(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS location_trace (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mobility_event_id TEXT,
+                ts INTEGER NOT NULL,
+                lat REAL NOT NULL,
+                lng REAL NOT NULL,
+                speed REAL,
+                accuracy REAL
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_location_trace_ts ON location_trace(ts)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_location_trace_event ON location_trace(mobility_event_id)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
@@ -58,6 +76,10 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 3) {
         }
         if (old < 3) {
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN driver_action TEXT DEFAULT 'unknown'")
+        }
+        if (old < 4) {
+            createLocationTraceTable(db)
+            Log.d("CallLogDb", "v3->v4: location_trace table created")
         }
     }
 
@@ -143,6 +165,40 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 3) {
         } catch (e: Exception) {
             Log.w("CallLogDb", "markCompleted 실패: ${e.message}")
         }
+    }
+
+    fun insertLocationTrace(trace: LocationTrace): Long {
+        val cv = ContentValues().apply {
+            put("mobility_event_id", trace.mobilityEventId)
+            put("ts", trace.ts)
+            put("lat", trace.lat)
+            put("lng", trace.lng)
+            put("speed", trace.speed)
+            put("accuracy", trace.accuracy)
+        }
+        return writableDatabase.insert("location_trace", null, cv)
+    }
+
+    fun getRecentTraces(limit: Int = 10): List<LocationTrace> {
+        val traces = mutableListOf<LocationTrace>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, mobility_event_id, ts, lat, lng, speed, accuracy FROM location_trace ORDER BY ts DESC LIMIT ?",
+            arrayOf(limit.toString())
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                traces.add(LocationTrace(
+                    id = it.getLong(0),
+                    mobilityEventId = it.getString(1),
+                    ts = it.getLong(2),
+                    lat = it.getDouble(3),
+                    lng = it.getDouble(4),
+                    speed = it.getFloat(5),
+                    accuracy = it.getFloat(6)
+                ))
+            }
+        }
+        return traces
     }
 
     /** 90일 이상 오래된 데이터 정리 */
