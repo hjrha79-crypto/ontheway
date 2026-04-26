@@ -696,6 +696,30 @@ class SettingsActivity : AppCompatActivity() {
             AdvancedPrefs.isDailyReportEnabled(this)
         ) { checked -> AdvancedPrefs.setDailyReport(this, checked) })
 
+        // v3.22: 운행 모드
+        val drivingRow = advancedToggle(
+            "운행 모드",
+            "콜 수락 시 자동 ON. GPS 궤적 수집 시작. 수동 OFF는 여기서.",
+            DrivingModeManager.getMode(this) == DrivingMode.DRIVING
+        ) { checked ->
+            val mode = if (checked) DrivingMode.DRIVING else DrivingMode.IDLE
+            DrivingModeManager.setMode(this, mode)
+            Toast.makeText(this, if (checked) "운행 모드 ON" else "운행 모드 OFF", Toast.LENGTH_SHORT).show()
+        }
+        advCard.addView(drivingRow)
+
+        // v3.22: 운행 시간 표시
+        val drivingMs = DrivingModeManager.getTodayDrivingTimeMs(this)
+        val drivingMin = (drivingMs / 60000).toInt()
+        val drivingHr = drivingMin / 60
+        val drivingMinRem = drivingMin % 60
+        val drivingTimeStr = if (drivingHr > 0) "${drivingHr}시간 ${drivingMinRem}분" else "${drivingMinRem}분"
+        advCard.addView(TextView(this).apply {
+            text = "오늘 운행 시간: $drivingTimeStr"
+            textSize = 12f; setTextColor(Color.parseColor("#666666"))
+            setPadding(dp(16), 0, dp(16), dp(8))
+        })
+
         // v3.4: GPS 위치 사용
         advCard.addView(advancedToggle(
             "GPS 위치 사용",

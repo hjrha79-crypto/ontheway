@@ -596,6 +596,9 @@ class OnTheWayService : AccessibilityService() {
 
         Log.d("OnTheWay", "수락 감지: ${price}원 ($platform)")
 
+        // v3.22: 운행 모드 자동 ON
+        DrivingModeManager.setMode(this, DrivingMode.DRIVING)
+
         // v3.3: 수락 시각 기록 (배달 완료 소요시간 계산용)
         lastAcceptTime = System.currentTimeMillis()
 
