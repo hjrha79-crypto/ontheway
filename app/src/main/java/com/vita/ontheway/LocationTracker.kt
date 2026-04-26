@@ -13,13 +13,28 @@ import android.util.Log
 
 object LocationTracker {
     private const val TAG = "OTW_LOCATION"
-    private const val INTERVAL_MS = 5000L   // v0 fixed 5s
-    private const val MIN_DISTANCE_M = 0f   // always collect
+
+    // speed thresholds (m/s)
+    private const val SPEED_STOPPED = 0.5f      // < 0.5 = stopped
+    private const val SPEED_SLOW = 5.0f         // < 5.0 = slow (~18 km/h)
+
+    // collection intervals (ms)
+    private const val INTERVAL_DRIVING = 5000L  // >= 18 km/h
+    private const val INTERVAL_SLOW = 10000L    // slow / congestion
+    private const val INTERVAL_STOPPED = 30000L // stopped (minimal)
+
+    // auto-IDLE after 3 min stopped
+    private const val IDLE_THRESHOLD_MS = 180_000L
+
+    private const val MIN_DISTANCE_M = 0f
 
     private var locationManager: LocationManager? = null
     private var listener: LocationListener? = null
     private var isTracking = false
     private var appContext: Context? = null
+
+    private var currentInterval = INTERVAL_DRIVING
+    private var lastMovingTime: Long = 0L
 
     fun startTracking(ctx: Context) {
         if (isTracking) {
@@ -32,6 +47,9 @@ object LocationTracker {
             Log.w(TAG, "no location permission")
             return
         }
+
+        currentInterval = INTERVAL_DRIVING
+        lastMovingTime = System.currentTimeMillis()
 
         appContext = ctx.applicationContext
         locationManager = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -51,12 +69,12 @@ object LocationTracker {
                 try {
                     if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                         lm.requestLocationUpdates(
-                            LocationManager.GPS_PROVIDER, INTERVAL_MS, MIN_DISTANCE_M, newListener
+                            LocationManager.GPS_PROVIDER, currentInterval, MIN_DISTANCE_M, newListener
                         )
                     }
                     if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                         lm.requestLocationUpdates(
-                            LocationManager.NETWORK_PROVIDER, INTERVAL_MS, MIN_DISTANCE_M, newListener
+                            LocationManager.NETWORK_PROVIDER, currentInterval, MIN_DISTANCE_M, newListener
                         )
                     }
                 } catch (e: SecurityException) {
@@ -65,7 +83,7 @@ object LocationTracker {
             }
             listener = newListener
             isTracking = true
-            Log.d(TAG, "GPS tracking started (5s interval)")
+            Log.d(TAG, "GPS tracking started (${currentInterval}ms interval)")
         } catch (e: Exception) {
             Log.e(TAG, "startTracking failed", e)
         }
@@ -76,6 +94,8 @@ object LocationTracker {
         listener?.let { locationManager?.removeUpdates(it) }
         listener = null
         isTracking = false
+        lastMovingTime = 0L
+        currentInterval = INTERVAL_DRIVING
         Log.d(TAG, "GPS tracking stopped")
     }
 
@@ -83,19 +103,84 @@ object LocationTracker {
 
     private fun handleLocation(location: Location) {
         val ctx = appContext ?: return
+        val now = System.currentTimeMillis()
+        val speed = if (location.hasSpeed()) location.speed else 0f
+
+        // 1. save trace
         val trace = LocationTrace(
-            ts = System.currentTimeMillis(),
+            ts = now,
             lat = location.latitude,
             lng = location.longitude,
-            speed = if (location.hasSpeed()) location.speed else 0f,
+            speed = speed,
             accuracy = if (location.hasAccuracy()) location.accuracy else 0f
         )
 
         try {
             CallLogDb.get(ctx).insertLocationTrace(trace)
-            Log.d(TAG, "saved: ${trace.lat},${trace.lng} spd=${trace.speed}m/s acc=${trace.accuracy}m")
         } catch (e: Exception) {
             Log.e(TAG, "insert failed", e)
+        }
+
+        // 2. speed tier
+        val targetInterval = when {
+            speed >= SPEED_SLOW -> INTERVAL_DRIVING
+            speed >= SPEED_STOPPED -> INTERVAL_SLOW
+            else -> INTERVAL_STOPPED
+        }
+
+        val speedLabel = when {
+            speed >= SPEED_SLOW -> "DRIVING"
+            speed >= SPEED_STOPPED -> "SLOW"
+            else -> "STOPPED"
+        }
+
+        Log.d(TAG, "${trace.lat},${trace.lng} spd=${"%.1f".format(speed)}m/s [$speedLabel] interval=${targetInterval}ms")
+
+        // 3. update lastMovingTime
+        if (speed >= SPEED_STOPPED) {
+            lastMovingTime = now
+        }
+
+        // 4. auto-IDLE after 3 min stopped
+        if (lastMovingTime > 0L && now - lastMovingTime > IDLE_THRESHOLD_MS) {
+            Log.d(TAG, "3min stopped -> auto IDLE")
+            DrivingModeManager.setMode(ctx, DrivingMode.IDLE)
+            return // setMode calls stopTracking
+        }
+
+        // 5. change interval if needed
+        if (targetInterval != currentInterval) {
+            Log.d(TAG, "interval change: ${currentInterval}ms -> ${targetInterval}ms")
+            currentInterval = targetInterval
+            restartLocationUpdates()
+        }
+    }
+
+    private fun restartLocationUpdates() {
+        if (!isTracking) return
+        val currentListener = listener ?: return
+        val lm = locationManager ?: return
+
+        try {
+            lm.removeUpdates(currentListener)
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                        lm.requestLocationUpdates(
+                            LocationManager.GPS_PROVIDER, currentInterval, MIN_DISTANCE_M, currentListener
+                        )
+                    }
+                    if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                        lm.requestLocationUpdates(
+                            LocationManager.NETWORK_PROVIDER, currentInterval, MIN_DISTANCE_M, currentListener
+                        )
+                    }
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "restart failed", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "restart error", e)
         }
     }
 }
