@@ -76,6 +76,10 @@ class DevStatsActivity : AppCompatActivity() {
             container.addView(makeSessionRow(session))
         }
 
+        // ── Drop 사유별 카운트 ──────────────
+        container.addView(makeSectionLabel("Drop 사유"))
+        container.addView(makeDropStatsCard())
+
         root.addView(container)
         setContentView(root)
     }
@@ -369,6 +373,40 @@ class DevStatsActivity : AppCompatActivity() {
                             LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     })
                 })
+            }
+        }
+    }
+
+    // ── Drop 사유별 카운트 카드 ───────────────
+    private fun makeDropStatsCard(): View {
+        val stats = DropStats.getAll()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(C_SURFACE)
+            setPadding(14.dp(), 12.dp(), 14.dp(), 12.dp())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 16.dp() }
+
+            if (stats.isEmpty()) {
+                addView(makeText("아직 drop 기록 없음", 12f, C_MUTED))
+            } else {
+                stats.entries.sortedByDescending { it.value }.forEach { (reason, count) ->
+                    addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        setPadding(0, 3.dp(), 0, 3.dp())
+                        addView(makeText(reason.name, 11f, C_MUTED, Typeface.MONOSPACE).apply {
+                            layoutParams = LinearLayout.LayoutParams(0,
+                                LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        })
+                        addView(makeText("${count}건", 12f, C_TEXT, Typeface.MONOSPACE).apply {
+                            gravity = Gravity.END
+                            layoutParams = LinearLayout.LayoutParams(0,
+                                LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        })
+                    })
+                }
             }
         }
     }

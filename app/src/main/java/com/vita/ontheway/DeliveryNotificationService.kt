@@ -94,11 +94,17 @@ class DeliveryNotificationService : NotificationListenerService() {
         Log.d("COUPANG_DBG", "onNotificationPosted: pkg=${sbn.packageName} " +
               "timeSinceConnect=${now - listenerConnectedAt}ms")
         val pkg = sbn.packageName ?: return
-        if (pkg !in TARGET_PACKAGES) return
+        if (pkg !in TARGET_PACKAGES) {
+            DropReason.recordDrop(DropReason.DROP_PACKAGE_FILTER, "notification non-target", pkg)
+            return
+        }
 
         // 중복 알림 체크 (같은 key 10초 이내 무시)
         val notiKey = "${sbn.key}_${sbn.id}"
-        if (processedNotifs[notiKey]?.let { now - it < 10_000 } == true) return
+        if (processedNotifs[notiKey]?.let { now - it < 10_000 } == true) {
+            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "notification 10s dedup $notiKey", pkg)
+            return
+        }
         processedNotifs[notiKey] = now
 
         // 알림 텍스트 추출
@@ -136,6 +142,7 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         if (calls.isEmpty()) {
             Log.d("DeliveryNoti", "금액 파싱 불가 - Accessibility에 위임")
+            DropReason.recordDrop(DropReason.DROP_PARSE_FAIL, "notification parse empty", pkg)
             return
         }
 

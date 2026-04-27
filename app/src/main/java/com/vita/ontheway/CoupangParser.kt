@@ -53,12 +53,14 @@ object CoupangParser {
         // 비콜 필터링: 배달 진행/완료/메뉴 화면이면 빈 리스트 반환
         if (NON_CALL_KEYWORDS.any { joined.contains(it) }) {
             Log.d("CoupangParser", "비콜 화면 감지 - 스킵: ${joined.take(50)}")
+            DropReason.recordDrop(DropReason.DROP_SCREEN_FILTER, "coupang non-call keyword", "coupang")
             return results
         }
 
         // v2.1: "거절" 또는 "주문 수락" 버튼이 없으면 콜 화면이 아님
         if (CALL_SCREEN_BUTTONS.none { joined.contains(it) }) {
             Log.d("CoupangParser", "콜 버튼 없음 - 비콜 스킵: ${joined.take(50)}")
+            DropReason.recordDrop(DropReason.DROP_SCREEN_FILTER, "coupang no call button", "coupang")
             return results
         }
 

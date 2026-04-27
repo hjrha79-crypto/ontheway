@@ -161,7 +161,10 @@ class OnTheWayService : AccessibilityService() {
         }
 
         // 2026-04-25 P0: 자기 패키지 즉시 차단 (자기 참조 유령 세션 방지)
-        if (pkg == "com.vita.ontheway") return
+        if (pkg == "com.vita.ontheway") {
+            DropReason.recordDrop(DropReason.DROP_SELF_REFERENCE, "AccessibilityEvent", pkg)
+            return
+        }
 
         // v2.2: 진단 모드 — 모든 패키지별 이벤트 카운트
         packageEventCount[pkg] = (packageEventCount[pkg] ?: 0) + 1
@@ -254,7 +257,10 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
-        if (pkg !in TARGET_PACKAGES) return
+        if (pkg !in TARGET_PACKAGES) {
+            DropReason.recordDrop(DropReason.DROP_PACKAGE_FILTER, "non-target package", pkg)
+            return
+        }
 
         // root 확보: rootInActiveWindow 우선, 없으면 event.source, 카카오T는 getWindows() fallback
         var root = rootInActiveWindow ?: event.source
@@ -468,6 +474,7 @@ class OnTheWayService : AccessibilityService() {
         // ── 안전 조건 2: 1콜 1음성 ──────────────
         if (callSpeakHistory.containsKey(callKey)) {
             Log.d("OnTheWay", "중복 콜 - 음성 건너뜀: $callKey")
+            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "kakaot callSpeakHistory $callKey")
             return
         }
 
@@ -475,6 +482,7 @@ class OnTheWayService : AccessibilityService() {
         val detectedAt = callDetectedAt.getOrPut(callKey) { now }
         if (now - detectedAt > 3000) {
             Log.d("OnTheWay", "3초 초과 - 음성 건너뜀: $callKey")
+            DropReason.recordDrop(DropReason.DROP_COOLDOWN, "kakaot 3s window expired $callKey")
             callDetectedAt.remove(callKey)
             return
         }
@@ -482,6 +490,7 @@ class OnTheWayService : AccessibilityService() {
         // ── 안전 조건 4: 최소 발화 간격 5초 ──────
         if (now - lastSpeakTime < 5000) {
             Log.d("OnTheWay", "발화 간격 미달 - 건너뜀")
+            DropReason.recordDrop(DropReason.DROP_COOLDOWN, "kakaot speakTime cooldown 5s")
             return
         }
 
@@ -574,7 +583,10 @@ class OnTheWayService : AccessibilityService() {
 
     private fun extractText(node: AccessibilityNodeInfo, results: MutableList<String>) {
         // 2026-04-25 P0: 자기 패키지 노드는 텍스트 수집 스킵 (자기 참조 방지)
-        if (node.packageName?.toString() == "com.vita.ontheway") return
+        if (node.packageName?.toString() == "com.vita.ontheway") {
+            DropReason.recordDrop(DropReason.DROP_SELF_REFERENCE, "extractText node", "com.vita.ontheway")
+            return
+        }
 
         node.text?.toString()?.takeIf { it.isNotBlank() }?.let { results.add(it) }
         // 2026-04-24: 배민 "배달료기준거리"가 contentDescription에만 있는 케이스 커버.
@@ -610,6 +622,9 @@ class OnTheWayService : AccessibilityService() {
                 w.root?.takeIf {
                     val winPkg = it.packageName?.toString()
                     // 2026-04-25 P0: OnTheWay 자기 윈도우 제외 (자기 참조 방지)
+                    if (winPkg == "com.vita.ontheway") {
+                        DropReason.recordDrop(DropReason.DROP_SELF_REFERENCE, "findWindowRoot", winPkg)
+                    }
                     winPkg == targetPkg && winPkg != "com.vita.ontheway"
                 }
             }
@@ -682,6 +697,7 @@ class OnTheWayService : AccessibilityService() {
             if (screen.type != ScreenTypeDetector.ScreenType.NEW_CALL &&
                 screen.type != ScreenTypeDetector.ScreenType.BUNDLE_SESSION) {
                 Log.d("ScreenFilter", "[$platformName] skip: ${screen.type} (${screen.confidence})")
+                DropReason.recordDrop(DropReason.DROP_SCREEN_FILTER, "${screen.type} (${screen.confidence})", pkg)
                 if (FeatureFlags.screenFilterLogging) {
                     com.vita.ontheway.logger.ScreenFilterLogger.log(
                         this, pkg, screen.type.name, screen.confidence.name, joined
@@ -776,6 +792,7 @@ class OnTheWayService : AccessibilityService() {
 
         if (calls.isEmpty()) {
             Log.d("DeliveryFilter", "[$platformName] 파싱 실패 - 무음")
+            DropReason.recordDrop(DropReason.DROP_PARSE_FAIL, "parser returned empty", pkg)
             return
         }
 
@@ -786,6 +803,7 @@ class OnTheWayService : AccessibilityService() {
             }
             if (isDup) {
                 Log.d("DeliveryFilter", "[$platformName] 대량 중복 무시: ${call.price}원")
+                DropReason.recordDrop(DropReason.DROP_DUPLICATE, "$platformName ${call.price}원 30s내 중복", pkg)
                 false
             } else {
                 recentCalls.add(RecentCall(platformName, call.price, now0))
@@ -911,6 +929,7 @@ class OnTheWayService : AccessibilityService() {
         val sessId = sessionManager?.getCurrentOrLastSessionId()
         if (sessionManager?.isSuppressed(call.storeName, call.price, sessId) == true) {
             Log.d("DeliveryFilter", "묶음 suppression 차단: ${call.storeName}|${call.price}")
+            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "bundle suppression ${call.storeName}|${call.price}")
             return
         }
 
@@ -919,12 +938,14 @@ class OnTheWayService : AccessibilityService() {
         // 안전 조건: 1콜 1음성
         if (callSpeakHistory.containsKey(callKey)) {
             Log.d("DeliveryFilter", "중복 콜 건너뜀: $callKey")
+            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "callSpeakHistory $callKey")
             return
         }
 
         // 안전 조건: 2초 쿨다운
         if (now - lastSpeakTime < 2000) {
             Log.d("DeliveryFilter", "쿨다운 중 - 건너뜀")
+            DropReason.recordDrop(DropReason.DROP_COOLDOWN, "speakTime cooldown 2s")
             return
         }
 
