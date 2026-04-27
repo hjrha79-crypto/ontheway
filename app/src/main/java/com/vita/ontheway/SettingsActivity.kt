@@ -1013,6 +1013,11 @@ class SettingsActivity : AppCompatActivity() {
             "배민 화면 감지 실패 시 텍스트 기록 (진단용)",
             FeatureFlags.screenFilterLogging
         ) { checked -> FeatureFlags.screenFilterLogging = checked; FeatureFlags.save(this) })
+        expCard.addView(advancedToggle(
+            "수락 시 피드백 받기 (테스트용)",
+            "콜 수락 5초 후 \"왜 수락했는지\" 피드백 팝업 (기본 OFF)",
+            FeatureFlags.showAcceptFeedback
+        ) { checked -> FeatureFlags.showAcceptFeedback = checked; FeatureFlags.save(this) })
         root.addView(expCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── v3.19.4: 개발자 도구 ───

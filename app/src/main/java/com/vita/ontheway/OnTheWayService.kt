@@ -658,6 +658,35 @@ class OnTheWayService : AccessibilityService() {
                 NaviLauncher.autoLaunchForAccept(this, pickupAddr)
             }, 3000)
         }
+
+        // 수락 피드백 다이얼로그 (FeatureFlag, 5초 지연)
+        if (FeatureFlags.showAcceptFeedback) {
+            val ctx = this
+            val fbPlatform = platform
+            val fbStore = call.storeName
+            val fbPrice = price
+            val fbDist = call.distance ?: 0.0
+            val fbVerdict = lastDeliveryVerdict
+            val fbReason = lastDeliveryReason ?: ""
+            val fbSession = lastDeliverySessionId
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                try {
+                    val intent = Intent(ctx, AcceptFeedbackActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        putExtra(AcceptFeedbackActivity.EXTRA_PLATFORM, fbPlatform)
+                        putExtra(AcceptFeedbackActivity.EXTRA_STORE, fbStore)
+                        putExtra(AcceptFeedbackActivity.EXTRA_PRICE, fbPrice)
+                        putExtra(AcceptFeedbackActivity.EXTRA_DISTANCE, fbDist)
+                        putExtra(AcceptFeedbackActivity.EXTRA_VERDICT, fbVerdict)
+                        putExtra(AcceptFeedbackActivity.EXTRA_REASON, fbReason)
+                        putExtra(AcceptFeedbackActivity.EXTRA_SESSION_ID, fbSession)
+                    }
+                    ctx.startActivity(intent)
+                } catch (e: Exception) {
+                    Log.w("OnTheWay", "수락 피드백 Activity 실행 실패: ${e.message}")
+                }
+            }, 5000)
+        }
     }
 
     /** v3.0: 자동 수락 (잡으세요 판정만) */

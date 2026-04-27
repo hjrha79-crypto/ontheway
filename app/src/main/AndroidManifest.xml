@@ -35,6 +35,11 @@
 	<activity android:name=".SettingsActivity" />
         <activity android:name=".DeveloperOptionsActivity" android:exported="false" />
         <activity android:name=".CoupangDiagnosticViewerActivity" android:exported="false" />
+        <activity
+            android:name=".AcceptFeedbackActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OnTheWay.Transparent"
+            android:excludeFromRecents="true" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

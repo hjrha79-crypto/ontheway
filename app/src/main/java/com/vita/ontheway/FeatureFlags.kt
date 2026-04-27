@@ -26,6 +26,7 @@ object FeatureFlags {
 
     // 🟡 UI Control
     var showChatTab = false  // 채팅 탭 표시 여부 (false: 상태 탭만 표시)
+    var showAcceptFeedback = false  // 수락 시 피드백 다이얼로그 (테스트용, 기본 OFF)
 
     // 🔴 Future (개발자 옵션, 기본 OFF, 그릇만)
     var hourlyWageDisplay = false
@@ -45,6 +46,7 @@ object FeatureFlags {
         coupangDiagnosticLogging = prefs.getBoolean("coupangDiagnosticLogging", true)
         baeminDiagnosticLogging = prefs.getBoolean("baeminDiagnosticLogging", true)
         showChatTab = prefs.getBoolean("showChatTab", false)
+        showAcceptFeedback = prefs.getBoolean("showAcceptFeedback", false)
         hourlyWageDisplay = prefs.getBoolean("hourlyWageDisplay", false)
         personalPreset = prefs.getBoolean("personalPreset", false)
         regionHeatmap = prefs.getBoolean("regionHeatmap", false)
@@ -61,6 +63,7 @@ object FeatureFlags {
             putBoolean("coupangDiagnosticLogging", coupangDiagnosticLogging)
             putBoolean("baeminDiagnosticLogging", baeminDiagnosticLogging)
             putBoolean("showChatTab", showChatTab)
+            putBoolean("showAcceptFeedback", showAcceptFeedback)
             putBoolean("hourlyWageDisplay", hourlyWageDisplay)
             putBoolean("personalPreset", personalPreset)
             putBoolean("regionHeatmap", regionHeatmap)
