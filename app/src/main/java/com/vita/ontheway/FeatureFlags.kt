@@ -24,6 +24,9 @@ object FeatureFlags {
     var coupangDiagnosticLogging = true  // v3.19.3: 쿠팡 Flutter 접근성 진단
     var baeminDiagnosticLogging = true  // v3.21: 배민 접근성 트리 진단 (거리 탐색용)
 
+    // 🟡 UI Control
+    var showChatTab = false  // 채팅 탭 표시 여부 (false: 상태 탭만 표시)
+
     // 🔴 Future (개발자 옵션, 기본 OFF, 그릇만)
     var hourlyWageDisplay = false
     var personalPreset = false
@@ -41,6 +44,7 @@ object FeatureFlags {
         screenFilterLogging = prefs.getBoolean("screenFilterLogging", true)
         coupangDiagnosticLogging = prefs.getBoolean("coupangDiagnosticLogging", true)
         baeminDiagnosticLogging = prefs.getBoolean("baeminDiagnosticLogging", true)
+        showChatTab = prefs.getBoolean("showChatTab", false)
         hourlyWageDisplay = prefs.getBoolean("hourlyWageDisplay", false)
         personalPreset = prefs.getBoolean("personalPreset", false)
         regionHeatmap = prefs.getBoolean("regionHeatmap", false)
@@ -56,6 +60,7 @@ object FeatureFlags {
             putBoolean("screenFilterLogging", screenFilterLogging)
             putBoolean("coupangDiagnosticLogging", coupangDiagnosticLogging)
             putBoolean("baeminDiagnosticLogging", baeminDiagnosticLogging)
+            putBoolean("showChatTab", showChatTab)
             putBoolean("hourlyWageDisplay", hourlyWageDisplay)
             putBoolean("personalPreset", personalPreset)
             putBoolean("regionHeatmap", regionHeatmap)

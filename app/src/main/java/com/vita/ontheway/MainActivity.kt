@@ -52,6 +52,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var simulationHourlyCard: LinearLayout
     private lateinit var simRecentHourlyRate: TextView
     private lateinit var simCumulativeHourlyRate: TextView
+    private var hourlyRateOffText: TextView? = null
+    private var recentHourlyCard: View? = null
     private lateinit var appCheckText: TextView
     private var drivingModeSwitch: Switch? = null
     private var drivingModeStatusTv: TextView? = null
@@ -166,6 +168,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         simRecentHourlyRate = findViewById(R.id.simRecentHourlyRate)
         simCumulativeHourlyRate = findViewById(R.id.simCumulativeHourlyRate)
         appCheckText = findViewById(R.id.appCheckText)
+        hourlyRateOffText = findViewById(R.id.hourlyRateOffText)
+        recentHourlyCard = findViewById(R.id.recentHourlyCard)
+
+        // ── FeatureFlag: 채팅 탭 숨김 ──
+        if (!FeatureFlags.showChatTab) {
+            findViewById<LinearLayout>(R.id.tabBar)?.visibility = View.GONE
+            findViewById<FrameLayout>(R.id.tabIndicatorBar)?.visibility = View.GONE
+            statusPanel.visibility = View.VISIBLE
+            chatPanel.visibility = View.GONE
+        }
 
         // Sprint 6: 운행 모드
         drivingModeSwitch = findViewById(R.id.drivingModeSwitch)
@@ -946,17 +958,33 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val recent = EarningsTracker.getRecentHourlyRate(this)
         val cumulative = EarningsTracker.getCumulativeHourlyRate(this)
 
-        // v3.16: 항상 카드 표시 (데이터 없으면 "—원/h")
+        // 메인: 체감 시급만 표시
         hourlyRateCard.visibility = View.VISIBLE
         recentHourlyRate.text = if (recent >= 0) "${fmt(recent)}원/h" else "—원/h"
+        // 누적/SIM 값은 계산만 (통계 화면에서 사용)
         cumulativeHourlyRate.text = if (cumulative >= 0) "${fmt(cumulative)}원/h" else "—원/h"
 
-        // 시뮬레이션 시급 카드
         val simRecent = SimulationEarnings.getRecentHourlyRate(this)
         val simCumulative = SimulationEarnings.getCumulativeHourlyRate(this)
-        simulationHourlyCard.visibility = View.VISIBLE
         simRecentHourlyRate.text = if (simRecent > 0) "${fmt(simRecent)}원/h" else "—원/h"
         simCumulativeHourlyRate.text = if (simCumulative > 0) "${fmt(simCumulative)}원/h" else "—원/h"
+
+        // 운행 OFF → 회색 처리
+        updateHourlyCardDrivingState()
+    }
+
+    private fun updateHourlyCardDrivingState() {
+        val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
+        val card = recentHourlyCard as? androidx.cardview.widget.CardView
+        if (isDriving) {
+            card?.setCardBackgroundColor(Color.WHITE)
+            recentHourlyRate.setTextColor(Color.parseColor("#5B6ABF"))
+            hourlyRateOffText?.visibility = View.GONE
+        } else {
+            card?.setCardBackgroundColor(Color.parseColor("#EEEEEE"))
+            recentHourlyRate.setTextColor(Color.parseColor("#BBBBBB"))
+            hourlyRateOffText?.visibility = View.VISIBLE
+        }
     }
 
     private fun updateAppCheckDisplay() {
@@ -1627,6 +1655,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val ms = DrivingModeManager.getTodayDrivingTimeMs(this)
             val h = ms / 3_600_000; val m = (ms % 3_600_000) / 60_000
             drivingModeDurationTv?.text = if (h > 0) "오늘 운행: ${h}시간 ${m}분" else "오늘 운행: ${m}분"
+            updateHourlyCardDrivingState()
         } catch (_: Exception) {}
     }
 

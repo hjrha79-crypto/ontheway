@@ -100,6 +100,7 @@ class StatsActivity : AppCompatActivity() {
         }
 
         val entries = getFilteredEntries(tab)
+        buildHourlyRateCards()
         buildStats(entries)
     }
 
@@ -135,6 +136,45 @@ class StatsActivity : AppCompatActivity() {
             if (e.optLong("ts", 0) >= cutoff) result.add(e)
         }
         return result
+    }
+
+    private fun buildHourlyRateCards() {
+        val cumulative = EarningsTracker.getCumulativeHourlyRate(this)
+        val simRecent = SimulationEarnings.getRecentHourlyRate(this)
+        val simCumulative = SimulationEarnings.getCumulativeHourlyRate(this)
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = pill(C_CARD, 16f)
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+        }
+        card.addView(TextView(this).apply {
+            text = "시급 상세"; textSize = 12f; setTextColor(C_SUB)
+            letterSpacing = 0.05f; setPadding(0, 0, 0, dp(10))
+        })
+
+        fun addRow(label: String, value: String, color: Int) {
+            val row = LinearLayout(this@StatsActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(4), 0, dp(4))
+            }
+            row.addView(TextView(this@StatsActivity).apply {
+                text = label; textSize = 13f; setTextColor(C_SUB)
+                layoutParams = lp(0, WC, 1f)
+            })
+            row.addView(TextView(this@StatsActivity).apply {
+                text = value; textSize = 16f
+                setTypeface(null, Typeface.BOLD); setTextColor(color)
+            })
+            card.addView(row)
+        }
+
+        addRow("누적 시급 (오늘 평균)", if (cumulative >= 0) "${fmt(cumulative)}원/h" else "—원/h", C_ACCENT)
+        addRow("SIM 체감 (OnTheWay 추천)", if (simRecent > 0) "${fmt(simRecent)}원/h" else "—원/h", C_ORANGE)
+        addRow("SIM 누적 (OnTheWay 추천)", if (simCumulative > 0) "${fmt(simCumulative)}원/h" else "—원/h", C_ORANGE)
+
+        card.layoutParams = LinearLayout.LayoutParams(MP, WC).apply { setMargins(0, 0, 0, dp(12)) }
+        contentLayout.addView(card)
     }
 
     private fun buildStats(entries: List<JSONObject>) {
