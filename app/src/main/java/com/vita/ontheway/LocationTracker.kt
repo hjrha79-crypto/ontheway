@@ -10,9 +10,15 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import java.util.concurrent.Executors
 
 object LocationTracker {
     private const val TAG = "OTW_LOCATION"
+
+    // [P1] DB INSERT를 메인 스레드에서 분리
+    private val dbExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "LocationTracker-DB").apply { isDaemon = true }
+    }
 
     // speed thresholds (m/s)
     private const val SPEED_STOPPED = 0.5f      // < 0.5 = stopped
@@ -116,10 +122,13 @@ object LocationTracker {
             accuracy = if (location.hasAccuracy()) location.accuracy else 0f
         )
 
-        try {
-            CallLogDb.get(ctx).insertLocationTrace(trace)
-        } catch (e: Exception) {
-            Log.e(TAG, "insert failed", e)
+        // [P1] DB INSERT를 백그라운드로 분리 (GPS 콜백은 메인 스레드)
+        dbExecutor.execute {
+            try {
+                CallLogDb.get(ctx).insertLocationTrace(trace)
+            } catch (e: Exception) {
+                Log.e(TAG, "insert failed", e)
+            }
         }
 
         // 2. speed tier

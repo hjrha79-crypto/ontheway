@@ -4,12 +4,18 @@ import android.content.Context
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Executors
 
 object FilterLog {
 
     private const val PREFS = "filter_log"
     private const val KEY_ENTRIES = "entries"
     private const val MAX_ENTRIES = 200
+
+    // [P1] SP JSON I/O를 메인 스레드에서 분리
+    private val ioExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "FilterLog-IO").apply { isDaemon = true }
+    }
 
     // v3.8: 허용 플랫폼 화이트리스트
     private val ALLOWED_PLATFORMS = setOf("coupang", "baemin", "kakaot")
@@ -27,9 +33,10 @@ object FilterLog {
             return
         }
 
+        // 메인 스레드에서 데이터 스냅샷 캡처
         val unitPrice = if (call.distance != null && call.distance > 0)
             (call.price / call.distance).toInt() else 0
-        val entry = JSONObject().apply {
+        val entryStr = JSONObject().apply {
             put("ts", System.currentTimeMillis())
             put("platform", call.platform)
             put("rawText", call.rawText)
@@ -49,24 +56,30 @@ object FilterLog {
             if (call.pickupDistanceKm != null) put("pickupKm", call.pickupDistanceKm)
             if (eventId != null) put("eventId", eventId)
             if (sessionState != null) put("state", sessionState)
+        }.toString()
+
+        val appCtx = ctx.applicationContext
+        val platform = call.platform; val price = call.price; val verdict = result.verdict
+        Log.d("FilterLog", "$platform ${price}원 → $verdict")
+
+        // [P1] SP JSON I/O를 백그라운드로 분리
+        ioExecutor.execute {
+            try {
+                val prefs = appCtx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                val arr = try {
+                    JSONArray(prefs.getString(KEY_ENTRIES, "[]"))
+                } catch (e: Exception) {
+                    JSONArray()
+                }
+                arr.put(JSONObject(entryStr))
+                while (arr.length() > MAX_ENTRIES) {
+                    arr.remove(0)
+                }
+                prefs.edit().putString(KEY_ENTRIES, arr.toString()).apply()
+            } catch (e: Exception) {
+                Log.w("FilterLog", "record 실패: ${e.message}")
+            }
         }
-
-        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val arr = try {
-            JSONArray(prefs.getString(KEY_ENTRIES, "[]"))
-        } catch (e: Exception) {
-            JSONArray()
-        }
-
-        arr.put(entry)
-
-        // 200건 초과 시 오래된 것 제거
-        while (arr.length() > MAX_ENTRIES) {
-            arr.remove(0)
-        }
-
-        prefs.edit().putString(KEY_ENTRIES, arr.toString()).apply()
-        Log.d("FilterLog", "${call.platform} ${call.price}원 → ${result.verdict}")
     }
 
     fun getAll(ctx: Context): JSONArray {
@@ -166,25 +179,33 @@ object FilterLog {
 
     /** v3.0: 수락 기록 추가 */
     fun recordAccepted(ctx: Context, price: Int, platform: String) {
-        val entry = JSONObject().apply {
+        val entryStr = JSONObject().apply {
             put("ts", System.currentTimeMillis())
             put("platform", platform)
             put("price", price)
             put("verdict", "ACCEPTED")
             put("reason", "수락됨")
-        }
+        }.toString()
 
-        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val arr = try {
-            JSONArray(prefs.getString(KEY_ENTRIES, "[]"))
-        } catch (e: Exception) {
-            JSONArray()
-        }
-
-        arr.put(entry)
-        while (arr.length() > MAX_ENTRIES) arr.remove(0)
-        prefs.edit().putString(KEY_ENTRIES, arr.toString()).apply()
+        val appCtx = ctx.applicationContext
         Log.d("FilterLog", "$platform ${price}원 → ACCEPTED")
+
+        // [P1] SP JSON I/O를 백그라운드로 분리
+        ioExecutor.execute {
+            try {
+                val prefs = appCtx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                val arr = try {
+                    JSONArray(prefs.getString(KEY_ENTRIES, "[]"))
+                } catch (e: Exception) {
+                    JSONArray()
+                }
+                arr.put(JSONObject(entryStr))
+                while (arr.length() > MAX_ENTRIES) arr.remove(0)
+                prefs.edit().putString(KEY_ENTRIES, arr.toString()).apply()
+            } catch (e: Exception) {
+                Log.w("FilterLog", "recordAccepted 실패: ${e.message}")
+            }
+        }
     }
 
     /** 최근 N건 반환 (최신순) */
