@@ -76,6 +76,10 @@ class DevStatsActivity : AppCompatActivity() {
             container.addView(makeSessionRow(session))
         }
 
+        // ── 판정 정확도 ─────────────────────
+        container.addView(makeSectionLabel("판정 정확도"))
+        container.addView(makeJudgmentMatchCard())
+
         // ── NLS Lifecycle ──────────────────
         container.addView(makeSectionLabel("NLS Lifecycle"))
         container.addView(makeNlsLifecycleCard())
@@ -363,6 +367,64 @@ class DevStatsActivity : AppCompatActivity() {
                 "평균 시간당 수익" to avgEarnedPerHour.toFormattedWon(),
                 "평균 거리당 수익" to avgEarnedPerKm.toFormattedWon(),
                 "오늘 총 수익" to todayEarning.toFormattedWon()
+            ).forEach { (key, value) ->
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(0, 3.dp(), 0, 3.dp())
+                    addView(makeText(key, 12f, C_MUTED).apply {
+                        layoutParams = LinearLayout.LayoutParams(0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+                    addView(makeText(value, 12f, C_TEXT, Typeface.MONOSPACE).apply {
+                        gravity = Gravity.END
+                        layoutParams = LinearLayout.LayoutParams(0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+                })
+            }
+        }
+    }
+
+    // ── 판정 정확도 카드 ──────────────────
+    private fun makeJudgmentMatchCard(): View {
+        val events = JudgmentMatchLogger.getTodayEvents(this)
+        val matchCnt = events.count { it.matchStatus == "MATCH" }
+        val mismatchCnt = events.count { it.matchStatus == "MISMATCH" }
+        val total = matchCnt + mismatchCnt
+        val pct = if (total > 0) matchCnt * 100 / total else 0
+        val jobMismatch = events.count { it.matchStatus == "MISMATCH" && it.onthewayJudgment == "JOB" }
+        val passMismatch = events.count { it.matchStatus == "MISMATCH" && it.onthewayJudgment == "PASS" }
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(C_SURFACE)
+            setPadding(14.dp(), 12.dp(), 14.dp(), 12.dp())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 16.dp() }
+
+            // 큰 숫자 헤더
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, 8.dp())
+                addView(makeText("${pct}%", 28f,
+                    if (pct >= 80) C_ACCENT else if (pct >= 50) C_WARN else C_URGENT,
+                    Typeface.MONOSPACE, Typeface.BOLD).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { marginEnd = 8.dp() }
+                })
+                addView(makeText("일치율 (${total}건)", 12f, C_MUTED))
+            })
+
+            listOf(
+                "일치 (MATCH)" to "${matchCnt}건",
+                "불일치 (MISMATCH)" to "${mismatchCnt}건",
+                "  잡으세요→미수락" to "${jobMismatch}건",
+                "  넘기세요→수락" to "${passMismatch}건"
             ).forEach { (key, value) ->
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL

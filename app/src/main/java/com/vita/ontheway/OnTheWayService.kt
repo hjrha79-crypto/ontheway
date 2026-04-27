@@ -642,6 +642,9 @@ class OnTheWayService : AccessibilityService() {
 
         Log.d("OnTheWay", "수락 감지: ${price}원 ($platform)")
 
+        // 판정-행동 매칭: PENDING → ACCEPTED
+        try { JudgmentMatchLogger.onAcceptDetected(this) } catch (_: Exception) {}
+
         // v3.22: 운행 모드 자동 ON
         DrivingModeManager.setMode(this, DrivingMode.DRIVING)
 
@@ -1155,6 +1158,20 @@ class OnTheWayService : AccessibilityService() {
         updateNotification()
         checkGoalProgress()
         DailyReport.onCallDetected(this)
+
+        // 판정-행동 매칭: PENDING 이벤트 생성 + 30s 타임아웃
+        try {
+            JudgmentMatchLogger.onJudgmentIssued(
+                ctx = this,
+                platform = call.platform,
+                price = call.price,
+                distanceKm = enrichedCall.distance,
+                storeName = call.storeName,
+                verdict = lastDeliveryVerdict,
+                reason = result.reason,
+                sessionId = callSessionEvt?.eventId
+            )
+        } catch (_: Exception) {}
     }
 
     /** 숫자를 한국어 TTS용으로 변환: 3200 → "삼천이백" */
