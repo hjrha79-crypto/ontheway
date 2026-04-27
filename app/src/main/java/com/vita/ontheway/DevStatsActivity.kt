@@ -76,6 +76,10 @@ class DevStatsActivity : AppCompatActivity() {
             container.addView(makeSessionRow(session))
         }
 
+        // ── NLS Lifecycle ──────────────────
+        container.addView(makeSectionLabel("NLS Lifecycle"))
+        container.addView(makeNlsLifecycleCard())
+
         // ── Drop 사유별 카운트 ──────────────
         container.addView(makeSectionLabel("Drop 사유"))
         container.addView(makeDropStatsCard())
@@ -368,6 +372,44 @@ class DevStatsActivity : AppCompatActivity() {
                             LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     })
                     addView(makeText(value, 12f, C_TEXT, Typeface.MONOSPACE).apply {
+                        gravity = Gravity.END
+                        layoutParams = LinearLayout.LayoutParams(0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+                })
+            }
+        }
+    }
+
+    // ── NLS Lifecycle 카드 ──────────────────
+    private fun makeNlsLifecycleCard(): View {
+        val rebindCount = DeliveryNotificationService.rebindRequestCount.get()
+        val lastRebind = DeliveryNotificationService.lastRebindRequestTime.get()
+        val lastConnect = DeliveryNotificationService.lastConnectedTime.get()
+        val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(C_SURFACE)
+            setPadding(14.dp(), 12.dp(), 14.dp(), 12.dp())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 16.dp() }
+
+            listOf(
+                "rebind 요청 횟수" to "${rebindCount}회",
+                "마지막 rebind 요청" to if (lastRebind > 0) sdf.format(java.util.Date(lastRebind)) else "—",
+                "마지막 연결" to if (lastConnect > 0) sdf.format(java.util.Date(lastConnect)) else "—"
+            ).forEach { (key, value) ->
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(0, 3.dp(), 0, 3.dp())
+                    addView(makeText(key, 12f, C_MUTED).apply {
+                        layoutParams = LinearLayout.LayoutParams(0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+                    addView(makeText(value, 12f, if (rebindCount > 0) C_WARN else C_TEXT, Typeface.MONOSPACE).apply {
                         gravity = Gravity.END
                         layoutParams = LinearLayout.LayoutParams(0,
                             LinearLayout.LayoutParams.WRAP_CONTENT, 1f)

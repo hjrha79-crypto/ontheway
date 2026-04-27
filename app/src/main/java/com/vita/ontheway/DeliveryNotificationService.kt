@@ -1,11 +1,14 @@
 package com.vita.ontheway
 
+import android.content.ComponentName
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import java.io.File
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONObject
 
 /**
@@ -16,6 +19,7 @@ import org.json.JSONObject
 class DeliveryNotificationService : NotificationListenerService() {
 
     companion object {
+        private const val TAG_LIFECYCLE = "DeliveryNLS_LIFECYCLE"
         private const val PKG_COUPANG = "com.coupang.mobile.eats.courier"
         private const val PKG_BAEMIN = "com.woowahan.bros"
         private const val PKG_FLEXER = "com.kakaomobility.flexer"
@@ -24,6 +28,11 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         // 중복 알림 방지: 알림key → 처리시각
         private val processedNotifs = mutableMapOf<String, Long>()
+
+        // NLS rebind 카운터 (메모리상, DevStats 표시용)
+        val rebindRequestCount = AtomicInteger(0)
+        val lastRebindRequestTime = AtomicLong(0)
+        val lastConnectedTime = AtomicLong(0)
     }
 
     // [Hotfix-2 P0-3] 메인 스레드 I/O 분리용 executor
@@ -62,9 +71,12 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         super.onListenerConnected()
-        listenerConnectedAt = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        listenerConnectedAt = now
+        lastConnectedTime.set(now)
+        val rebindCount = rebindRequestCount.get()
+        Log.d(TAG_LIFECYCLE, "NLS connected (rebindCount=$rebindCount)")
         Log.d("DeliveryNoti", "알림 서비스 연결됨")
-        Log.d("DeliveryNoti", "onListenerConnected")
         Log.d("COUPANG_DBG", "onListenerConnected at $listenerConnectedAt")
         Log.d("COUPANG_DBG", "TARGET_PACKAGES=$TARGET_PACKAGES")
 
@@ -85,7 +97,20 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
-        Log.w("COUPANG_DBG", "onListenerDisconnected at ${System.currentTimeMillis()}")
+        val now = System.currentTimeMillis()
+        Log.w(TAG_LIFECYCLE, "NLS disconnected, requesting rebind")
+        Log.w("COUPANG_DBG", "onListenerDisconnected at $now")
+        try {
+            DropReason.recordDrop(DropReason.DROP_OTHER, "NLS_DISCONNECTED")
+        } catch (_: Exception) {}
+        try {
+            requestRebind(ComponentName(this, DeliveryNotificationService::class.java))
+            rebindRequestCount.incrementAndGet()
+            lastRebindRequestTime.set(now)
+            Log.d(TAG_LIFECYCLE, "requestRebind issued (total=${rebindRequestCount.get()})")
+        } catch (e: Exception) {
+            Log.e(TAG_LIFECYCLE, "requestRebind failed: ${e.message}")
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
