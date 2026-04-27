@@ -1,5 +1,6 @@
 package com.vita.ontheway
 
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -91,6 +92,18 @@ class DeveloperOptionsActivity : AppCompatActivity() {
         ) { checked -> FeatureFlags.connectivityTTS = checked; FeatureFlags.save(this) })
 
         root.addView(card, lp(MP, WC).apply { setMargins(dp(16), dp(16), dp(16), dp(8)) })
+
+        // 개발자 통계 (DevStatsActivity) 진입
+        root.addView(TextView(this).apply {
+            text = "개발자 통계 (KPI 대시보드)"
+            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#5B6ABF"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener {
+                startActivity(Intent(this@DeveloperOptionsActivity, DevStatsActivity::class.java))
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) })
 
         scrollView.addView(root)
         setContentView(scrollView)
