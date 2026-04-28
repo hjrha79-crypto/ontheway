@@ -41,9 +41,8 @@ class UserModeActivity : AppCompatActivity() {
     private lateinit var statReturn: TextView
     private lateinit var statWait: TextView
     private lateinit var lastCallCard: LinearLayout
-    private lateinit var lastCallText: TextView
     private lateinit var callListLayout: LinearLayout
-    private lateinit var accessibilityLink: TextView
+    private lateinit var accessibilityBanner: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private val fmt = NumberFormat.getNumberInstance()
@@ -96,6 +95,11 @@ class UserModeActivity : AppCompatActivity() {
         }
         container.addView(logo)
 
+        container.addView(TextView(this).apply {
+            text = "오늘 수익"; textSize = 14f; setTextColor(C_SUB)
+            gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
+        })
+
         earningText = TextView(this).apply {
             textSize = 48f; setTextColor(C_TEXT); gravity = Gravity.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -107,6 +111,21 @@ class UserModeActivity : AppCompatActivity() {
             setPadding(0, dp(4), 0, dp(24))
         }
         container.addView(earningSubText)
+
+        // ═══ 접근성 권한 경고 배너 (운행 버튼 위) ═══
+        accessibilityBanner = TextView(this).apply {
+            text = "\u26A0 접근성 권한 필요 - 탭하여 설정"
+            textSize = 13f; setTextColor(Color.parseColor("#856404"))
+            background = roundRect(Color.parseColor("#FFF3CD"), 8)
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(12) }
+            visibility = View.GONE
+        }
+        accessibilityBanner.setOnClickListener {
+            try { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (_: Exception) {}
+        }
+        container.addView(accessibilityBanner)
 
         // ═══ 2. 운행 버튼 ═══
         driveBtn = TextView(this).apply {
@@ -153,37 +172,19 @@ class UserModeActivity : AppCompatActivity() {
             elevation = dp(2).toFloat()
             layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(20) }
         }
-        lastCallCard.addView(TextView(this).apply {
-            text = "마지막 콜"; textSize = 10f; setTextColor(C_SUB)
-            setPadding(0, 0, 0, dp(4))
-        })
-        lastCallText = TextView(this).apply {
-            textSize = 15f; setTextColor(C_TEXT)
-        }
-        lastCallCard.addView(lastCallText)
         container.addView(lastCallCard)
 
         // ═══ 5. 최근 콜 리스트 ═══
         container.addView(TextView(this).apply {
-            text = "최근 콜"; textSize = 12f; setTextColor(C_TEXT)
+            text = "최근 콜"; textSize = 14f; setTextColor(C_TEXT)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setPadding(0, 0, 0, dp(8))
+            setPadding(0, dp(24), 0, dp(8))
         })
 
         callListLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
         container.addView(callListLayout)
-
-        // ═══ 6. 접근성 권한 링크 ═══
-        accessibilityLink = TextView(this).apply {
-            text = "접근성 권한 설정"; textSize = 13f; setTextColor(C_SUB)
-            gravity = Gravity.CENTER; setPadding(0, dp(24), 0, 0)
-        }
-        accessibilityLink.setOnClickListener {
-            try { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (_: Exception) {}
-        }
-        container.addView(accessibilityLink)
 
         root.addView(container)
         setContentView(root)
@@ -239,18 +240,22 @@ class UserModeActivity : AppCompatActivity() {
         }
 
         // 마지막 콜
-        val lastCall = getLastCallInfo()
-        lastCallText.text = lastCall ?: "아직 콜 없음"
+        refreshLastCallCard()
 
         // 최근 콜
         refreshCallList()
 
         // 접근성 권한 확인
-        accessibilityLink.visibility = if (isAccessibilityEnabled()) View.GONE else View.VISIBLE
+        accessibilityBanner.visibility = if (isAccessibilityEnabled()) View.GONE else View.VISIBLE
     }
 
-    private fun getLastCallInfo(): String? {
-        return try {
+    private fun refreshLastCallCard() {
+        lastCallCard.removeAllViews()
+        lastCallCard.addView(TextView(this).apply {
+            text = "마지막 콜"; textSize = 10f; setTextColor(C_SUB)
+            setPadding(0, 0, 0, dp(4))
+        })
+        try {
             val db = CallLogDb.get(this).readableDatabase
             val cursor = db.rawQuery(
                 "SELECT timestamp, platform, price, verdict, reason FROM ${CallLogDb.TABLE} ORDER BY timestamp DESC LIMIT 1", null
@@ -264,10 +269,42 @@ class UserModeActivity : AppCompatActivity() {
                     val reason = it.getString(4) ?: ""
                     val pName = platformName(platform)
                     val vLabel = verdictLabel(verdict, reason)
-                    "${sdfHm.format(Date(ts))}  $pName  ${fmt.format(price)}원  $vLabel"
-                } else null
+
+                    val row = LinearLayout(this@UserModeActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+                    row.addView(TextView(this@UserModeActivity).apply {
+                        text = "${sdfHm.format(Date(ts))}  $pName  ${fmt.format(price)}원"
+                        textSize = 15f; setTextColor(C_TEXT)
+                        layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
+                    })
+                    // 판정 pill 뱃지
+                    row.addView(makeVerdictPill(vLabel))
+                    lastCallCard.addView(row)
+                } else {
+                    lastCallCard.addView(TextView(this).apply {
+                        text = "아직 콜 없음"; textSize = 15f; setTextColor(C_SUB)
+                    })
+                }
             }
-        } catch (_: Exception) { null }
+        } catch (_: Exception) {
+            lastCallCard.addView(TextView(this).apply {
+                text = "아직 콜 없음"; textSize = 15f; setTextColor(C_SUB)
+            })
+        }
+    }
+
+    private fun makeVerdictPill(label: String): TextView {
+        val isReject = label == "넘기세요"
+        val bgColor = if (isReject) Color.parseColor("#FFEBEE") else Color.parseColor("#E8F5E9")
+        val textColor = if (isReject) C_RED else C_GREEN
+        return TextView(this).apply {
+            text = label; textSize = 12f; setTextColor(textColor)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            background = roundRect(bgColor, 12)
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+        }
     }
 
     private fun refreshCallList() {
@@ -319,7 +356,7 @@ class UserModeActivity : AppCompatActivity() {
                     cornerRadii = floatArrayOf(dp(8).toFloat(), dp(8).toFloat(), 0f, 0f, 0f, 0f, dp(8).toFloat(), dp(8).toFloat())
                 }
                 background = barBg
-                layoutParams = LinearLayout.LayoutParams(dp(4), MP)
+                layoutParams = LinearLayout.LayoutParams(dp(8), MP)
             })
 
             // 내용
@@ -331,7 +368,7 @@ class UserModeActivity : AppCompatActivity() {
             }
 
             content.addView(TextView(context).apply {
-                text = sdfHm.format(Date(ts)); textSize = 13f; setTextColor(C_SUB)
+                text = sdfHm.format(Date(ts)); textSize = 12f; setTextColor(C_SUB)
                 typeface = Typeface.MONOSPACE
                 layoutParams = LinearLayout.LayoutParams(dp(44), WC)
             })
@@ -342,7 +379,7 @@ class UserModeActivity : AppCompatActivity() {
             })
 
             content.addView(TextView(context).apply {
-                text = "${fmt.format(price)}원"; textSize = 15f; setTextColor(C_TEXT)
+                text = "${fmt.format(price)}원"; textSize = 18f; setTextColor(C_TEXT)
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 gravity = Gravity.END
                 layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
@@ -352,7 +389,7 @@ class UserModeActivity : AppCompatActivity() {
             content.addView(View(context).apply {
                 val dotBg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(barColor) }
                 background = dotBg
-                layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply { marginStart = dp(12) }
+                layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginStart = dp(12) }
             })
 
             addView(content)

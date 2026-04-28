@@ -107,6 +107,7 @@ object CallDetailDialog {
                 })
                 addView(TextView(context).apply {
                     text = value; textSize = 14f; setTextColor(Color.parseColor("#1A1A2E"))
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
             })
         }
