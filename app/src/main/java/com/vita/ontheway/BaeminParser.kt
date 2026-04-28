@@ -30,6 +30,19 @@ object BaeminParser {
     private val BUNDLE_PATTERN = Regex("묶음|\\d+건", RegexOption.IGNORE_CASE)
     private val BUNDLE_COUNT_PATTERN = Regex("(\\d+)\\s*건")
 
+    // 가게명 오염 블랙리스트: accessibility tree에서 혼입되는 UI 컴포넌트 텍스트
+    private val STORE_NAME_BLACKLIST = setOf(
+        "touchable-image-container",
+        "button-base",
+        "naver",
+        "지도",
+        "네이버지도",
+        "button",
+        "image",
+        "container",
+        "view"
+    )
+
     /**
      * texts 리스트에서 "배달료기준거리 (X,XXXm)" 패턴 찾아 km로 반환.
      * 없으면 null.
@@ -41,6 +54,25 @@ object BaeminParser {
         val km = meters / 1000.0
         Log.d("BaeminDistance", "parsed ${meters}m = ${km}km")
         return km
+    }
+
+    /**
+     * 가게명에서 UI 컴포넌트 오염 토큰 제거.
+     * "+" 구분자로 split → 블랙리스트 토큰 제거 → 재조합.
+     */
+    fun sanitizeStoreName(raw: String): String {
+        if (raw.isBlank()) return ""
+        val tokens = raw.split("+", ",").map { it.trim() }
+        val removed = mutableListOf<String>()
+        val clean = tokens.filter { token ->
+            val isBlacklisted = token.isNotBlank() && STORE_NAME_BLACKLIST.contains(token.lowercase())
+            if (isBlacklisted) removed.add(token)
+            !isBlacklisted && token.isNotBlank()
+        }
+        if (removed.isNotEmpty()) {
+            OtwFileLogger.log("BaeminParser", "가게명 필터: \"$raw\" → \"${clean.joinToString("+")}\" (제거: ${removed.joinToString(", ")})")
+        }
+        return clean.joinToString("+")
     }
 
     fun parse(texts: List<String>): List<DeliveryCall> {
@@ -77,7 +109,7 @@ object BaeminParser {
             .filter { StoreNameCleaner.validateStoreName(it).isNotEmpty() }
 
         val rawStoreName = storeAfterPickup ?: storeNames.firstOrNull() ?: ""
-        val storeName = StoreNameCleaner.validateStoreName(rawStoreName)
+        val storeName = sanitizeStoreName(StoreNameCleaner.validateStoreName(rawStoreName))
 
         val destination = texts.firstOrNull { t ->
             t.length in 3..30 && DEST_PATTERN.matches(t.trim())
@@ -146,8 +178,9 @@ object BaeminParser {
             val bundleCount = BUNDLE_COUNT_PATTERN.find(joined)?.groupValues?.get(1)?.toIntOrNull()
                 ?: results.size
 
-            // 다중 픽업 판정: 서로 다른 가게명이 2개 이상
-            val isMultiPickup = storeNames.size >= 2
+            // 다중 픽업 판정: 서로 다른 가게명이 2개 이상 (블랙리스트 제외)
+            val cleanStoreNames = storeNames.filter { !STORE_NAME_BLACKLIST.contains(it.lowercase()) }
+            val isMultiPickup = cleanStoreNames.size >= 2
 
             Log.d("BaeminParser", "묶음배달 감지: ${bundleCount}건 합산 ${totalPrice}원, 다중픽업=$isMultiPickup")
             OtwFileLogger.log("BaeminParser", "묶음배달 감지: ${bundleCount}건 합산 ${totalPrice}원, 다중픽업=$isMultiPickup")
@@ -157,7 +190,7 @@ object BaeminParser {
                 isMulti = true,
                 platform = "baemin",
                 rawText = joined,
-                storeName = storeNames.joinToString("+"),
+                storeName = sanitizeStoreName(storeNames.joinToString("+")),
                 destination = destination,
                 bundleCount = bundleCount,
                 isMultiPickup = isMultiPickup,
