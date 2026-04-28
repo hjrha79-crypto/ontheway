@@ -23,12 +23,15 @@ import java.util.*
 class UserModeActivity : AppCompatActivity() {
 
     // ── 컬러 팔레트 ──
-    private val C_BG       = Color.parseColor("#FFFFFF")
-    private val C_CARD     = Color.parseColor("#F8F9FA")
+    private val C_BG       = Color.parseColor("#F0F2F5")
+    private val C_CARD     = Color.WHITE
     private val C_TEXT     = Color.parseColor("#1A1A2E")
     private val C_SUB      = Color.parseColor("#6C757D")
-    private val C_BTN_GO   = Color.parseColor("#4361EE")
-    private val C_BTN_STOP = Color.parseColor("#EF233C")
+    private val C_BLUE     = Color.parseColor("#4361EE")
+    private val C_BTN_GO_S = Color.parseColor("#4361EE")
+    private val C_BTN_GO_E = Color.parseColor("#3A0CA3")
+    private val C_BTN_ST_S = Color.parseColor("#EF233C")
+    private val C_BTN_ST_E = Color.parseColor("#C1121F")
     private val C_GREEN    = Color.parseColor("#06D6A0")
     private val C_RED      = Color.parseColor("#EF233C")
 
@@ -166,9 +169,8 @@ class UserModeActivity : AppCompatActivity() {
 
         // ═══ 4. 마지막 콜 카드 ═══
         lastCallCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
             background = roundRect(C_CARD, 12)
-            setPadding(dp(16), dp(12), dp(16), dp(12))
             elevation = dp(2).toFloat()
             layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(20) }
         }
@@ -219,12 +221,22 @@ class UserModeActivity : AppCompatActivity() {
     private fun refreshUI() {
         val earning = EarningManager.getTodayEarning(this)
         val callCount = EarningManager.getTodayCallCount(this)
+        val goal = EarningManager.getGoal(this)
         earningText.text = "${fmt.format(earning)}원"
+        earningText.setTextColor(when {
+            earning <= 0 -> C_TEXT
+            goal > 0 && earning >= goal -> C_GREEN
+            else -> C_BLUE
+        })
         earningSubText.text = "오늘 ${callCount}콜"
 
         val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
         driveBtn.text = if (isDriving) "운행 중지" else "운행 시작"
-        driveBtn.background = roundRect(if (isDriving) C_BTN_STOP else C_BTN_GO, 16)
+        driveBtn.background = if (isDriving)
+            gradientRect(C_BTN_ST_S, C_BTN_ST_E, 16)
+        else
+            gradientRect(C_BTN_GO_S, C_BTN_GO_E, 16)
+        driveBtn.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), Color.parseColor("#40000000"))
 
         // 통계 (운행 중일 때만)
         if (isDriving) {
@@ -251,10 +263,6 @@ class UserModeActivity : AppCompatActivity() {
 
     private fun refreshLastCallCard() {
         lastCallCard.removeAllViews()
-        lastCallCard.addView(TextView(this).apply {
-            text = "마지막 콜"; textSize = 10f; setTextColor(C_SUB)
-            setPadding(0, 0, 0, dp(4))
-        })
         try {
             val db = CallLogDb.get(this).readableDatabase
             val cursor = db.rawQuery(
@@ -267,30 +275,61 @@ class UserModeActivity : AppCompatActivity() {
                     val price = it.getInt(2)
                     val verdict = it.getString(3) ?: ""
                     val reason = it.getString(4) ?: ""
-                    val pName = platformName(platform)
+                    val isReject = verdict.contains("REJECT")
                     val vLabel = verdictLabel(verdict, reason)
+                    val barColor = if (isReject) C_RED else C_GREEN
 
-                    val row = LinearLayout(this@UserModeActivity).apply {
+                    // 좌측 판정 색상 바
+                    lastCallCard.addView(View(this@UserModeActivity).apply {
+                        val barBg = GradientDrawable().apply {
+                            setColor(barColor)
+                            cornerRadii = floatArrayOf(dp(12).toFloat(), dp(12).toFloat(), 0f, 0f, 0f, 0f, dp(12).toFloat(), dp(12).toFloat())
+                        }
+                        background = barBg
+                        layoutParams = LinearLayout.LayoutParams(dp(8), MP)
+                    })
+
+                    // 내용
+                    val content = LinearLayout(this@UserModeActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(12), dp(12), dp(16), dp(12))
+                        layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
+                    }
+                    content.addView(TextView(this@UserModeActivity).apply {
+                        text = "마지막 콜"; textSize = 10f; setTextColor(C_SUB)
+                        setPadding(0, 0, 0, dp(6))
+                    })
+
+                    val infoRow = LinearLayout(this@UserModeActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                     }
-                    row.addView(TextView(this@UserModeActivity).apply {
-                        text = "${sdfHm.format(Date(ts))}  $pName  ${fmt.format(price)}원"
-                        textSize = 15f; setTextColor(C_TEXT)
+                    infoRow.addView(makePlatformBadge(platform).apply {
+                        layoutParams = LinearLayout.LayoutParams(WC, WC).apply { marginEnd = dp(8) }
+                    })
+                    infoRow.addView(TextView(this@UserModeActivity).apply {
+                        text = sdfHm.format(Date(ts)); textSize = 12f; setTextColor(C_SUB)
+                        layoutParams = LinearLayout.LayoutParams(WC, WC).apply { marginEnd = dp(8) }
+                    })
+                    infoRow.addView(TextView(this@UserModeActivity).apply {
+                        text = "${fmt.format(price)}원"; textSize = 20f; setTextColor(C_TEXT)
+                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                         layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
                     })
-                    // 판정 pill 뱃지
-                    row.addView(makeVerdictPill(vLabel))
-                    lastCallCard.addView(row)
+                    infoRow.addView(makeVerdictPill(vLabel))
+                    content.addView(infoRow)
+                    lastCallCard.addView(content)
                 } else {
-                    lastCallCard.addView(TextView(this).apply {
+                    lastCallCard.addView(TextView(this@UserModeActivity).apply {
                         text = "아직 콜 없음"; textSize = 15f; setTextColor(C_SUB)
+                        setPadding(dp(16), dp(12), dp(16), dp(12))
                     })
                 }
             }
         } catch (_: Exception) {
             lastCallCard.addView(TextView(this).apply {
                 text = "아직 콜 없음"; textSize = 15f; setTextColor(C_SUB)
+                setPadding(dp(16), dp(12), dp(16), dp(12))
             })
         }
     }
@@ -363,19 +402,18 @@ class UserModeActivity : AppCompatActivity() {
             val content = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), 0, 0, 0)
+                setPadding(dp(8), 0, dp(4), 0)
                 layoutParams = LinearLayout.LayoutParams(0, MP, 1f)
             }
+
+            content.addView(makePlatformBadge(platform).apply {
+                layoutParams = LinearLayout.LayoutParams(WC, WC).apply { marginEnd = dp(8) }
+            })
 
             content.addView(TextView(context).apply {
                 text = sdfHm.format(Date(ts)); textSize = 12f; setTextColor(C_SUB)
                 typeface = Typeface.MONOSPACE
                 layoutParams = LinearLayout.LayoutParams(dp(44), WC)
-            })
-
-            content.addView(TextView(context).apply {
-                text = pName; textSize = 14f; setTextColor(C_TEXT)
-                layoutParams = LinearLayout.LayoutParams(dp(52), WC)
             })
 
             content.addView(TextView(context).apply {
@@ -414,6 +452,28 @@ class UserModeActivity : AppCompatActivity() {
         return GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(radiusDp).toFloat()
+        }
+    }
+
+    private fun gradientRect(startColor: Int, endColor: Int, radiusDp: Int): GradientDrawable {
+        return GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(startColor, endColor)
+        ).apply { cornerRadius = dp(radiusDp).toFloat() }
+    }
+
+    private fun makePlatformBadge(platform: String): TextView {
+        val (bg, fg, label) = when (platform) {
+            "baemin" -> Triple(Color.parseColor("#FFE8E8"), Color.parseColor("#FF2D55"), "배민")
+            "coupang" -> Triple(Color.parseColor("#FFF3CC"), Color.parseColor("#FF6B00"), "쿠팡")
+            "kakaot" -> Triple(Color.parseColor("#FFF9CC"), Color.parseColor("#F7B731"), "카카오T")
+            else -> Triple(Color.parseColor("#E8E8E8"), C_TEXT, platform)
+        }
+        return TextView(this).apply {
+            text = label; textSize = 11f; setTextColor(fg)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            background = roundRect(bg, 8)
+            setPadding(dp(6), dp(3), dp(6), dp(3))
         }
     }
 
