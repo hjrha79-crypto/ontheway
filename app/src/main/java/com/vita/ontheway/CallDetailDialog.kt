@@ -1,0 +1,210 @@
+package com.vita.ontheway
+
+import android.content.Context
+import android.graphics.Color
+import android.graphics.Typeface
+import android.view.Gravity
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.*
+
+/**
+ * 콜 상세 다이얼로그 (MainActivity / UserModeActivity 공용).
+ * DB 행 ID로 조회하여 표시.
+ */
+object CallDetailDialog {
+
+    private val nf = NumberFormat.getNumberInstance()
+    private val sdfHms = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+
+    fun showById(context: Context, rowId: Long) {
+        try {
+            val db = CallLogDb.get(context).readableDatabase
+            val cursor = db.rawQuery(
+                "SELECT timestamp, platform, price, distance, unitPrice, point, verdict, reason, " +
+                "bundleCount, isMultiPickup, storeName, destination, pickupKm FROM ${CallLogDb.TABLE} WHERE id = ?",
+                arrayOf(rowId.toString())
+            )
+            cursor.use {
+                if (!it.moveToFirst()) return
+                val ts = it.getLong(0)
+                val platform = it.getString(1) ?: ""
+                val price = it.getInt(2)
+                val dist = if (!it.isNull(3)) it.getDouble(3) else -1.0
+                val unitPrice = it.getInt(4)
+                val point = if (!it.isNull(5)) it.getDouble(5) else -1.0
+                val verdict = it.getString(6) ?: ""
+                val reason = it.getString(7) ?: ""
+                val bundleCount = it.getInt(8)
+                val isMultiPickup = it.getInt(9) == 1
+                val storeName = it.getString(10) ?: ""
+                val destination = it.getString(11) ?: ""
+                val pickupKm = if (!it.isNull(12)) it.getDouble(12) else -1.0
+
+                showInternal(context, ts, platform, price, dist, unitPrice, point,
+                    verdict, reason, bundleCount, isMultiPickup, storeName, destination, pickupKm)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun showInternal(
+        context: Context, ts: Long, platform: String, price: Int, dist: Double,
+        unitPrice: Int, point: Double, verdict: String, reason: String,
+        bundleCount: Int, isMultiPickup: Boolean, storeName: String,
+        destination: String, pickupKm: Double
+    ) {
+        val dp = { v: Int -> (v * context.resources.displayMetrics.density).toInt() }
+        val pName = when (platform) {
+            "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> platform
+        }
+
+        val verdictKr: String
+        val verdictColor: Int
+        when {
+            verdict == "REJECT" -> { verdictKr = "넘기세요"; verdictColor = Color.parseColor("#EF233C") }
+            reason.contains("잡으세요") -> { verdictKr = "잡으세요"; verdictColor = Color.parseColor("#4361EE") }
+            else -> { verdictKr = "괜찮습니다"; verdictColor = Color.parseColor("#06D6A0") }
+        }
+
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(8))
+        }
+
+        // 판정
+        container.addView(TextView(context).apply {
+            text = verdictKr; textSize = 24f; setTextColor(verdictColor)
+            setTypeface(typeface, Typeface.BOLD)
+        })
+
+        // 헤더
+        container.addView(TextView(context).apply {
+            text = "$pName · ${nf.format(price)}원"; textSize = 16f
+            setTextColor(Color.parseColor("#1A1A2E")); setPadding(0, dp(4), 0, 0)
+        })
+
+        fun divider() {
+            container.addView(View(context).apply {
+                setBackgroundColor(Color.parseColor("#EEEEEE"))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(1)
+                ).apply { topMargin = dp(12); bottomMargin = dp(12) }
+            })
+        }
+
+        fun section(label: String, value: String) {
+            container.addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(3), 0, dp(3))
+                addView(TextView(context).apply {
+                    text = label; textSize = 14f; setTextColor(Color.parseColor("#6C757D"))
+                    layoutParams = LinearLayout.LayoutParams(dp(72), LinearLayout.LayoutParams.WRAP_CONTENT)
+                })
+                addView(TextView(context).apply {
+                    text = value; textSize = 14f; setTextColor(Color.parseColor("#1A1A2E"))
+                })
+            })
+        }
+
+        divider()
+
+        // 거리
+        if (platform == "baemin" && point > 0) {
+            val pointKm = BaeminParser.convertPointToKm(point)
+            section("거리", "약 ${"%.1f".format(pointKm)}km (${"%.1f".format(point)}P)")
+            if (pointKm > 0) section("단가", "${nf.format((price / pointKm).toInt())}원/km")
+        } else if (dist >= 0) {
+            section("거리", "${"%.1f".format(dist)}km")
+            if (unitPrice > 0) section("단가", "${nf.format(unitPrice)}원/km")
+        }
+
+        if (pickupKm > 0) {
+            section("픽업", "${"%.1f".format(pickupKm)}km")
+            if (dist > 0) {
+                val totalKm = pickupKm + dist
+                section("총거리", "${"%.1f".format(totalKm)}km (${nf.format((price / totalKm).toInt())}원/km)")
+            }
+        }
+
+        if (bundleCount > 1) {
+            val perItem = price / bundleCount
+            val pickupStr = if (isMultiPickup) " · 다중픽업" else ""
+            section("묶음", "${bundleCount}건 (건당 ${nf.format(perItem)}원$pickupStr)")
+        }
+
+        if (storeName.isNotEmpty()) {
+            val cleaned = StoreNameCleaner.clean(storeName)
+            if (cleaned.isNotEmpty()) section("가게", cleaned.joinToString("\n"))
+        }
+        if (destination.isNotEmpty() && !destination.contains("검색하기")) {
+            section("목적지", destination)
+        }
+
+        divider()
+        section("사유", simplifyReason(reason, verdict))
+        divider()
+        section("감지", sdfHms.format(Date(ts)))
+
+        // 👍👎
+        divider()
+        val feedbackRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        val sessionId = "s_${ts}_${price}"
+        fun fbBtn(emoji: String, isUp: Boolean): TextView {
+            return TextView(context).apply {
+                text = emoji; textSize = 20f; gravity = Gravity.CENTER
+                setBackgroundColor(Color.parseColor("#F0F0F0"))
+                setPadding(dp(24), dp(8), dp(24), dp(8))
+                setOnClickListener {
+                    val ep = if (isUp) "thumbs_up" else "thumbs_down"
+                    BidirectionalFeedbackDialog.show(context, ep) { matrix ->
+                        val fb = if (isUp) "up" else "down"
+                        FeedbackLogger.log(context, platform = platform, store = storeName,
+                            price = price, distanceKm = if (dist >= 0) dist else 0.0,
+                            verdict = verdictKr, reason = reason, sessionId = sessionId,
+                            feedback = fb, reasons = matrix.toReasonsList(),
+                            pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
+                            priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
+                            entryPoint = matrix.entryPoint)
+                        Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+        feedbackRow.addView(fbBtn("\uD83D\uDC4D", true),
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(12) })
+        feedbackRow.addView(fbBtn("\uD83D\uDC4E", false))
+        container.addView(feedbackRow)
+
+        AlertDialog.Builder(context).setView(container).setPositiveButton("확인", null).show()
+    }
+
+    private fun simplifyReason(raw: String, verdict: String): String {
+        return when {
+            verdict == "REJECT" && raw.contains("묶음 최소") -> {
+                Regex("""묶음 최소\s*([\d,]+)원""").find(raw)?.let { "묶음 최소 ${it.groupValues[1]}원 미달" } ?: raw
+            }
+            verdict == "REJECT" && raw.contains("단가") && raw.contains("미달") -> {
+                Regex("""단가\s*([\d,]+)원/km""").find(raw)?.let { "단가 ${it.groupValues[1]}원/km 미달" } ?: raw
+            }
+            verdict == "REJECT" && raw.contains("최소배달료") -> {
+                Regex("""([\d,]+)원 미달""").find(raw)?.let { "최소 ${it.groupValues[1]}원 미달" } ?: raw
+            }
+            verdict != "REJECT" && raw.contains("잡으세요") -> {
+                Regex("""잡으세요:\s*([가-힣]+\s*[가-힣]+)""").find(raw)?.let { "잡으세요 · ${it.groupValues[1].trim()}" } ?: "잡으세요"
+            }
+            raw.contains("묶음 통과") -> "묶음 통과"
+            raw.contains("최소배달료 통과") -> "통과"
+            raw.length > 40 -> raw.take(40) + "..."
+            else -> raw
+        }
+    }
+}
