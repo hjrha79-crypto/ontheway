@@ -659,7 +659,11 @@ class OnTheWayService : AccessibilityService() {
         // 판정-행동 매칭: PENDING → ACCEPTED
         try { JudgmentMatchLogger.onAcceptDetected(this) } catch (_: Exception) {}
 
-        // v3.22: 운행 모드 자동 ON
+        // v3.22: 운행 모드 자동 ON + 시작 위치 저장
+        if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING) {
+            ReturnTimeEstimator.saveStartLocation(this, currentLat, currentLng)
+            StatusAlertEngine.reset()
+        }
         DrivingModeManager.setMode(this, DrivingMode.DRIVING)
 
         // v3.3: 수락 시각 기록 (배달 완료 소요시간 계산용)
@@ -1379,7 +1383,24 @@ class OnTheWayService : AccessibilityService() {
             // 3일 이상 된 전이 로그 정리
             transitionLog.clearOld(System.currentTimeMillis() - 3 * 24 * 60 * 60 * 1000L)
         } catch (e: Exception) { Log.w("OnTheWay", "SessionManager 초기화 실패: ${e.message}") }
+        // v3.22: Phase 1 계산 엔진 초기화
+        try { ReturnTimeEstimator.restore(this) } catch (_: Exception) {}
+        try { startStatusAlertLoop() } catch (_: Exception) {}
+
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
+    }
+
+    // v3.22: StatusAlertEngine 1분 주기 루프
+    private var statusAlertRunnable: Runnable? = null
+    private fun startStatusAlertLoop() {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        statusAlertRunnable = object : Runnable {
+            override fun run() {
+                try { StatusAlertEngine.checkAndAlert(this@OnTheWayService) } catch (_: Exception) {}
+                handler.postDelayed(this, 60_000)
+            }
+        }
+        handler.postDelayed(statusAlertRunnable!!, 60_000)
     }
 
     private var locationManager: LocationManager? = null

@@ -34,6 +34,7 @@ class UserModeActivity : AppCompatActivity() {
 
     private lateinit var earningText: TextView
     private lateinit var driveBtn: TextView
+    private lateinit var statsText: TextView
     private lateinit var lastCallText: TextView
     private lateinit var callListLayout: LinearLayout
 
@@ -119,6 +120,15 @@ class UserModeActivity : AppCompatActivity() {
         driveBtn.setOnClickListener { toggleDrivingMode() }
         container.addView(driveBtn)
 
+        // ── 운행 통계 ──
+        statsText = TextView(this).apply {
+            textSize = 14f
+            setTextColor(C_SUB)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(16))
+        }
+        container.addView(statsText)
+
         // ── 접근성 안내 버튼 (최소 설정) ──
         val settingsBtn = TextView(this).apply {
             text = "접근성 권한 설정"
@@ -194,6 +204,8 @@ class UserModeActivity : AppCompatActivity() {
         DrivingModeManager.setMode(this, newMode)
         if (newMode == DrivingMode.DRIVING) {
             LocationTracker.startTracking(this)
+            ReturnTimeEstimator.saveStartLocation(this, OnTheWayService.currentLat, OnTheWayService.currentLng)
+            StatusAlertEngine.reset()
         } else {
             LocationTracker.stopTracking()
         }
@@ -209,6 +221,14 @@ class UserModeActivity : AppCompatActivity() {
         val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
         driveBtn.text = if (isDriving) "운행 중지" else "운행 시작"
         driveBtn.setBackgroundColor(if (isDriving) C_DRIVE_BG else C_IDLE_BG)
+
+        // 운행 통계 (Phase 1 계산 엔진)
+        val statsParts = mutableListOf<String>()
+        EarningsCalculator.formatHourlyRate(this)?.let { statsParts.add(it) }
+        EarningsCalculator.formatTotalDistance(this)?.let { statsParts.add(it) }
+        ReturnTimeEstimator.formatReturnTime()?.let { statsParts.add(it) }
+        EarningsCalculator.formatWaitTime(this)?.let { statsParts.add(it) }
+        statsText.text = if (statsParts.isNotEmpty()) statsParts.joinToString("  |  ") else ""
 
         // 마지막 콜
         val lastCall = getLastCallInfo()
