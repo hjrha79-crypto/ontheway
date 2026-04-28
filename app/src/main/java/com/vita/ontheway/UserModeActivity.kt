@@ -286,7 +286,7 @@ class UserModeActivity : AppCompatActivity() {
         try {
             val db = CallLogDb.get(this).readableDatabase
             val cursor = db.rawQuery(
-                "SELECT timestamp, platform, price, verdict, reason FROM ${CallLogDb.TABLE} ORDER BY timestamp DESC LIMIT 1", null
+                "SELECT timestamp, platform, price, verdict, reason, distance, bundleCount FROM ${CallLogDb.TABLE} ORDER BY timestamp DESC LIMIT 1", null
             )
             cursor.use {
                 if (it.moveToFirst()) {
@@ -295,8 +295,10 @@ class UserModeActivity : AppCompatActivity() {
                     val price = it.getInt(2)
                     val verdict = it.getString(3) ?: ""
                     val reason = it.getString(4) ?: ""
+                    val dist = if (!it.isNull(5)) it.getDouble(5) else null
+                    val bundleCount = it.getInt(6)
                     val isReject = verdict.contains("REJECT")
-                    val vLabel = verdictLabel(verdict, reason)
+                    val isMulti = bundleCount > 1
                     val barColor = if (isReject) C_RED else C_GREEN
 
                     // 좌측 판정 색상 바
@@ -336,7 +338,11 @@ class UserModeActivity : AppCompatActivity() {
                         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                         layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
                     })
-                    infoRow.addView(makeVerdictPill(vLabel))
+                    val dummyCall = DeliveryCall(price = price, distance = dist, isMulti = isMulti, platform = platform, bundleCount = bundleCount)
+                    val evidence = OutputController.toEvidenceReason(reason, price, dummyCall)
+                    if (evidence.isNotEmpty()) {
+                        infoRow.addView(makeEvidencePill(evidence, isReject))
+                    }
                     content.addView(infoRow)
                     lastCallCard.addView(content)
                 } else {
@@ -354,12 +360,11 @@ class UserModeActivity : AppCompatActivity() {
         }
     }
 
-    private fun makeVerdictPill(label: String): TextView {
-        val isReject = label == "넘기세요"
+    private fun makeEvidencePill(evidence: String, isReject: Boolean): TextView {
         val bgColor = if (isReject) Color.parseColor("#FFEBEE") else Color.parseColor("#E8F5E9")
         val textColor = if (isReject) C_RED else C_GREEN
         return TextView(this).apply {
-            text = label; textSize = 12f; setTextColor(textColor)
+            text = evidence; textSize = 11f; setTextColor(textColor)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             background = roundRect(bgColor, 12)
             setPadding(dp(8), dp(4), dp(8), dp(4))

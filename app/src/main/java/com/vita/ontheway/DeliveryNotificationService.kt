@@ -209,40 +209,18 @@ class DeliveryNotificationService : NotificationListenerService() {
                 continue
             }
 
-            val unitPrice = if (call.distance != null && call.distance > 0)
-                (call.price / call.distance).toInt() else 0
-            val pName = if (call.platform == "coupang") "쿠팡" else "배민"
-            val priceKr = toKoreanNumber(call.price)
-            val unitKr = toKoreanNumber(unitPrice)
+            // v3.23: 계기판 철학 — 근거형 메시지
+            val evidenceMsg = OutputController.buildMessage(call, result)
+            val outputMode = OutputController.determineMode(call)
+            Log.d("DeliveryNoti", "근거 출력: ${call.price}원 → \"${evidenceMsg ?: "SILENT"}\"")
 
-            val ttsMode = TtsFormatMode.BASIC  // TODO: SettingsActivity에서 읽어오도록 변경 예정
-            val verdict = if (result.verdict == CallFilter.Verdict.REJECT) "넘기세요" else {
-                val isTop = unitPrice >= 2500 && call.distance != null && call.distance <= 3.0
-                if (isTop) "잡으세요" else "괜찮습니다"
-            }
-
-            if (verdict == "넘기세요") {
-                val msg = "$pName, 넘기세요, ${priceKr}원"
-                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
-                Log.d("DeliveryNoti", "REJECT: ${call.price}원 - ${result.reason}")
-            } else if (verdict == "잡으세요") {
-                val msg = "$pName, 잡으세요, 단가 $unitKr"
-                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
-                Log.d("DeliveryNoti", "ACCEPT(잡으세요): ${call.price}원")
-            } else if (CallFilter.isOkVoiceEnabled(this)) {
-                val msg = "$pName, 괜찮습니다" + if (unitPrice > 0) ", 단가 $unitKr" else ""
-                speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
-                Log.d("DeliveryNoti", "ACCEPT(괜찮습니다): ${call.price}원")
-            }
-
-            // v3.22: OutputController 통합 (상단 바 오버레이)
-            val fmt = java.text.NumberFormat.getNumberInstance()
-            val overlayText = "$verdict ${fmt.format(call.price)}원"
             OutputController.emit(
                 ctx = this,
-                ttsText = null,  // TTS는 위에서 직접 처리
-                overlayText = overlayText,
-                mode = OutputMode.OVERLAY_ONLY
+                ttsText = evidenceMsg,
+                overlayText = evidenceMsg ?: "${java.text.NumberFormat.getNumberInstance().format(call.price)}원",
+                mode = if (evidenceMsg != null) outputMode else OutputMode.SILENT,
+                tts = tts,
+                ttsReady = ttsReady
             )
         }
 

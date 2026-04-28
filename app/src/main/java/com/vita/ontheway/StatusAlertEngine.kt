@@ -38,23 +38,17 @@ object StatusAlertEngine {
 
         if (drivingHours >= 5.0 && !alerted5h) {
             alerted5h = true
-            alerted4h = true  // 4h도 마킹
-            OutputController.emit(
-                ctx = ctx,
-                ttsText = "운행 5시간입니다. 휴식을 권장합니다.",
-                overlayText = "운행 5시간",
-                mode = OutputMode.FULL,
+            alerted4h = true
+            OutputController.emitStatusAlert(
+                ctx = ctx, ttsText = "운행 5시간", overlayText = "운행 5시간",
                 tts = OnTheWayService.instance?.let { getTts(it) },
                 ttsReady = OnTheWayService.instance?.let { isTtsReady(it) } ?: false
             )
             OtwFileLogger.log("StatusAlert", "운행 5시간 경고 발생")
         } else if (drivingHours >= 4.0 && !alerted4h) {
             alerted4h = true
-            OutputController.emit(
-                ctx = ctx,
-                ttsText = "운행 4시간입니다.",
-                overlayText = "운행 4시간",
-                mode = OutputMode.FULL,
+            OutputController.emitStatusAlert(
+                ctx = ctx, ttsText = "운행 4시간", overlayText = "운행 4시간",
                 tts = OnTheWayService.instance?.let { getTts(it) },
                 ttsReady = OnTheWayService.instance?.let { isTtsReady(it) } ?: false
             )
@@ -68,11 +62,8 @@ object StatusAlertEngine {
         val goal = EarningManager.getGoal(ctx)
         if (goal > 0 && earning >= goal) {
             alertedGoal = true
-            OutputController.emit(
-                ctx = ctx,
-                ttsText = "목표 달성! 오늘 수고 많으셨어요.",
-                overlayText = "목표 달성!",
-                mode = OutputMode.FULL,
+            OutputController.emitStatusAlert(
+                ctx = ctx, ttsText = "목표 달성", overlayText = "목표 달성",
                 tts = OnTheWayService.instance?.let { getTts(it) },
                 ttsReady = OnTheWayService.instance?.let { isTtsReady(it) } ?: false
             )

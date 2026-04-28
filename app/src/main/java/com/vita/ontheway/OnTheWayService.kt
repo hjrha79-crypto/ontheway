@@ -1035,6 +1035,7 @@ class OnTheWayService : AccessibilityService() {
         callSpeakHistory[callKey] = now
         lastDeliveryReason = result.reason
         lastDeliverySessionId = callSessionEvt?.eventId
+        // 내부 verdict (데이터/JudgmentMatch용 — 사용자에게는 노출 X)
         if (result.verdict == CallFilter.Verdict.REJECT) {
             lastDeliveryCall = call
             lastDeliveryVerdict = "넘기세요"
@@ -1063,70 +1064,38 @@ class OnTheWayService : AccessibilityService() {
             OtwFileLogger.log("DeliveryFilter", "TtsDeduplicator 중복 → TTS 스킵: ${call.platform} ${call.price}원")
         }
 
-        if (shouldSpeak) {
-            val pickupEtaMin = if (pickupDistKm != null && pickupDistKm > 0) {
-                val speedKmh = if (currentSpeed > 1f) currentSpeed * 3.6 else 30.0
-                (pickupDistKm / speedKmh * 60).toInt().coerceAtLeast(1)
-            } else null
-            val pickupTtsExtra = if (pickupEtaMin != null) ", 픽업 ${pickupEtaMin}분 거리" else ""
-            val ttsMode = TtsFormatMode.BASIC
+        // v3.23: 계기판 철학 — 근거형 메시지 출력
+        val evidenceMsg = OutputController.buildMessage(enrichedCall, result)
+        val outputMode = OutputController.determineMode(enrichedCall)
 
+        if (shouldSpeak && evidenceMsg != null) {
             lastSpeakTime = now
+            ttsActuallySpoken = true
+            Log.d("DeliveryFilter", "근거 출력: ${call.price}원 → \"$evidenceMsg\"")
+            OtwFileLogger.log("DeliveryFilter", "근거 출력: ${call.price}원 → \"$evidenceMsg\"")
 
-            if (result.verdict == CallFilter.Verdict.REJECT) {
-                if (!TtsPrefs.isGrabOnlyEnabled(this)) {
-                    val msg = "$pName, 넘기세요, ${priceStr}원"
-                    speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
-                    ttsActuallySpoken = true
-                }
-                Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
-                OtwFileLogger.log("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
-            } else {
-                val isTopAccept = lastDeliveryVerdict == "잡으세요"
-                if (isTopAccept) {
-                    val msg = "$pName, 잡으세요, ${priceStr}원$pickupTtsExtra"
-                    speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
-                    ttsActuallySpoken = true
-                    Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
-                    OtwFileLogger.log("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
-                    tryAutoAccept()
-                } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
-                    && CallFilter.isOkVoiceEnabled(this)) {
-                    var ttsMsg = "$pName, 괜찮습니다"
-                    if (unitPrice > 0) ttsMsg += ", 단가 $unitKorean"
-                    if (call.distance != null && call.distance > 3.0) ttsMsg += " 픽업 멉니다"
-                    if (baeminPoint != null && baeminPoint >= 25.0) ttsMsg += ", 먼 거리입니다"
-                    speakTts(TtsMessageBuilder.build(ttsMode, call, result, ttsMsg))
-                    ttsActuallySpoken = true
-                    Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
-                    OtwFileLogger.log("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
-                } else {
-                    Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
-                    OtwFileLogger.log("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
-                }
-            }
-
-            // v3.6: 연속 REJECT 자동 기준 하향
-            val streakMsg = CallFilter.updateRejectStreak(result.verdict, this)
-            if (streakMsg != null) {
-                speakTts(streakMsg)
-            }
+            // 연속 REJECT 기준 하향 (내부 카운터 업데이트만, TTS 메시지 제거)
+            CallFilter.updateRejectStreak(result.verdict, this)
             consecutiveRejectCount = CallFilter.getConsecutiveRejectCount()
 
-            if (call.storeName.isNotEmpty() && StoreManager.isFavorite(this, call.storeName)) {
-                speakTts("단골이네요")
+            if (result.verdict != CallFilter.Verdict.REJECT && lastDeliveryVerdict != "넘기세요") {
+                tryAutoAccept()
             }
+        } else if (!shouldSpeak) {
+            // TtsDeduplicator 중복
+        } else {
+            // 근거 없음 → SILENT
+            OtwFileLogger.log("DeliveryFilter", "근거 없음 → SILENT: ${call.price}원")
         }
 
-        // v3.22: OutputController 통합 (상단 바 오버레이)
-        val fmt2 = java.text.NumberFormat.getNumberInstance()
-        val overlayText = "$lastDeliveryVerdict ${fmt2.format(call.price)}원"
-        val outputMode = OutputController.determineMode(enrichedCall)
+        // OutputController 통합 (TTS + Overlay)
         OutputController.emit(
             ctx = this,
-            ttsText = null,  // TTS는 위에서 직접 처리 (기존 로직 유지)
-            overlayText = overlayText,
-            mode = if (outputMode == OutputMode.SILENT) OutputMode.SILENT else OutputMode.OVERLAY_ONLY
+            ttsText = evidenceMsg,
+            overlayText = evidenceMsg ?: "${java.text.NumberFormat.getNumberInstance().format(call.price)}원",
+            mode = if (evidenceMsg != null) outputMode else OutputMode.SILENT,
+            tts = tts,
+            ttsReady = ttsReady
         )
 
         // [Hotfix-2 P0-3] DB INSERT를 executor에 위임 (메인 스레드 블로킹 방지)

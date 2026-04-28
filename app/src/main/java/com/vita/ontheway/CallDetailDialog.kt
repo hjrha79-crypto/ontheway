@@ -63,12 +63,13 @@ object CallDetailDialog {
             "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> platform
         }
 
+        // 내부 verdict (데이터용, 사용자 비노출)
         val verdictKr: String
         val verdictColor: Int
         when {
-            verdict == "REJECT" -> { verdictKr = "넘기세요"; verdictColor = Color.parseColor("#EF233C") }
-            reason.contains("잡으세요") -> { verdictKr = "잡으세요"; verdictColor = Color.parseColor("#4361EE") }
-            else -> { verdictKr = "괜찮습니다"; verdictColor = Color.parseColor("#06D6A0") }
+            verdict == "REJECT" -> { verdictKr = "REJECT"; verdictColor = Color.parseColor("#EF233C") }
+            reason.contains("잡으세요") -> { verdictKr = "ACCEPT_TOP"; verdictColor = Color.parseColor("#4361EE") }
+            else -> { verdictKr = "ACCEPT"; verdictColor = Color.parseColor("#06D6A0") }
         }
 
         val container = LinearLayout(context).apply {
@@ -76,16 +77,16 @@ object CallDetailDialog {
             setPadding(dp(20), dp(16), dp(20), dp(8))
         }
 
-        // 판정
+        // 금액 (근거 헤더 — 판정 단어 대신 금액 강조)
         container.addView(TextView(context).apply {
-            text = verdictKr; textSize = 24f; setTextColor(verdictColor)
+            text = "${nf.format(price)}원"; textSize = 28f; setTextColor(verdictColor)
             setTypeface(typeface, Typeface.BOLD)
         })
 
-        // 헤더
+        // 플랫폼
         container.addView(TextView(context).apply {
-            text = "$pName · ${nf.format(price)}원"; textSize = 16f
-            setTextColor(Color.parseColor("#1A1A2E")); setPadding(0, dp(4), 0, 0)
+            text = pName; textSize = 14f
+            setTextColor(Color.parseColor("#6C757D")); setPadding(0, dp(2), 0, 0)
         })
 
         fun divider() {
@@ -147,7 +148,10 @@ object CallDetailDialog {
         }
 
         divider()
-        section("사유", simplifyReason(reason, verdict))
+        val dummyCall = DeliveryCall(price = price, distance = if (dist >= 0) dist else null,
+            isMulti = bundleCount > 1, platform = platform, bundleCount = bundleCount)
+        val evidenceReason = OutputController.toEvidenceReason(reason, price, dummyCall)
+        section("근거", evidenceReason.ifEmpty { simplifyReason(reason, verdict) })
         divider()
         section("감지", sdfHms.format(Date(ts)))
 
