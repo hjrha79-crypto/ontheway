@@ -25,6 +25,7 @@ object FeatureFlags {
     var baeminDiagnosticLogging = true  // v3.21: 배민 접근성 트리 진단 (거리 탐색용)
 
     // 🟡 UI Control
+    var devMode = false  // 개발자 모드 (false=사용자 모드, 로고 5탭으로 전환)
     var showChatTab = false  // 채팅 탭 표시 여부 (false: 상태 탭만 표시)
     var showAcceptFeedback = false  // 수락 시 피드백 다이얼로그 (테스트용, 기본 OFF)
 
@@ -45,6 +46,7 @@ object FeatureFlags {
         screenFilterLogging = prefs.getBoolean("screenFilterLogging", true)
         coupangDiagnosticLogging = prefs.getBoolean("coupangDiagnosticLogging", true)
         baeminDiagnosticLogging = prefs.getBoolean("baeminDiagnosticLogging", true)
+        devMode = prefs.getBoolean("devMode", false)
         showChatTab = prefs.getBoolean("showChatTab", false)
         showAcceptFeedback = prefs.getBoolean("showAcceptFeedback", false)
         hourlyWageDisplay = prefs.getBoolean("hourlyWageDisplay", false)
@@ -62,6 +64,7 @@ object FeatureFlags {
             putBoolean("screenFilterLogging", screenFilterLogging)
             putBoolean("coupangDiagnosticLogging", coupangDiagnosticLogging)
             putBoolean("baeminDiagnosticLogging", baeminDiagnosticLogging)
+            putBoolean("devMode", devMode)
             putBoolean("showChatTab", showChatTab)
             putBoolean("showAcceptFeedback", showAcceptFeedback)
             putBoolean("hourlyWageDisplay", hourlyWageDisplay)

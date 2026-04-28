@@ -116,12 +116,23 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         return sdfMdHm.format(java.util.Date(ts))
     }
 
+    private var logoTapCount = 0
+    private var logoLastTap = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // v3.5: 온보딩 체크
         if (OnboardingActivity.isFirstRun(this)) {
             startActivity(Intent(this, OnboardingActivity::class.java))
+            finish()
+            return
+        }
+
+        // v3.22: 사용자 모드 분기
+        try { FeatureFlags.load(this) } catch (_: Exception) {}
+        if (!FeatureFlags.devMode) {
+            startActivity(Intent(this, UserModeActivity::class.java))
             finish()
             return
         }
@@ -136,6 +147,22 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         setContentView(R.layout.activity_main)
         tts = TextToSpeech(this, this)
+
+        // v3.22: 로고 5탭 → 사용자 모드 전환
+        findViewById<TextView>(R.id.logoText)?.setOnClickListener {
+            val now = System.currentTimeMillis()
+            if (now - logoLastTap > 2000) logoTapCount = 0
+            logoLastTap = now
+            logoTapCount++
+            if (logoTapCount >= 5) {
+                logoTapCount = 0
+                FeatureFlags.devMode = false
+                FeatureFlags.save(this)
+                Toast.makeText(this, "사용자 모드로 전환", Toast.LENGTH_SHORT).show()
+                startActivity(Intent(this, UserModeActivity::class.java))
+                finish()
+            }
+        }
 
         chatLayout   = findViewById(R.id.chatLayout)
         inputField   = findViewById(R.id.inputField)

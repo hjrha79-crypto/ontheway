@@ -30,6 +30,7 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".UserModeActivity" android:exported="false" />
         <activity android:name=".StatsActivity" android:exported="false" />
         <activity android:name=".OnboardingActivity" android:exported="false" />
 	<activity android:name=".SettingsActivity" />
