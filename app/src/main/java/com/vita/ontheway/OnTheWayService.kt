@@ -1102,36 +1102,16 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
-        val overlayText = "$lastDeliveryVerdict ${java.text.NumberFormat.getNumberInstance().format(call.price)}원"
-        val hasOverlayPermission = android.provider.Settings.canDrawOverlays(this)
-        val floatingEnabled = FloatingOverlay.isEnabled(this)
-        val overlayFlagEnabled = FeatureFlags.overlayEnabled
-        Log.d("DialogTrigger", "show: platform=${call.platform}, price=${call.price}, verdict=$lastDeliveryVerdict, store=${call.storeName}")
-        Log.d("DialogTrigger", "path: overlayPermission=$hasOverlayPermission, floatingEnabled=$floatingEnabled, overlayFlagEnabled=$overlayFlagEnabled")
-
-        try {
-            FloatingOverlay.show(this, overlayText)
-        } catch (e: Exception) {
-            Log.w("DialogTrigger", "FloatingOverlay 실패: ${e.message}")
-        }
-
-        // v3.20: 판정 오버레이 (2줄, 2초 자동 소멸)
-        if (FeatureFlags.overlayEnabled) {
-            try {
-                val fmt = java.text.NumberFormat.getNumberInstance()
-                OverlayManager.show(
-                    context = this,
-                    verdict = lastDeliveryVerdict,
-                    line1 = "$pName ${fmt.format(call.price)}원",
-                    line2 = call.storeName.takeIf { it.isNotBlank() }
-                )
-                Log.d("DialogTrigger", "OverlayManager 표시 성공")
-            } catch (e: Exception) {
-                Log.w("DialogTrigger", "OverlayManager 실패: ${e.message}")
-            }
-        } else {
-            Log.d("DialogTrigger", "OverlayManager 스킵: overlayEnabled=false")
-        }
+        // v3.22: OutputController 통합 (상단 바 오버레이)
+        val fmt2 = java.text.NumberFormat.getNumberInstance()
+        val overlayText = "$lastDeliveryVerdict ${fmt2.format(call.price)}원"
+        val outputMode = OutputController.determineMode(enrichedCall)
+        OutputController.emit(
+            ctx = this,
+            ttsText = null,  // TTS는 위에서 직접 처리 (기존 로직 유지)
+            overlayText = overlayText,
+            mode = if (outputMode == OutputMode.SILENT) OutputMode.SILENT else OutputMode.OVERLAY_ONLY
+        )
 
         // [Hotfix-2 P0-3] DB INSERT를 executor에 위임 (메인 스레드 블로킹 방지)
         val ctx = this
@@ -1510,7 +1490,7 @@ class OnTheWayService : AccessibilityService() {
         ttsReady = false
         try { locationManager?.removeUpdates(locationListener) } catch (e: Exception) {}
         gpsActive = false
-        try { FloatingOverlay.hide() } catch (e: Exception) {}
+        try { TopBarOverlay.hide() } catch (e: Exception) {}
         BaeminBundleSession.reset()
         bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
         try { dbExecutor.shutdown() } catch (_: Exception) {}

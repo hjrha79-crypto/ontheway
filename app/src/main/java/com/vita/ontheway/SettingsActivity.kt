@@ -810,12 +810,15 @@ class SettingsActivity : AppCompatActivity() {
         diagContainer.addView(diagBtnRow)
         advCard.addView(diagContainer)
 
-        // v3.5: 플로팅 오버레이
+        // v3.22: 상단 바 오버레이
         advCard.addView(advancedToggle(
-            "플로팅 오버레이",
-            "다른 앱 위에 판정 결과 버블 표시 (오버레이 권한 필요)",
-            FloatingOverlay.isEnabled(this)
-        ) { checked -> FloatingOverlay.setEnabled(this, checked) })
+            "상단 바 오버레이",
+            "판정 결과를 화면 상단 바로 1.5초 표시 (오버레이 권한 필요)",
+            FeatureFlags.overlayEnabled
+        ) { checked ->
+            FeatureFlags.overlayEnabled = checked
+            FeatureFlags.save(this)
+        })
 
 
         // v3.5: 배터리 절약 모드
