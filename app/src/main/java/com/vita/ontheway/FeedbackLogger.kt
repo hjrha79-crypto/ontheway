@@ -17,9 +17,15 @@ data class FeedbackEntry(
     val verdict: String,
     val reason: String,
     val feedback: String,       // "up" / "down"
-    val reasons: List<String>,  // ["pickup", "delivery", ...]
+    val reasons: List<String>,  // ["pickup_GOOD", "delivery_BAD", ...]
     val overwroteTs: Long? = null,
-    val driverAction: String = "unknown"
+    val driverAction: String = "unknown",
+    // v3.22: 양방향 매트릭스 필드
+    val pickupRating: String? = null,     // "GOOD" / "BAD" / null
+    val deliveryRating: String? = null,
+    val priceRating: String? = null,
+    val judgmentRating: String? = null,
+    val entryPoint: String? = null        // "thumbs_up" / "thumbs_down"
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("ts", ts)
@@ -34,6 +40,13 @@ data class FeedbackEntry(
         put("reasons", JSONArray().also { arr -> reasons.forEach { arr.put(it) } })
         if (overwroteTs != null) put("overwrote_ts", overwroteTs)
         put("driver_action", driverAction)
+        put("pickup_rating", pickupRating ?: JSONObject.NULL)
+        put("delivery_rating", deliveryRating ?: JSONObject.NULL)
+        put("price_rating", priceRating ?: JSONObject.NULL)
+        put("judgment_rating", judgmentRating ?: JSONObject.NULL)
+        put("entry_point", entryPoint ?: JSONObject.NULL)
+        put("event_type", "call_feedback_submitted")
+        put("source_app", "on_the_way")
     }
 
     companion object {
@@ -57,7 +70,12 @@ data class FeedbackEntry(
                 feedback = json.optString("feedback", ""),
                 reasons = reasonsList,
                 overwroteTs = if (json.has("overwrote_ts")) json.getLong("overwrote_ts") else null,
-                driverAction = json.optString("driver_action", "unknown")
+                driverAction = json.optString("driver_action", "unknown"),
+                pickupRating = json.optString("pickup_rating").takeIf { it.isNotBlank() && it != "null" },
+                deliveryRating = json.optString("delivery_rating").takeIf { it.isNotBlank() && it != "null" },
+                priceRating = json.optString("price_rating").takeIf { it.isNotBlank() && it != "null" },
+                judgmentRating = json.optString("judgment_rating").takeIf { it.isNotBlank() && it != "null" },
+                entryPoint = json.optString("entry_point").takeIf { it.isNotBlank() && it != "null" }
             )
         } catch (e: Exception) {
             Log.w("FeedbackLogger", "엔트리 파싱 실패: ${e.message}")
@@ -74,7 +92,10 @@ object FeedbackLogger {
     fun log(ctx: Context, platform: String, store: String, price: Int,
             distanceKm: Double, verdict: String, reason: String,
             sessionId: String, feedback: String, reasons: List<String>,
-            driverAction: String = "unknown") {
+            driverAction: String = "unknown",
+            pickupRating: String? = null, deliveryRating: String? = null,
+            priceRating: String? = null, judgmentRating: String? = null,
+            entryPoint: String? = null) {
         try {
             val entry = FeedbackEntry(
                 ts = System.currentTimeMillis(),
@@ -87,7 +108,12 @@ object FeedbackLogger {
                 reason = reason,
                 feedback = feedback,
                 reasons = reasons,
-                driverAction = driverAction
+                driverAction = driverAction,
+                pickupRating = pickupRating,
+                deliveryRating = deliveryRating,
+                priceRating = priceRating,
+                judgmentRating = judgmentRating,
+                entryPoint = entryPoint
             )
             val file = File(ctx.filesDir, FILE_NAME)
             file.appendText(entry.toJson().toString() + "\n")

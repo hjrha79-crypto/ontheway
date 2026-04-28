@@ -600,19 +600,23 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         storeName: String, price: Int, dist: Double,
         verdictKr: String, reason: String, feedbackSessionId: String
     ) {
-        FeedbackReasonDialog.show(this, isUp) { reasons ->
+        val ep = if (isUp) "thumbs_up" else "thumbs_down"
+        BidirectionalFeedbackDialog.show(this, ep) { matrix ->
             val fb = if (isUp) "up" else "down"
             val existing = FeedbackLogger.findBySessionId(this, feedbackSessionId)
             if (existing != null) {
-                // 덮어쓰기
                 val updated = existing.copy(
                     feedback = fb,
-                    reasons = reasons
+                    reasons = matrix.toReasonsList(),
+                    pickupRating = matrix.pickupRating,
+                    deliveryRating = matrix.deliveryRating,
+                    priceRating = matrix.priceRating,
+                    judgmentRating = matrix.judgmentRating,
+                    entryPoint = matrix.entryPoint
                 )
                 FeedbackLogger.updateBySessionId(this, feedbackSessionId, updated)
                 android.widget.Toast.makeText(this, "$emoji 덮어쓰기 완료", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                // 신규 저장
                 FeedbackLogger.log(
                     this,
                     platform = platformCode,
@@ -623,10 +627,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     reason = reason,
                     sessionId = feedbackSessionId,
                     feedback = fb,
-                    reasons = reasons
+                    reasons = matrix.toReasonsList(),
+                    pickupRating = matrix.pickupRating,
+                    deliveryRating = matrix.deliveryRating,
+                    priceRating = matrix.priceRating,
+                    judgmentRating = matrix.judgmentRating,
+                    entryPoint = matrix.entryPoint
                 )
-                val toast = if (reasons.isEmpty()) "피드백만 기록됨" else "$emoji 기록됨"
-                android.widget.Toast.makeText(this, toast, android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(this, "$emoji 기록됨", android.widget.Toast.LENGTH_SHORT).show()
             }
         }
     }
