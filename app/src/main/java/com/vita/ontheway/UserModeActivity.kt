@@ -79,10 +79,19 @@ class UserModeActivity : AppCompatActivity() {
             setPadding(dp(20), dp(48), dp(20), dp(40))
         }
 
-        // ═══ 1. 상단 헤더 ═══
+        // ═══ 1. 상단 헤더 (로고 + 설정 아이콘) ═══
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(8))
+        }
+        headerRow.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(32), 1)  // 좌측 밸런스
+        })
         val logo = TextView(this).apply {
             text = "OnTheWay"; textSize = 14f; setTextColor(C_SUB)
-            gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(8))
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
         }
         logo.setOnClickListener {
             val now = System.currentTimeMillis()
@@ -96,7 +105,18 @@ class UserModeActivity : AppCompatActivity() {
                 startActivity(Intent(this, MainActivity::class.java)); finish()
             }
         }
-        container.addView(logo)
+        headerRow.addView(logo)
+        val settingsBtn = TextView(this).apply {
+            text = "\u2699"; textSize = 20f; setTextColor(C_SUB)
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
+        }
+        settingsBtn.setOnClickListener {
+            startActivity(Intent(this, UserSettingsActivity::class.java))
+        }
+        headerRow.addView(settingsBtn)
+        container.addView(headerRow)
 
         container.addView(TextView(this).apply {
             text = "오늘 수익"; textSize = 14f; setTextColor(C_SUB)
@@ -382,6 +402,8 @@ class UserModeActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, dp(16), 0)
+            clipToPadding = false
+            clipChildren = false
             layoutParams = LinearLayout.LayoutParams(MP, dp(56)).apply { bottomMargin = dp(8) }
             background = roundRect(C_CARD, 8)
             elevation = dp(1).toFloat()
@@ -464,9 +486,9 @@ class UserModeActivity : AppCompatActivity() {
 
     private fun makePlatformBadge(platform: String): TextView {
         val (bg, fg, label) = when (platform) {
-            "baemin" -> Triple(Color.parseColor("#FFE8E8"), Color.parseColor("#FF2D55"), "배민")
-            "coupang" -> Triple(Color.parseColor("#FFF3CC"), Color.parseColor("#FF6B00"), "쿠팡")
-            "kakaot" -> Triple(Color.parseColor("#FFF9CC"), Color.parseColor("#F7B731"), "카카오T")
+            "baemin" -> Triple(Color.parseColor("#F8BBD0"), Color.parseColor("#C2185B"), "배민")
+            "coupang" -> Triple(Color.parseColor("#FFE0B2"), Color.parseColor("#E65100"), "쿠팡")
+            "kakaot" -> Triple(Color.parseColor("#FFF9C4"), Color.parseColor("#F57F17"), "카카오T")
             else -> Triple(Color.parseColor("#E8E8E8"), C_TEXT, platform)
         }
         return TextView(this).apply {
