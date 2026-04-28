@@ -821,6 +821,16 @@ class SettingsActivity : AppCompatActivity() {
         })
 
 
+        // v3.22: 백그라운드 수집
+        advCard.addView(advancedToggle(
+            "백그라운드 수집",
+            "OFF: 운행 모드 ON 시에만 콜 감지 (배터리 절약)\nON: 운행 OFF 시에도 콜 캐치 (배터리 소모 증가)",
+            FeatureFlags.backgroundCapture
+        ) { checked ->
+            FeatureFlags.backgroundCapture = checked
+            FeatureFlags.save(this)
+        })
+
         // v3.5: 배터리 절약 모드
         advCard.addView(advancedToggle(
             "배터리 절약 모드",

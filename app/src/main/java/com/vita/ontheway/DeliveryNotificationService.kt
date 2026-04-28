@@ -124,6 +124,12 @@ class DeliveryNotificationService : NotificationListenerService() {
         Log.d("COUPANG_DBG", "onNotificationPosted: pkg=${sbn.packageName} " +
               "timeSinceConnect=${now - listenerConnectedAt}ms")
         val pkg = sbn.packageName ?: return
+
+        // v3.22: 운행 모드 OFF 절전
+        if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING && !FeatureFlags.backgroundCapture) {
+            return
+        }
+
         if (pkg !in TARGET_PACKAGES) {
             DropReason.recordDrop(DropReason.DROP_PACKAGE_FILTER, "notification non-target", pkg)
             return

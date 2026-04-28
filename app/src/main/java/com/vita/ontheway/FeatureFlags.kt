@@ -29,6 +29,9 @@ object FeatureFlags {
     var showChatTab = false  // 채팅 탭 표시 여부 (false: 상태 탭만 표시)
     var showAcceptFeedback = false  // 수락 시 피드백 다이얼로그 (테스트용, 기본 OFF)
 
+    // 🟡 Power
+    var backgroundCapture = false  // true=운행OFF시에도 수집, false=운행ON시에만 작동(절전)
+
     // 🔴 Future (개발자 옵션, 기본 OFF, 그릇만)
     var hourlyWageDisplay = false
     var personalPreset = false
@@ -46,6 +49,7 @@ object FeatureFlags {
         screenFilterLogging = prefs.getBoolean("screenFilterLogging", true)
         coupangDiagnosticLogging = prefs.getBoolean("coupangDiagnosticLogging", true)
         baeminDiagnosticLogging = prefs.getBoolean("baeminDiagnosticLogging", true)
+        backgroundCapture = prefs.getBoolean("backgroundCapture", false)
         devMode = prefs.getBoolean("devMode", false)
         showChatTab = prefs.getBoolean("showChatTab", false)
         showAcceptFeedback = prefs.getBoolean("showAcceptFeedback", false)
@@ -64,6 +68,7 @@ object FeatureFlags {
             putBoolean("screenFilterLogging", screenFilterLogging)
             putBoolean("coupangDiagnosticLogging", coupangDiagnosticLogging)
             putBoolean("baeminDiagnosticLogging", baeminDiagnosticLogging)
+            putBoolean("backgroundCapture", backgroundCapture)
             putBoolean("devMode", devMode)
             putBoolean("showChatTab", showChatTab)
             putBoolean("showAcceptFeedback", showAcceptFeedback)

@@ -139,6 +139,9 @@ class OnTheWayService : AccessibilityService() {
     // v3.18: 세션 매니저
     private var sessionManager: SessionManager? = null
 
+    // v3.22: 절전 모드 스킵 카운트
+    private var powerSaveSkipCount = 0L
+
     // 배달 필터용 TTS
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -160,6 +163,15 @@ class OnTheWayService : AccessibilityService() {
                 Log.d(TAG_ACCESSIBILITY, cooldownMsg)
                 OtwFileLogger.log(TAG_ACCESSIBILITY, cooldownMsg)
             }
+        }
+
+        // v3.22: 운행 모드 OFF 절전 — window 재연결은 위에서 이미 처리
+        if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING && !FeatureFlags.backgroundCapture) {
+            powerSaveSkipCount++
+            if (powerSaveSkipCount % 100 == 1L) {
+                OtwFileLogger.log("PowerSave", "절전 스킵 누적 ${powerSaveSkipCount}건 (pkg=$pkg)")
+            }
+            return
         }
 
         // 2026-04-25 P0: 자기 패키지 즉시 차단 (자기 참조 유령 세션 방지)
