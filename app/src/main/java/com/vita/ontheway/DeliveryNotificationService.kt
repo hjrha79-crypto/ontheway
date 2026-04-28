@@ -47,6 +47,7 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     override fun onCreate() {
         super.onCreate()
+        try { OtwFileLogger.init(this) } catch (_: Exception) {}
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.KOREAN
@@ -76,6 +77,7 @@ class DeliveryNotificationService : NotificationListenerService() {
         lastConnectedTime.set(now)
         val rebindCount = rebindRequestCount.get()
         Log.d(TAG_LIFECYCLE, "NLS connected (rebindCount=$rebindCount)")
+        OtwFileLogger.log(TAG_LIFECYCLE, "NLS connected (rebindCount=$rebindCount)")
         Log.d("DeliveryNoti", "알림 서비스 연결됨")
         Log.d("COUPANG_DBG", "onListenerConnected at $listenerConnectedAt")
         Log.d("COUPANG_DBG", "TARGET_PACKAGES=$TARGET_PACKAGES")
@@ -99,6 +101,7 @@ class DeliveryNotificationService : NotificationListenerService() {
         super.onListenerDisconnected()
         val now = System.currentTimeMillis()
         Log.w(TAG_LIFECYCLE, "NLS disconnected, requesting rebind")
+        OtwFileLogger.log(TAG_LIFECYCLE, "NLS disconnected, requesting rebind")
         Log.w("COUPANG_DBG", "onListenerDisconnected at $now")
         try {
             DropReason.recordDrop(DropReason.DROP_OTHER, "NLS_DISCONNECTED")
@@ -108,8 +111,10 @@ class DeliveryNotificationService : NotificationListenerService() {
             rebindRequestCount.incrementAndGet()
             lastRebindRequestTime.set(now)
             Log.d(TAG_LIFECYCLE, "requestRebind issued (total=${rebindRequestCount.get()})")
+            OtwFileLogger.log(TAG_LIFECYCLE, "requestRebind issued (total=${rebindRequestCount.get()})")
         } catch (e: Exception) {
             Log.e(TAG_LIFECYCLE, "requestRebind failed: ${e.message}")
+            OtwFileLogger.log(TAG_LIFECYCLE, "requestRebind failed: ${e.message}")
         }
     }
 

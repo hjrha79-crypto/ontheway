@@ -97,6 +97,7 @@ object BaeminParser {
                     point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
                 ))
                 Log.d("BaeminParser", "파싱(단일): ${price}원, point=${point}P, store=$storeName")
+                OtwFileLogger.log("BaeminParser", "파싱(단일): ${price}원, point=${point}P, store=$storeName")
             }
         }
 
@@ -114,6 +115,7 @@ object BaeminParser {
                         point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
                     ))
                     Log.d("BaeminParser", "파싱(분리노드): ${price}원")
+                    OtwFileLogger.log("BaeminParser", "파싱(분리노드): ${price}원")
                 }
             }
         }
@@ -130,6 +132,7 @@ object BaeminParser {
                         point = point, parsingMethod = V2Event.PARSING_TEXT_REGEX
                     ))
                     Log.d("BaeminParser", "파싱(join): ${price}원")
+                    OtwFileLogger.log("BaeminParser", "파싱(join): ${price}원")
                 }
             }
         }
@@ -147,6 +150,7 @@ object BaeminParser {
             val isMultiPickup = storeNames.size >= 2
 
             Log.d("BaeminParser", "묶음배달 감지: ${bundleCount}건 합산 ${totalPrice}원, 다중픽업=$isMultiPickup")
+            OtwFileLogger.log("BaeminParser", "묶음배달 감지: ${bundleCount}건 합산 ${totalPrice}원, 다중픽업=$isMultiPickup")
             return listOf(DeliveryCall(
                 price = totalPrice,
                 distance = extractActualDistance(texts),

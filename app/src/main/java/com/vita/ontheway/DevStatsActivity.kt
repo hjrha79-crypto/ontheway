@@ -1,5 +1,7 @@
 package com.vita.ontheway
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -87,6 +89,10 @@ class DevStatsActivity : AppCompatActivity() {
         // ── Drop 사유별 카운트 ──────────────
         container.addView(makeSectionLabel("Drop 사유"))
         container.addView(makeDropStatsCard())
+
+        // ── 파일 로그 ──────────────────────
+        container.addView(makeSectionLabel("파일 로그"))
+        container.addView(makeFileLogCard())
 
         root.addView(container)
         setContentView(root)
@@ -512,6 +518,62 @@ class DevStatsActivity : AppCompatActivity() {
                     })
                 }
             }
+        }
+    }
+
+    // ── 파일 로그 카드 ─────────────────────
+    private fun makeFileLogCard(): View {
+        val info = OtwFileLogger.getTodayFileInfo(this)
+        val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        val sizeStr = if (info.exists) "%.1f KB".format(info.sizeBytes / 1024.0) else "없음"
+        val lastStr = if (info.lastWrite > 0) sdf.format(Date(info.lastWrite)) else "—"
+        val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+        val adbCmd = "adb shell run-as com.vita.ontheway cat files/otw_log_$dateStr.txt > C:\\Users\\hjrha\\Desktop\\otw_log_$dateStr.txt"
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(C_SURFACE)
+            setPadding(14.dp(), 12.dp(), 14.dp(), 12.dp())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = 16.dp() }
+
+            listOf(
+                "오늘 파일 크기" to sizeStr,
+                "마지막 기록" to lastStr,
+                "경로" to info.path
+            ).forEach { (key, value) ->
+                addView(LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(0, 3.dp(), 0, 3.dp())
+                    addView(makeText(key, 12f, C_MUTED).apply {
+                        layoutParams = LinearLayout.LayoutParams(0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+                    addView(makeText(value, 11f, C_TEXT, Typeface.MONOSPACE).apply {
+                        gravity = Gravity.END
+                        layoutParams = LinearLayout.LayoutParams(0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT, 1.5f)
+                    })
+                })
+            }
+
+            addView(Button(context).apply {
+                text = "adb pull 명령 복사"
+                setTextColor(C_BG)
+                setBackgroundColor(C_ACCENT)
+                textSize = 12f
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 8.dp() }
+                setOnClickListener {
+                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("adb_pull", adbCmd))
+                    Toast.makeText(context, "클립보드 복사됨", Toast.LENGTH_SHORT).show()
+                }
+            })
         }
     }
 

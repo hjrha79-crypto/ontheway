@@ -53,6 +53,7 @@ object CoupangParser {
         // 비콜 필터링: 배달 진행/완료/메뉴 화면이면 빈 리스트 반환
         if (NON_CALL_KEYWORDS.any { joined.contains(it) }) {
             Log.d("CoupangParser", "비콜 화면 감지 - 스킵: ${joined.take(50)}")
+            OtwFileLogger.log("CoupangParser", "비콜 화면 감지 - 스킵: ${joined.take(50)}")
             DropReason.recordDrop(DropReason.DROP_SCREEN_FILTER, "coupang non-call keyword", "coupang")
             return results
         }
@@ -60,6 +61,7 @@ object CoupangParser {
         // v2.1: "거절" 또는 "주문 수락" 버튼이 없으면 콜 화면이 아님
         if (CALL_SCREEN_BUTTONS.none { joined.contains(it) }) {
             Log.d("CoupangParser", "콜 버튼 없음 - 비콜 스킵: ${joined.take(50)}")
+            OtwFileLogger.log("CoupangParser", "콜 버튼 없음 - 비콜 스킵: ${joined.take(50)}")
             DropReason.recordDrop(DropReason.DROP_SCREEN_FILTER, "coupang no call button", "coupang")
             return results
         }
@@ -92,6 +94,7 @@ object CoupangParser {
                     parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
                 ))
                 Log.d("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti")
+                OtwFileLogger.log("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti")
             }
         }
 
@@ -109,6 +112,7 @@ object CoupangParser {
             val m = MULTI_PATTERN.containsMatchIn(text)
             results.add(DeliveryCall(price = p, distance = d, isMulti = m, platform = "coupang", rawText = text, storeName = storeName, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT))
             Log.d("CoupangParser", "추가 파싱: ${p}원, ${d}km, multi=$m")
+            OtwFileLogger.log("CoupangParser", "추가 파싱: ${p}원, ${d}km, multi=$m")
         }
 
         return results

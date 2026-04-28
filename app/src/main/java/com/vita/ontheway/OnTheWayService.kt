@@ -156,7 +156,9 @@ class OnTheWayService : AccessibilityService() {
                 refreshAccessibilityConnection(pkg)
                 lastRefreshTime = now
             } else {
-                Log.d(TAG_ACCESSIBILITY, "쿨다운 중, 재할당 스킵: pkg=$pkg, elapsed=${now - lastRefreshTime}ms")
+                val cooldownMsg = "쿨다운 중, 재할당 스킵: pkg=$pkg, elapsed=${now - lastRefreshTime}ms"
+                Log.d(TAG_ACCESSIBILITY, cooldownMsg)
+                OtwFileLogger.log(TAG_ACCESSIBILITY, cooldownMsg)
             }
         }
 
@@ -744,7 +746,9 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
-        Log.d("DeliveryFilter", "[$platformName] rawText: ${texts.joinToString(" | ")}")
+        val rawMsg = "[$platformName] rawText: ${texts.joinToString(" | ")}"
+        Log.d("DeliveryFilter", rawMsg)
+        OtwFileLogger.log("DeliveryFilter", rawMsg)
 
         // v3.6: 배민 대량 중복 감지 — 파싱 전에 최근 3초 이내 같은 플랫폼 이벤트 횟수 체크
         val now0 = System.currentTimeMillis()
@@ -824,6 +828,7 @@ class OnTheWayService : AccessibilityService() {
 
         if (calls.isEmpty()) {
             Log.d("DeliveryFilter", "[$platformName] 파싱 실패 - 무음")
+            OtwFileLogger.log("DeliveryFilter", "[$platformName] 파싱 실패 - 무음")
             DropReason.recordDrop(DropReason.DROP_PARSE_FAIL, "parser returned empty", pkg)
             return
         }
@@ -835,6 +840,7 @@ class OnTheWayService : AccessibilityService() {
             }
             if (isDup) {
                 Log.d("DeliveryFilter", "[$platformName] 대량 중복 무시: ${call.price}원")
+                OtwFileLogger.log("DeliveryFilter", "[$platformName] 대량 중복 무시: ${call.price}원")
                 DropReason.recordDrop(DropReason.DROP_DUPLICATE, "$platformName ${call.price}원 30s내 중복", pkg)
                 false
             } else {
@@ -961,6 +967,7 @@ class OnTheWayService : AccessibilityService() {
         val sessId = sessionManager?.getCurrentOrLastSessionId()
         if (sessionManager?.isSuppressed(call.storeName, call.price, sessId) == true) {
             Log.d("DeliveryFilter", "묶음 suppression 차단: ${call.storeName}|${call.price}")
+            OtwFileLogger.log("DeliveryFilter", "묶음 suppression 차단: ${call.storeName}|${call.price}")
             DropReason.recordDrop(DropReason.DROP_DUPLICATE, "bundle suppression ${call.storeName}|${call.price}")
             return
         }
@@ -970,6 +977,7 @@ class OnTheWayService : AccessibilityService() {
         // 안전 조건: 1콜 1음성
         if (callSpeakHistory.containsKey(callKey)) {
             Log.d("DeliveryFilter", "중복 콜 건너뜀: $callKey")
+            OtwFileLogger.log("DeliveryFilter", "중복 콜 건너뜀: $callKey")
             DropReason.recordDrop(DropReason.DROP_DUPLICATE, "callSpeakHistory $callKey")
             return
         }
@@ -977,6 +985,7 @@ class OnTheWayService : AccessibilityService() {
         // 안전 조건: 2초 쿨다운
         if (now - lastSpeakTime < 2000) {
             Log.d("DeliveryFilter", "쿨다운 중 - 건너뜀")
+            OtwFileLogger.log("DeliveryFilter", "쿨다운 중 - 건너뜀")
             DropReason.recordDrop(DropReason.DROP_COOLDOWN, "speakTime cooldown 2s")
             return
         }
@@ -1035,6 +1044,7 @@ class OnTheWayService : AccessibilityService() {
         var ttsActuallySpoken = false // v2.2: TTS 실제 발화 추적
         if (!shouldSpeak) {
             Log.d("DeliveryFilter", "TtsDeduplicator 중복 → TTS 스킵, 오버레이/DB는 실행: ${call.platform} ${call.price}원")
+            OtwFileLogger.log("DeliveryFilter", "TtsDeduplicator 중복 → TTS 스킵: ${call.platform} ${call.price}원")
         }
 
         if (shouldSpeak) {
@@ -1054,6 +1064,7 @@ class OnTheWayService : AccessibilityService() {
                     ttsActuallySpoken = true
                 }
                 Log.d("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
+                OtwFileLogger.log("DeliveryFilter", "REJECT: ${call.price}원 - ${result.reason}")
             } else {
                 val isTopAccept = lastDeliveryVerdict == "잡으세요"
                 if (isTopAccept) {
@@ -1061,6 +1072,7 @@ class OnTheWayService : AccessibilityService() {
                     speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                     ttsActuallySpoken = true
                     Log.d("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
+                    OtwFileLogger.log("DeliveryFilter", "ACCEPT(잡으세요): ${call.price}원, 단가 ${unitPrice}원/km")
                     tryAutoAccept()
                 } else if (!TtsPrefs.isRejectOnlyEnabled(this) && !TtsPrefs.isGrabOnlyEnabled(this)
                     && CallFilter.isOkVoiceEnabled(this)) {
@@ -1071,8 +1083,10 @@ class OnTheWayService : AccessibilityService() {
                     speakTts(TtsMessageBuilder.build(ttsMode, call, result, ttsMsg))
                     ttsActuallySpoken = true
                     Log.d("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
+                    OtwFileLogger.log("DeliveryFilter", "ACCEPT(괜찮습니다): ${call.price}원")
                 } else {
                     Log.d("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
+                    OtwFileLogger.log("DeliveryFilter", "ACCEPT: ${call.price}원 - 음성 OFF (TTS설정)")
                 }
             }
 
@@ -1293,15 +1307,21 @@ class OnTheWayService : AccessibilityService() {
             val info = serviceInfo
             if (info == null) {
                 Log.e(TAG_ACCESSIBILITY, "serviceInfo null, 재할당 불가: trigger=$triggerPkg")
+                OtwFileLogger.log(TAG_ACCESSIBILITY, "serviceInfo null, 재할당 불가: trigger=$triggerPkg")
                 return
             }
-            Log.d(TAG_ACCESSIBILITY, "재연결 트리거 발동: pkg=$triggerPkg, count=${refreshCount + 1}")
+            val triggerMsg = "재연결 트리거 발동: pkg=$triggerPkg, count=${refreshCount + 1}"
+            Log.d(TAG_ACCESSIBILITY, triggerMsg)
+            OtwFileLogger.log(TAG_ACCESSIBILITY, triggerMsg)
             serviceInfo = info
             refreshCount++
             val rootCheck = rootInActiveWindow
-            Log.d(TAG_ACCESSIBILITY, "재연결 결과: pkg=$triggerPkg, root=${if (rootCheck != null) "OK" else "NULL"}, totalCount=$refreshCount")
+            val resultMsg = "재연결 결과: pkg=$triggerPkg, root=${if (rootCheck != null) "OK" else "NULL"}, totalCount=$refreshCount"
+            Log.d(TAG_ACCESSIBILITY, resultMsg)
+            OtwFileLogger.log(TAG_ACCESSIBILITY, resultMsg)
         } catch (e: Exception) {
             Log.e(TAG_ACCESSIBILITY, "재연결 실패: pkg=$triggerPkg", e)
+            OtwFileLogger.log(TAG_ACCESSIBILITY, "재연결 실패: pkg=$triggerPkg, ${e.message}")
         }
     }
 
@@ -1323,6 +1343,7 @@ class OnTheWayService : AccessibilityService() {
             }
         }
         Log.d(TAG_ACCESSIBILITY, entry)
+        OtwFileLogger.log(TAG_ACCESSIBILITY, entry)
     }
 
     /** [Hotfix-2 P0-1] Ring buffer 덤프 (외부 호출용) */
@@ -1333,9 +1354,11 @@ class OnTheWayService : AccessibilityService() {
     override fun onInterrupt() { instance = null }
     override fun onServiceConnected() {
         Log.d(TAG_ACCESSIBILITY, "onServiceConnected: 접근성 서비스 연결됨, refreshCount 리셋")
+        OtwFileLogger.log(TAG_ACCESSIBILITY, "onServiceConnected: 접근성 서비스 연결됨, refreshCount 리셋")
         refreshCount = 0
         lastRefreshTime = 0L
         instance = this
+        try { OtwFileLogger.init(this) } catch (_: Exception) {}
         try { FeatureFlags.load(this) } catch (e: Exception) { Log.w("OnTheWay", "FeatureFlags 로드 실패: ${e.message}") }
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {

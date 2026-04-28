@@ -84,6 +84,7 @@ object JudgmentMatchLogger {
             )
 
             Log.d(TAG, "PENDING: $platform ${price}원 judgment=$judgment")
+            OtwFileLogger.log(TAG, "PENDING: $platform ${price}원 judgment=$judgment")
 
             // 30s 타임아웃 스케줄
             timeoutRunnable?.let { handler.removeCallbacks(it) }
@@ -122,6 +123,7 @@ object JudgmentMatchLogger {
             updateCounters(matchStatus, pending.judgment)
             writeEvent(ctx, event)
             Log.d(TAG, "RESOLVED: ACCEPTED, $matchStatus (${pending.judgment} → ACCEPTED)")
+            OtwFileLogger.log(TAG, "RESOLVED: ACCEPTED, $matchStatus (${pending.judgment} → ACCEPTED)")
         } catch (e: Exception) {
             Log.w(TAG, "onAcceptDetected 실패: ${e.message}")
         }
@@ -149,6 +151,7 @@ object JudgmentMatchLogger {
             updateCounters(matchStatus, pending.judgment)
             writeEvent(ctx, event)
             Log.d(TAG, "RESOLVED: TIMEOUT, $matchStatus (${pending.judgment} → TIMEOUT)")
+            OtwFileLogger.log(TAG, "RESOLVED: TIMEOUT, $matchStatus (${pending.judgment} → TIMEOUT)")
         } catch (e: Exception) {
             Log.w(TAG, "resolvePendingAsTimeout 실패: ${e.message}")
         }

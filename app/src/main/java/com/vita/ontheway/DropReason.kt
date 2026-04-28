@@ -18,7 +18,9 @@ enum class DropReason {
         fun recordDrop(reason: DropReason, context: String, packageName: String? = null) {
             try {
                 val pkgStr = if (packageName != null) " (pkg=$packageName)" else ""
-                Log.d(TAG, "[$reason] $context$pkgStr")
+                val msg = "[$reason] $context$pkgStr"
+                Log.d(TAG, msg)
+                OtwFileLogger.log(TAG, msg)
                 DropStats.increment(reason)
             } catch (_: Exception) {}
         }
