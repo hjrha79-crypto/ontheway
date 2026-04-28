@@ -108,7 +108,7 @@ class CallSimulationTest {
     // ---- 배민 묶음 콜 ----
 
     @Test
-    fun `07 배민 묶음 2건 단일픽업 5500원 ACCEPT`() {
+    fun `07 배민 묶음 2건 단일픽업 5500원 REJECT 건당미달`() {
         // 묶음은 results.size >= 2 로 판정, bundleCount = results.size
         val texts = listOf("맘스터치", "배달료 3,000원", "배달료 2,500원")
         val calls = BaeminParser.parse(texts)
@@ -116,9 +116,9 @@ class CallSimulationTest {
         assertTrue("묶음 판정 실패", calls[0].isMulti)
         assertEquals(5500, calls[0].price)
         assertEquals(2, calls[0].bundleCount)
-        // bundleMin = 3000+(2-1)*2500 = 5500, 5500 >= 5500 -> ACCEPT
+        // 총액 5500 >= bundleMin(5500) 통과, but 건당 2750 < 4500 → REJECT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
+        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
         println("07 PASS: ${result.reason}")
     }
 
@@ -135,28 +135,28 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `09 배민 묶음 2건 다중픽업 7000원 ACCEPT`() {
+    fun `09 배민 묶음 2건 다중픽업 7000원 REJECT 건당미달`() {
         val texts = listOf("맘스터치", "버거킹", "배달료 4,000원", "배달료 3,000원")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertTrue("다중픽업 판정 실패", calls[0].isMultiPickup)
         assertEquals(7000, calls[0].price)
-        // multiPickupMin(2건) = 7000, effectiveMin = max(5500, 7000) = 7000 -> ACCEPT
+        // 총액 7000 >= effectiveMin(7000) 통과, but 건당 3500 < 4500 → REJECT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
+        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
         println("09 PASS: ${result.reason}")
     }
 
     @Test
-    fun `10 배민 묶음 3건 8000원 ACCEPT`() {
+    fun `10 배민 묶음 3건 8000원 REJECT 건당미달`() {
         val texts = listOf("맘스터치", "배달료 3,000원", "배달료 2,800원", "배달료 2,200원")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertEquals(8000, calls[0].price)
         assertEquals(3, calls[0].bundleCount)
-        // bundleMin = 3000+(3-1)*2500 = 8000 -> ACCEPT
+        // 총액 8000 >= bundleMin(8000) 통과, but 건당 2667 < 5000 → REJECT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
+        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
         println("10 PASS: ${result.reason}")
     }
 
@@ -356,15 +356,15 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `30 배민 묶음 3건 다중픽업 10000원 ACCEPT`() {
+    fun `30 배민 묶음 3건 다중픽업 10000원 REJECT 건당미달`() {
         val texts = listOf("맘스터치", "버거킹", "배달료 4,000원", "배달료 3,500원", "배달료 2,500원")
         val calls = BaeminParser.parse(texts)
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertTrue("다중픽업 판정 실패", calls[0].isMultiPickup)
         assertEquals(10000, calls[0].price)
-        // multiPickupMin(3건)=10000, effectiveMin=max(8000,10000)=10000 -> ACCEPT
+        // 총액 10000 >= effectiveMin(10000) 통과, but 건당 3333 < 5000 → REJECT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
+        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
         println("30 PASS: ${result.reason}")
     }
 
@@ -497,9 +497,9 @@ class CallSimulationTest {
         assertEquals(3, result.bundleCount)
         assertTrue("묶음 판정", result.isMulti)
 
-        // CallFilter 판정
+        // CallFilter 판정: 9070/3건=건당3023 < 5000 → REJECT
         val filterResult = CallFilter.judge(result, ctx)
-        assertEquals(CallFilter.Verdict.ACCEPT, filterResult.verdict)
+        assertEquals(CallFilter.Verdict.REJECT, filterResult.verdict)
         println("41 PASS: 묶음세션A - ${result.price}원/${result.point}P ${result.bundleCount}건 → ${filterResult.verdict}")
     }
 
@@ -793,13 +793,12 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `60 묶음효율 잡으세요 9120원 3건 53P9`() {
-        // Case C: 배민 9,120원 / 3건 / 53.9P → 환산 8.1km, 건당 3,040원, 건당 2.7km → 잡으세요
+    fun `60 묶음효율 9120원 3건 53P9 건당미달 REJECT`() {
+        // Case C: 배민 9,120원 / 3건 → 건당 3,040원 < 5,000 → REJECT (건당 단가 기준 우선)
         val call = DeliveryCall(price = 9120, distance = null, isMulti = true, platform = "baemin",
             bundleCount = 3, point = 53.9)
         val result = CallFilter.judge(call, ctx)
-        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
-        assertTrue("묶음 효율", result.reason.contains("묶음 효율"))
+        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
         println("60 PASS: 9120원/3건/53.9P → ${result.verdict} (${result.reason})")
     }
 

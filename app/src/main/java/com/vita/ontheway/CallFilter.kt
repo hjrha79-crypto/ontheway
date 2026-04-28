@@ -13,6 +13,11 @@ object CallFilter {
     private const val KEY_MAX_PICKUP_KM = "max_pickup_km"
     private const val KEY_VOICE_ACCEPT_ENABLED = "voice_accept_enabled"
 
+    // 묶음 건당 최소 단가 (이하이면 REJECT)
+    // 실데이터 기반: 2건 4,315원 MISMATCH, 3건 2,803원 MISMATCH
+    private const val BUNDLE_PER_ITEM_MIN_2 = 4500   // 2건 묶음: 건당 4,500원 이상
+    private const val BUNDLE_PER_ITEM_MIN_3 = 5000   // 3건+ 묶음: 건당 5,000원 이상
+
     // v3.6: 연속 REJECT 자동 기준 하향
     private var consecutiveRejectCount: Int = 0
     private var priceReduction: Int = 0  // 현재 하향된 금액
@@ -155,6 +160,14 @@ object CallFilter {
                     "묶음 금액 ${fmt.format(call.price)}원 < 기준 ${fmt.format(effectiveMin)}원 미달 ($bundleTag$multiPickupTag)")
             }
 
+            // v3.21: 건당 최소 단가 미달 (실데이터 기반 — 8,000원대 묶음 MISMATCH 방지)
+            val perItemMin = if (bundleCount >= 3) BUNDLE_PER_ITEM_MIN_3 else BUNDLE_PER_ITEM_MIN_2
+            if (perPrice < perItemMin) {
+                OtwFileLogger.log("DeliveryFilter", "묶음 건당단가 REJECT: ${fmt.format(call.price)}원, 건당 ${perPriceStr}원 < 기준 ${fmt.format(perItemMin)}원 ($bundleTag)")
+                return FilterResult(Verdict.REJECT,
+                    "묶음 건당 ${perPriceStr}원 < 기준 ${fmt.format(perItemMin)}원 미달 ($bundleTag$multiPickupTag)")
+            }
+
             // 단가 미달 (거리 정보가 있을 때만)
             if (hasDist && unitPrice < minUnitPrice) {
                 return FilterResult(Verdict.REJECT,
@@ -173,6 +186,7 @@ object CallFilter {
                 }
             }
 
+            OtwFileLogger.log("DeliveryFilter", "묶음 ACCEPT: ${fmt.format(call.price)}원, 건당 ${perPriceStr}원 ≥ ${fmt.format(perItemMin)}원 ($bundleTag$multiPickupTag)")
             return FilterResult(Verdict.ACCEPT,
                 "묶음 통과 ${fmt.format(call.price)}원 ($bundleTag$multiPickupTag)")
         }
