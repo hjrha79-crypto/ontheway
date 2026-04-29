@@ -1108,7 +1108,8 @@ class OnTheWayService : AccessibilityService() {
             overlayText = evidenceMsg ?: "${java.text.NumberFormat.getNumberInstance().format(call.price)}원",
             mode = if (evidenceMsg != null) outputMode else OutputMode.OVERLAY_ONLY,
             tts = tts,
-            ttsReady = ttsReady
+            ttsReady = ttsReady,
+            pricePerKm = if (unitPrice > 0) unitPrice else null
         )
 
         // [Hotfix-2 P0-3] DB INSERT를 executor에 위임 (메인 스레드 블로킹 방지)
@@ -1505,7 +1506,7 @@ class OnTheWayService : AccessibilityService() {
         ttsReady = false
         try { locationManager?.removeUpdates(locationListener) } catch (e: Exception) {}
         gpsActive = false
-        try { TopBarOverlay.hide() } catch (e: Exception) {}
+        try { CardOverlay.hide() } catch (e: Exception) {}
         BaeminBundleSession.reset()
         bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
         try { dbExecutor.shutdown() } catch (_: Exception) {}

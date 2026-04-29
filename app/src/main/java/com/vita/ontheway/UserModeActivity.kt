@@ -17,39 +17,25 @@ import android.view.accessibility.AccessibilityManager
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import java.text.NumberFormat
-import java.text.SimpleDateFormat
-import java.util.*
 
 class UserModeActivity : AppCompatActivity() {
 
-    // ── 컬러 팔레트 ──
-    private val C_BG       = Color.parseColor("#F0F2F5")
-    private val C_CARD     = Color.WHITE
-    private val C_TEXT     = Color.parseColor("#1A1A2E")
+    private val C_BG       = Color.parseColor("#0F0F1A")
     private val C_SUB      = Color.parseColor("#6C757D")
-    private val C_BLUE     = Color.parseColor("#4361EE")
-    private val C_BTN_GO_S = Color.parseColor("#4361EE")
-    private val C_BTN_GO_E = Color.parseColor("#3A0CA3")
+    private val C_GREEN    = Color.parseColor("#00F5A0")
+    private val C_WHITE    = Color.WHITE
+    private val C_BTN_GO_S = Color.parseColor("#00F5A0")
+    private val C_BTN_GO_E = Color.parseColor("#00C9FF")
     private val C_BTN_ST_S = Color.parseColor("#EF233C")
     private val C_BTN_ST_E = Color.parseColor("#C1121F")
-    private val C_GREEN    = Color.parseColor("#06D6A0")
-    private val C_RED      = Color.parseColor("#EF233C")
 
-    private lateinit var hourlyLabel: TextView
     private lateinit var hourlyText: TextView
     private lateinit var callCountText: TextView
     private lateinit var driveBtn: TextView
-    private lateinit var statsCard: LinearLayout
-    private lateinit var statDistance: TextView
-    private lateinit var statReturn: TextView
-    private lateinit var statWait: TextView
-    private lateinit var lastCallCard: LinearLayout
-    private lateinit var callListLayout: LinearLayout
     private lateinit var accessibilityBanner: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private val fmt = NumberFormat.getNumberInstance()
-    private val sdfHm = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private val MP = ViewGroup.LayoutParams.MATCH_PARENT
@@ -69,14 +55,12 @@ class UserModeActivity : AppCompatActivity() {
 
         window.statusBarColor = C_BG
         window.navigationBarColor = C_BG
-        @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility =
-            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
 
         val root = ScrollView(this).apply { setBackgroundColor(C_BG) }
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(48), dp(20), dp(40))
+            gravity = Gravity.CENTER_HORIZONTAL
         }
 
         // ═══ 1. 상단 헤더 (로고 + 설정 아이콘) ═══
@@ -86,7 +70,7 @@ class UserModeActivity : AppCompatActivity() {
             setPadding(0, 0, 0, dp(8))
         }
         headerRow.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(32), 1)  // 좌측 밸런스
+            layoutParams = LinearLayout.LayoutParams(dp(32), 1)
         })
         val logo = TextView(this).apply {
             text = "OnTheWay"; textSize = 14f; setTextColor(C_SUB)
@@ -118,25 +102,25 @@ class UserModeActivity : AppCompatActivity() {
         headerRow.addView(settingsBtn)
         container.addView(headerRow)
 
-        hourlyLabel = TextView(this).apply {
-            text = "시간당 수익"; textSize = 12f; setTextColor(C_SUB)
-            gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
-        }
-        container.addView(hourlyLabel)
+        // ═══ 2. 시간당 수익 ═══
+        container.addView(TextView(this).apply {
+            text = "시간당 수익"; textSize = 14f; setTextColor(C_SUB)
+            gravity = Gravity.CENTER; setPadding(0, dp(32), 0, 0)
+        })
 
         hourlyText = TextView(this).apply {
-            textSize = 48f; setTextColor(C_SUB); gravity = Gravity.CENTER
+            text = "0원/h"; textSize = 56f; setTextColor(C_SUB); gravity = Gravity.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
         container.addView(hourlyText)
 
         callCountText = TextView(this).apply {
             textSize = 12f; setTextColor(C_SUB); gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, dp(24))
+            setPadding(0, dp(4), 0, dp(48))
         }
         container.addView(callCountText)
 
-        // ═══ 접근성 권한 경고 배너 (운행 버튼 위) ═══
+        // ═══ 3. 접근성 권한 경고 배너 (운행 버튼 위) ═══
         accessibilityBanner = TextView(this).apply {
             text = "\u26A0 접근성 권한 필요 - 탭하여 설정"
             textSize = 13f; setTextColor(Color.parseColor("#856404"))
@@ -151,7 +135,7 @@ class UserModeActivity : AppCompatActivity() {
         }
         container.addView(accessibilityBanner)
 
-        // ═══ 2. 운행 버튼 ═══
+        // ═══ 4. 운행 버튼 ═══
         driveBtn = TextView(this).apply {
             textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -161,41 +145,6 @@ class UserModeActivity : AppCompatActivity() {
         }
         driveBtn.setOnClickListener { toggleDrivingMode() }
         container.addView(driveBtn)
-
-        // ═══ 3. 통계 카드 1x3 (운행 중일 때만 표시) ═══
-        statsCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = roundRect(C_CARD, 12)
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-            elevation = dp(2).toFloat()
-            layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(16) }
-            visibility = View.GONE
-        }
-        statDistance = statCell("이동거리", statsCard)
-        statReturn = statCell("복귀예상", statsCard)
-        statWait = statCell("대기", statsCard)
-        container.addView(statsCard)
-
-        // ═══ 4. 마지막 콜 카드 ═══
-        lastCallCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = roundRect(C_CARD, 12)
-            elevation = dp(2).toFloat()
-            layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(20) }
-        }
-        container.addView(lastCallCard)
-
-        // ═══ 5. 최근 콜 리스트 ═══
-        container.addView(TextView(this).apply {
-            text = "최근 콜"; textSize = 14f; setTextColor(C_TEXT)
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setPadding(0, dp(24), 0, dp(8))
-        })
-
-        callListLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        container.addView(callListLayout)
 
         root.addView(container)
         setContentView(root)
@@ -211,7 +160,6 @@ class UserModeActivity : AppCompatActivity() {
         refreshUI()
     }
 
-    // ── 운행 토글 ──
     private fun toggleDrivingMode() {
         val current = DrivingModeManager.getMode(this)
         val newMode = if (current == DrivingMode.DRIVING) DrivingMode.IDLE else DrivingMode.DRIVING
@@ -226,19 +174,18 @@ class UserModeActivity : AppCompatActivity() {
         refreshUI()
     }
 
-    // ── UI 갱신 ──
     private fun refreshUI() {
         val callCount = EarningManager.getTodayCallCount(this)
         val goal = EarningManager.getGoal(this)
         val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
         val hourlyRate = EarningsCalculator.calculateHourlyRate(this)
 
-        // 시간당 수익 (메인 숫자)
         hourlyText.text = hourlyRate?.let { "${fmt.format(it)}원/h" } ?: "0원/h"
         hourlyText.setTextColor(when {
             hourlyRate == null || hourlyRate <= 0L -> C_SUB
             goal > 0 && hourlyRate >= goal -> C_GREEN
-            else -> C_BLUE
+            isDriving -> C_WHITE
+            else -> C_SUB
         })
         callCountText.text = "오늘 ${callCount}콜"
 
@@ -247,222 +194,8 @@ class UserModeActivity : AppCompatActivity() {
             gradientRect(C_BTN_ST_S, C_BTN_ST_E, 16)
         else
             gradientRect(C_BTN_GO_S, C_BTN_GO_E, 16)
-        driveBtn.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), Color.parseColor("#40000000"))
 
-        // 3개 숫자 카드 (운행 중일 때만)
-        if (isDriving) {
-            statsCard.visibility = View.VISIBLE
-            statDistance.text = EarningsCalculator.calculateTotalDistance(this).let {
-                if (it > 0) "${"%.1f".format(it)}km" else "—"
-            }
-            statReturn.text = ReturnTimeEstimator.estimateReturnMinutes()?.let { "${it}분" } ?: "—"
-            statWait.text = EarningsCalculator.calculateWaitTime(this).let { if (it > 0) "${it}분" else "—" }
-        } else {
-            statsCard.visibility = View.GONE
-        }
-
-        // 마지막 콜
-        refreshLastCallCard()
-
-        // 최근 콜
-        refreshCallList()
-
-        // 접근성 권한 확인
         accessibilityBanner.visibility = if (isAccessibilityEnabled()) View.GONE else View.VISIBLE
-    }
-
-    private fun refreshLastCallCard() {
-        lastCallCard.removeAllViews()
-        try {
-            val db = CallLogDb.get(this).readableDatabase
-            val cursor = db.rawQuery(
-                "SELECT timestamp, platform, price, verdict, reason, distance, bundleCount FROM ${CallLogDb.TABLE} ORDER BY timestamp DESC LIMIT 1", null
-            )
-            cursor.use {
-                if (it.moveToFirst()) {
-                    val ts = it.getLong(0)
-                    val platform = it.getString(1) ?: ""
-                    val price = it.getInt(2)
-                    val verdict = it.getString(3) ?: ""
-                    val reason = it.getString(4) ?: ""
-                    val dist = if (!it.isNull(5)) it.getDouble(5) else null
-                    val bundleCount = it.getInt(6)
-                    val isReject = verdict.contains("REJECT")
-                    val isMulti = bundleCount > 1
-                    val barColor = if (isReject) C_RED else C_GREEN
-
-                    // 좌측 판정 색상 바
-                    lastCallCard.addView(View(this@UserModeActivity).apply {
-                        val barBg = GradientDrawable().apply {
-                            setColor(barColor)
-                            cornerRadii = floatArrayOf(dp(12).toFloat(), dp(12).toFloat(), 0f, 0f, 0f, 0f, dp(12).toFloat(), dp(12).toFloat())
-                        }
-                        background = barBg
-                        layoutParams = LinearLayout.LayoutParams(dp(8), MP)
-                    })
-
-                    // 내용
-                    val content = LinearLayout(this@UserModeActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        setPadding(dp(12), dp(12), dp(16), dp(12))
-                        layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
-                    }
-                    content.addView(TextView(this@UserModeActivity).apply {
-                        text = "마지막 콜"; textSize = 10f; setTextColor(C_SUB)
-                        setPadding(0, 0, 0, dp(6))
-                    })
-
-                    val infoRow = LinearLayout(this@UserModeActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                    }
-                    infoRow.addView(makePlatformBadge(platform).apply {
-                        layoutParams = LinearLayout.LayoutParams(WC, WC).apply { marginEnd = dp(8) }
-                    })
-                    infoRow.addView(TextView(this@UserModeActivity).apply {
-                        text = sdfHm.format(Date(ts)); textSize = 12f; setTextColor(C_SUB)
-                        layoutParams = LinearLayout.LayoutParams(WC, WC).apply { marginEnd = dp(8) }
-                    })
-                    infoRow.addView(TextView(this@UserModeActivity).apply {
-                        text = "${fmt.format(price)}원"; textSize = 20f; setTextColor(C_TEXT)
-                        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                        layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
-                    })
-                    val dummyCall = DeliveryCall(price = price, distance = dist, isMulti = isMulti, platform = platform, bundleCount = bundleCount)
-                    val evidence = OutputController.toEvidenceReason(reason, price, dummyCall)
-                    if (evidence.isNotEmpty()) {
-                        infoRow.addView(makeEvidencePill(evidence, isReject))
-                    }
-                    content.addView(infoRow)
-                    lastCallCard.addView(content)
-                } else {
-                    lastCallCard.addView(TextView(this@UserModeActivity).apply {
-                        text = "아직 콜 없음"; textSize = 15f; setTextColor(C_SUB)
-                        setPadding(dp(16), dp(12), dp(16), dp(12))
-                    })
-                }
-            }
-        } catch (_: Exception) {
-            lastCallCard.addView(TextView(this).apply {
-                text = "아직 콜 없음"; textSize = 15f; setTextColor(C_SUB)
-                setPadding(dp(16), dp(12), dp(16), dp(12))
-            })
-        }
-    }
-
-    private fun makeEvidencePill(evidence: String, isReject: Boolean): TextView {
-        val bgColor = if (isReject) Color.parseColor("#FFEBEE") else Color.parseColor("#E8F5E9")
-        val textColor = if (isReject) C_RED else C_GREEN
-        return TextView(this).apply {
-            text = evidence; textSize = 11f; setTextColor(textColor)
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            background = roundRect(bgColor, 12)
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-        }
-    }
-
-    private fun refreshCallList() {
-        callListLayout.removeAllViews()
-        try {
-            val db = CallLogDb.get(this).readableDatabase
-            val cursor = db.rawQuery(
-                "SELECT id, timestamp, platform, price, verdict, reason FROM ${CallLogDb.TABLE} ORDER BY timestamp DESC LIMIT 5", null
-            )
-            cursor.use {
-                while (it.moveToNext()) {
-                    val id = it.getLong(0)
-                    val ts = it.getLong(1)
-                    val platform = it.getString(2) ?: ""
-                    val price = it.getInt(3)
-                    val verdict = it.getString(4) ?: ""
-                    val reason = it.getString(5) ?: ""
-                    callListLayout.addView(makeCallRow(id, ts, platform, price, verdict, reason))
-                }
-            }
-            if (callListLayout.childCount == 0) {
-                callListLayout.addView(TextView(this).apply {
-                    text = "콜 기록이 없습니다"; textSize = 14f; setTextColor(C_SUB)
-                    gravity = Gravity.CENTER; setPadding(0, dp(16), 0, dp(16))
-                })
-            }
-        } catch (_: Exception) {}
-    }
-
-    private fun makeCallRow(id: Long, ts: Long, platform: String, price: Int, verdict: String, reason: String): View {
-        val isReject = verdict.contains("REJECT")
-        val barColor = if (isReject) C_RED else C_GREEN
-        val pName = platformName(platform)
-
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, dp(16), 0)
-            clipToPadding = false
-            clipChildren = false
-            layoutParams = LinearLayout.LayoutParams(MP, dp(56)).apply { bottomMargin = dp(8) }
-            background = roundRect(C_CARD, 8)
-            elevation = dp(1).toFloat()
-            isClickable = true
-            isFocusable = true
-
-            // 좌측 색상 바
-            addView(View(context).apply {
-                val barBg = GradientDrawable().apply {
-                    setColor(barColor)
-                    cornerRadii = floatArrayOf(dp(8).toFloat(), dp(8).toFloat(), 0f, 0f, 0f, 0f, dp(8).toFloat(), dp(8).toFloat())
-                }
-                background = barBg
-                layoutParams = LinearLayout.LayoutParams(dp(8), MP)
-            })
-
-            // 내용
-            val content = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(8), 0, dp(4), 0)
-                layoutParams = LinearLayout.LayoutParams(0, MP, 1f)
-            }
-
-            content.addView(makePlatformBadge(platform).apply {
-                layoutParams = LinearLayout.LayoutParams(WC, WC).apply { marginEnd = dp(8) }
-            })
-
-            content.addView(TextView(context).apply {
-                text = sdfHm.format(Date(ts)); textSize = 12f; setTextColor(C_SUB)
-                typeface = Typeface.MONOSPACE
-                layoutParams = LinearLayout.LayoutParams(dp(44), WC)
-            })
-
-            content.addView(TextView(context).apply {
-                text = "${fmt.format(price)}원"; textSize = 18f; setTextColor(C_TEXT)
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                gravity = Gravity.END
-                layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
-            })
-
-            // 상태 점
-            content.addView(View(context).apply {
-                val dotBg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(barColor) }
-                background = dotBg
-                layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginStart = dp(12) }
-            })
-
-            addView(content)
-
-            // 클릭 → 콜 상세 다이얼로그
-            setOnClickListener { CallDetailDialog.showById(this@UserModeActivity, id) }
-        }
-    }
-
-    // ── 헬퍼 ──
-    private fun platformName(code: String) = when (code) {
-        "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> code
-    }
-
-    private fun verdictLabel(verdict: String, reason: String) = when {
-        verdict == "REJECT" -> "넘기세요"
-        reason.contains("잡으세요") -> "잡으세요"
-        else -> "괜찮습니다"
     }
 
     private fun roundRect(color: Int, radiusDp: Int): GradientDrawable {
@@ -477,39 +210,6 @@ class UserModeActivity : AppCompatActivity() {
             GradientDrawable.Orientation.LEFT_RIGHT,
             intArrayOf(startColor, endColor)
         ).apply { cornerRadius = dp(radiusDp).toFloat() }
-    }
-
-    private fun makePlatformBadge(platform: String): TextView {
-        val (bg, fg, label) = when (platform) {
-            "baemin" -> Triple(Color.parseColor("#F8BBD0"), Color.parseColor("#C2185B"), "배민")
-            "coupang" -> Triple(Color.parseColor("#FFE0B2"), Color.parseColor("#E65100"), "쿠팡")
-            "kakaot" -> Triple(Color.parseColor("#FFF9C4"), Color.parseColor("#F57F17"), "카카오T")
-            else -> Triple(Color.parseColor("#E8E8E8"), C_TEXT, platform)
-        }
-        return TextView(this).apply {
-            text = label; textSize = 11f; setTextColor(fg)
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            background = roundRect(bg, 8)
-            setPadding(dp(6), dp(3), dp(6), dp(3))
-        }
-    }
-
-    private fun statCell(label: String, parent: LinearLayout): TextView {
-        val cell = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
-        }
-        cell.addView(TextView(this).apply {
-            text = label; textSize = 10f; setTextColor(C_SUB); gravity = Gravity.CENTER
-        })
-        val value = TextView(this).apply {
-            text = "—"; textSize = 16f; setTextColor(C_TEXT); gravity = Gravity.CENTER
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-        cell.addView(value)
-        parent.addView(cell)
-        return value
     }
 
     private fun isAccessibilityEnabled(): Boolean {

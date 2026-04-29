@@ -71,7 +71,7 @@ object OutputController {
         tts: TextToSpeech? = null,
         ttsReady: Boolean = false
     ) {
-        try { TopBarOverlay.show(ctx, overlayText) } catch (_: Exception) {}
+        try { CardOverlay.show(ctx, overlayText) } catch (_: Exception) {}
         if (tts != null && ttsReady) {
             try { tts.speak(ttsText, TextToSpeech.QUEUE_ADD, null, "sa_${System.currentTimeMillis()}") } catch (_: Exception) {}
         }
@@ -87,7 +87,8 @@ object OutputController {
         overlayText: String,
         mode: OutputMode,
         tts: TextToSpeech? = null,
-        ttsReady: Boolean = false
+        ttsReady: Boolean = false,
+        pricePerKm: Int? = null
     ) {
         if (mode == OutputMode.SILENT) return
 
@@ -96,7 +97,8 @@ object OutputController {
         // Overlay 쿨다운 (500ms)
         if (now - lastOverlayTime >= OVERLAY_COOLDOWN_MS) {
             lastOverlayTime = now
-            try { TopBarOverlay.show(ctx, overlayText) } catch (e: Exception) {
+            val textColor = CardOverlay.colorForUnitPrice(pricePerKm)
+            try { CardOverlay.show(ctx, overlayText, textColor) } catch (e: Exception) {
                 Log.w(TAG, "Overlay 실패: ${e.message}")
             }
         }

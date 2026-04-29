@@ -20,6 +20,7 @@ import android.widget.TextView
  * 판정 자체     [ ]    [ ]
  *
  * 같은 행에서 좋음+나쁨 동시 선택 불가 (배타 토글).
+ * 판정자체 ↔ 세부항목(픽업/배달/단가) 상호 배타.
  */
 object BidirectionalFeedbackDialog {
 
@@ -51,6 +52,8 @@ object BidirectionalFeedbackDialog {
     private val C_DIVIDER = Color.parseColor("#DDDDDD")
 
     private class RatingHolder(var rating: String? = null)
+
+    private class RowButtons(val goodBtn: TextView, val badBtn: TextView, val holder: RatingHolder)
 
     fun show(
         context: Context,
@@ -90,9 +93,15 @@ object BidirectionalFeedbackDialog {
             val delivery = RatingHolder()
             val price = RatingHolder()
 
-            root.addView(makeRow(context, dp, "픽업 위치", pickup))
-            root.addView(makeRow(context, dp, "배달 위치", delivery))
-            root.addView(makeRow(context, dp, "단가/금액", price))
+            val pickupRow = makeRow(context, dp, "픽업 위치", pickup)
+            val deliveryRow = makeRow(context, dp, "배달 위치", delivery)
+            val priceRow = makeRow(context, dp, "단가/금액", price)
+
+            root.addView(pickupRow.first)
+            root.addView(deliveryRow.first)
+            root.addView(priceRow.first)
+
+            val detailRows = listOf(pickupRow.second, deliveryRow.second, priceRow.second)
 
             // 구분선
             root.addView(View(context).apply {
@@ -104,7 +113,68 @@ object BidirectionalFeedbackDialog {
 
             // 판정 자체 (별도 섹션)
             val judgment = RatingHolder()
-            root.addView(makeRow(context, dp, "판정 자체", judgment))
+            val judgmentRow = makeRow(context, dp, "판정 자체", judgment)
+            root.addView(judgmentRow.first)
+
+            val judgmentButtons = judgmentRow.second
+
+            // 상호 배타 로직: 판정자체 ↔ 세부항목
+            fun clearDetailRows() {
+                for (row in detailRows) {
+                    row.holder.rating = null
+                    row.goodBtn.setBackgroundColor(C_OFF)
+                    row.badBtn.setBackgroundColor(C_OFF)
+                }
+            }
+
+            fun clearJudgmentRow() {
+                judgmentButtons.holder.rating = null
+                judgmentButtons.goodBtn.setBackgroundColor(C_OFF)
+                judgmentButtons.badBtn.setBackgroundColor(C_OFF)
+            }
+
+            // 판정자체 버튼에 상호 배타 후처리 추가
+            val origJudgGood = judgmentButtons.goodBtn
+            val origJudgBad = judgmentButtons.badBtn
+            origJudgGood.setOnClickListener {
+                if (judgment.rating == "GOOD") {
+                    judgment.rating = null; origJudgGood.setBackgroundColor(C_OFF)
+                } else {
+                    judgment.rating = "GOOD"; origJudgGood.setBackgroundColor(C_GOOD); origJudgBad.setBackgroundColor(C_OFF)
+                    clearDetailRows()
+                }
+            }
+            origJudgBad.setOnClickListener {
+                if (judgment.rating == "BAD") {
+                    judgment.rating = null; origJudgBad.setBackgroundColor(C_OFF)
+                } else {
+                    judgment.rating = "BAD"; origJudgBad.setBackgroundColor(C_BAD); origJudgGood.setBackgroundColor(C_OFF)
+                    clearDetailRows()
+                }
+            }
+
+            // 세부항목 버튼에 판정자체 해제 후처리 추가
+            for (row in detailRows) {
+                val goodBtn = row.goodBtn
+                val badBtn = row.badBtn
+                val holder = row.holder
+                goodBtn.setOnClickListener {
+                    if (holder.rating == "GOOD") {
+                        holder.rating = null; goodBtn.setBackgroundColor(C_OFF)
+                    } else {
+                        holder.rating = "GOOD"; goodBtn.setBackgroundColor(C_GOOD); badBtn.setBackgroundColor(C_OFF)
+                        clearJudgmentRow()
+                    }
+                }
+                badBtn.setOnClickListener {
+                    if (holder.rating == "BAD") {
+                        holder.rating = null; badBtn.setBackgroundColor(C_OFF)
+                    } else {
+                        holder.rating = "BAD"; badBtn.setBackgroundColor(C_BAD); goodBtn.setBackgroundColor(C_OFF)
+                        clearJudgmentRow()
+                    }
+                }
+            }
 
             val dialog = AlertDialog.Builder(context)
                 .setTitle("이 콜 어땠나요?")
@@ -141,8 +211,34 @@ object BidirectionalFeedbackDialog {
         dp: (Int) -> Int,
         label: String,
         holder: RatingHolder
-    ): LinearLayout {
-        return LinearLayout(context).apply {
+    ): Pair<LinearLayout, RowButtons> {
+        val goodBtn = TextView(context).apply {
+            text = "O"; textSize = 16f; setTextColor(C_TEXT)
+            setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
+        }
+        val badBtn = TextView(context).apply {
+            text = "O"; textSize = 16f; setTextColor(C_TEXT)
+            setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
+        }
+
+        // Default click listeners (may be overridden for mutual exclusion)
+        goodBtn.setOnClickListener {
+            if (holder.rating == "GOOD") {
+                holder.rating = null; goodBtn.setBackgroundColor(C_OFF)
+            } else {
+                holder.rating = "GOOD"; goodBtn.setBackgroundColor(C_GOOD); badBtn.setBackgroundColor(C_OFF)
+            }
+        }
+
+        badBtn.setOnClickListener {
+            if (holder.rating == "BAD") {
+                holder.rating = null; badBtn.setBackgroundColor(C_OFF)
+            } else {
+                holder.rating = "BAD"; badBtn.setBackgroundColor(C_BAD); goodBtn.setBackgroundColor(C_OFF)
+            }
+        }
+
+        val row = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(4), 0, dp(4))
@@ -152,33 +248,10 @@ object BidirectionalFeedbackDialog {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.2f)
             })
 
-            val goodBtn = TextView(context).apply {
-                text = "O"; textSize = 16f; setTextColor(C_TEXT)
-                setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
-            }
-            val badBtn = TextView(context).apply {
-                text = "O"; textSize = 16f; setTextColor(C_TEXT)
-                setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
-            }
-
-            goodBtn.setOnClickListener {
-                if (holder.rating == "GOOD") {
-                    holder.rating = null; goodBtn.setBackgroundColor(C_OFF)
-                } else {
-                    holder.rating = "GOOD"; goodBtn.setBackgroundColor(C_GOOD); badBtn.setBackgroundColor(C_OFF)
-                }
-            }
-
-            badBtn.setOnClickListener {
-                if (holder.rating == "BAD") {
-                    holder.rating = null; badBtn.setBackgroundColor(C_OFF)
-                } else {
-                    holder.rating = "BAD"; badBtn.setBackgroundColor(C_BAD); goodBtn.setBackgroundColor(C_OFF)
-                }
-            }
-
             addView(goodBtn, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(8) })
             addView(badBtn, LinearLayout.LayoutParams(0, dp(44), 1f))
         }
+
+        return Pair(row, RowButtons(goodBtn, badBtn, holder))
     }
 }
