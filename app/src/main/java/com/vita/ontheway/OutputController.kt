@@ -93,6 +93,12 @@ object OutputController {
     ) {
         if (mode == OutputMode.SILENT) return
 
+        // 금지어 체크: overlayText/ttsText 어디서 왔든 차단
+        if (FORBIDDEN_WORDS.any { overlayText.contains(it) }) {
+            OtwFileLogger.log(TAG, "금지어 감지 → emit 차단: \"$overlayText\"")
+            return
+        }
+
         val now = System.currentTimeMillis()
 
         // Overlay 쿨다운 (2초) + 동일 메시지 dedup

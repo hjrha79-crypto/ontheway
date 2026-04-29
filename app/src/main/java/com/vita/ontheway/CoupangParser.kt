@@ -43,6 +43,11 @@ object CoupangParser {
         "7천원", "7천 원"
     )
 
+    // 가게명 오염 블랙리스트: UI 텍스트가 가게명으로 오인되는 패턴
+    private val STORE_NAME_BLACKLIST = setOf(
+        "추천거절", "추천배차", "자동배차", "오류"
+    )
+
     // 콜 화면 필수 버튼 텍스트: 이 중 하나는 있어야 진짜 콜
     private val CALL_SCREEN_BUTTONS = setOf("거절", "주문 수락", "주문수락")
 
@@ -68,12 +73,14 @@ object CoupangParser {
 
         // 가게명 추출: 금액/거리/키워드가 아닌 짧은 한글 텍스트
         val storeName = texts.firstOrNull { t ->
-            t.length in 2..30 &&
-            !PRICE_PATTERN.containsMatchIn(t) &&
-            !DISTANCE_PATTERN.containsMatchIn(t) &&
-            !MULTI_PATTERN.containsMatchIn(t) &&
-            !t.contains("km") && !t.contains("원") &&
-            STORE_PATTERN.matches(t.trim())
+            val trimmed = t.trim()
+            trimmed.length in 2..30 &&
+            !PRICE_PATTERN.containsMatchIn(trimmed) &&
+            !DISTANCE_PATTERN.containsMatchIn(trimmed) &&
+            !MULTI_PATTERN.containsMatchIn(trimmed) &&
+            !trimmed.contains("km") && !trimmed.contains("원") &&
+            STORE_PATTERN.matches(trimmed) &&
+            STORE_NAME_BLACKLIST.none { bl -> trimmed.contains(bl) }
         }?.trim() ?: ""
 
         val priceMatch = PRICE_PATTERN.find(joined)
