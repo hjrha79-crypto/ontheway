@@ -1,5 +1,7 @@
 package com.vita.ontheway
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.content.Context
@@ -24,6 +26,7 @@ import android.widget.TextView
  * - 단가 기반 3단계 색상
  * - Fade + Scale 애니메이션
  * - 1.5초 유지 후 fade out
+ * - 항상 applicationContext 사용 (Activity leak 방지)
  */
 object CardOverlay {
 
@@ -41,11 +44,8 @@ object CardOverlay {
     private var cardView: View? = null
     private val handler = Handler(Looper.getMainLooper())
     private var dismissRunnable: Runnable? = null
+    private var currentAnimator: Animator? = null
 
-    /**
-     * 단가 기반 텍스트 색상 결정.
-     * @param pricePerKm 원/km 단가. null이면 흰색 (금액만 있을 때)
-     */
     fun colorForUnitPrice(pricePerKm: Int?): Int {
         if (pricePerKm == null) return COLOR_WHITE
         return when {
@@ -57,16 +57,20 @@ object CardOverlay {
 
     fun show(ctx: Context, text: String, textColor: Int = COLOR_WHITE) {
         if (!FeatureFlags.overlayEnabled) return
-        if (!Settings.canDrawOverlays(ctx)) {
+        // 항상 applicationContext 사용 (Activity/Service 무관)
+        val appCtx = ctx.applicationContext
+        if (!Settings.canDrawOverlays(appCtx)) {
             Log.w(TAG, "오버레이 권한 없음")
             return
         }
-        handler.post { showInternal(ctx, text, textColor) }
+        handler.post { showInternal(appCtx, text, textColor) }
     }
 
     private fun showInternal(ctx: Context, text: String, textColor: Int) {
         try {
-            // 기존 카드 즉시 제거 (교체)
+            // 진행 중 애니메이션 즉시 취소 + 기존 카드 제거 (번쩍임 방지)
+            currentAnimator?.cancel()
+            currentAnimator = null
             removeInternal()
 
             windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -112,14 +116,16 @@ object CardOverlay {
                 v.alpha = 0f
                 v.scaleX = 0.95f
                 v.scaleY = 0.95f
-                val fadeIn = ObjectAnimator.ofFloat(v, "alpha", 0f, 1f)
-                val scaleX = ObjectAnimator.ofFloat(v, "scaleX", 0.95f, 1f)
-                val scaleY = ObjectAnimator.ofFloat(v, "scaleY", 0.95f, 1f)
-                AnimatorSet().apply {
-                    playTogether(fadeIn, scaleX, scaleY)
+                val animSet = AnimatorSet().apply {
+                    playTogether(
+                        ObjectAnimator.ofFloat(v, "alpha", 0f, 1f),
+                        ObjectAnimator.ofFloat(v, "scaleX", 0.95f, 1f),
+                        ObjectAnimator.ofFloat(v, "scaleY", 0.95f, 1f)
+                    )
                     duration = ANIM_IN_MS
-                    start()
                 }
+                currentAnimator = animSet
+                animSet.start()
             }
 
             // 1.5초 후 fade out + 제거
@@ -135,13 +141,15 @@ object CardOverlay {
     private fun animateOut() {
         val v = cardView ?: return
         try {
-            val fadeOut = ObjectAnimator.ofFloat(v, "alpha", 1f, 0f)
-            fadeOut.duration = ANIM_OUT_MS
-            fadeOut.addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: android.animation.Animator) {
-                    removeInternal()
-                }
-            })
+            val fadeOut = ObjectAnimator.ofFloat(v, "alpha", 1f, 0f).apply {
+                duration = ANIM_OUT_MS
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        removeInternal()
+                    }
+                })
+            }
+            currentAnimator = fadeOut
             fadeOut.start()
         } catch (_: Exception) {
             removeInternal()
@@ -149,7 +157,11 @@ object CardOverlay {
     }
 
     fun hide() {
-        handler.post { removeInternal() }
+        handler.post {
+            currentAnimator?.cancel()
+            currentAnimator = null
+            removeInternal()
+        }
     }
 
     private fun removeInternal() {
