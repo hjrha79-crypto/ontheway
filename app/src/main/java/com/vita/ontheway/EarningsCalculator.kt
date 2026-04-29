@@ -70,7 +70,7 @@ object EarningsCalculator {
     /**
      * 대기 시간 (분).
      * = 운행 시간 - (수락 콜 수 × 평균 배달 시간 15분)
-     * 음수이면 0 반환.
+     * 상한: 운행 시간 이하. 수락 0건이면 0 반환.
      */
     fun calculateWaitTime(ctx: Context): Int {
         val drivingMs = DrivingModeManager.getTodayDrivingTimeMs(ctx)
@@ -78,8 +78,10 @@ object EarningsCalculator {
         if (drivingMin <= 0) return 0
 
         val acceptedCount = getTodayAcceptedCount(ctx)
+        if (acceptedCount <= 0) return 0
+
         val estimatedDeliveryMin = acceptedCount * AVG_DELIVERY_MIN
-        return (drivingMin - estimatedDeliveryMin).coerceAtLeast(0)
+        return (drivingMin - estimatedDeliveryMin).coerceIn(0, drivingMin)
     }
 
     /**
