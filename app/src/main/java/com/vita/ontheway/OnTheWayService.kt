@@ -1368,6 +1368,8 @@ class OnTheWayService : AccessibilityService() {
         // 각 모듈 초기화는 개별 try-catch (하나 실패해도 서비스 계속)
         try { startForegroundNotification() } catch (e: Exception) { Log.w("OnTheWay", "알림 초기화 실패: ${e.message}") }
         try { startGps() } catch (e: Exception) { Log.w("OnTheWay", "GPS 초기화 실패: ${e.message}") }
+        // 운행 시간 날짜 자동 리셋 (자정 넘어서 앱 재시작 대응)
+        try { DrivingModeManager.checkAndResetDate(this) } catch (_: Exception) {}
         // [Hotfix-1] DrivingMode 상태 복구 (프로세스 kill 후 SP=DRIVING + isTracking=false 불일치 대응)
         try {
             if (DrivingModeManager.getMode(this) == DrivingMode.DRIVING && !LocationTracker.isActive()) {

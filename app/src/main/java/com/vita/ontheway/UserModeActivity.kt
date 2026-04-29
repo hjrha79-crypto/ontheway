@@ -47,6 +47,7 @@ class UserModeActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         try { FeatureFlags.load(this) } catch (_: Exception) {}
+        try { DrivingModeManager.checkAndResetDate(this) } catch (_: Exception) {}
 
         if (OnboardingActivity.isFirstRun(this)) {
             startActivity(Intent(this, OnboardingActivity::class.java))
