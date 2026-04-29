@@ -20,13 +20,13 @@ import android.view.WindowManager
 import android.widget.TextView
 
 /**
- * 카드형 오버레이 (MINI v1.1).
- * - 화면 상단 중앙, 너비 65%
- * - 반투명 블랙 배경, 모서리 16dp
- * - 단가 기반 3단계 색상
- * - Fade + Scale 애니메이션
- * - 1.5초 유지 후 fade out
- * - 항상 applicationContext 사용 (Activity leak 방지)
+ * 카드형 오버레이 (MINI v1.2).
+ *
+ * 깜빡임 방지 설계:
+ * - isShowing 플래그: show 중 동일 메시지 재요청 → 무시
+ * - 다른 메시지 재요청 → 기존 즉시 제거 후 교체
+ * - 모든 상태 변경은 handler.post (메인스레드 직렬화)
+ * - animateOut 중 show() → cancel + removeView + 새 카드 생성
  */
 object CardOverlay {
 
@@ -45,6 +45,8 @@ object CardOverlay {
     private val handler = Handler(Looper.getMainLooper())
     private var dismissRunnable: Runnable? = null
     private var currentAnimator: Animator? = null
+    @Volatile private var isShowing = false
+    private var currentText: String? = null
 
     fun colorForUnitPrice(pricePerKm: Int?): Int {
         if (pricePerKm == null) return COLOR_WHITE
@@ -57,7 +59,6 @@ object CardOverlay {
 
     fun show(ctx: Context, text: String, textColor: Int = COLOR_WHITE) {
         if (!FeatureFlags.overlayEnabled) return
-        // 항상 applicationContext 사용 (Activity/Service 무관)
         val appCtx = ctx.applicationContext
         if (!Settings.canDrawOverlays(appCtx)) {
             Log.w(TAG, "오버레이 권한 없음")
@@ -67,11 +68,15 @@ object CardOverlay {
     }
 
     private fun showInternal(ctx: Context, text: String, textColor: Int) {
+        // 동일 메시지가 이미 표시 중 → 무시 (깜빡임 방지 핵심)
+        if (isShowing && text == currentText) {
+            Log.d(TAG, "동일 메시지 표시 중 → 스킵: $text")
+            return
+        }
+
         try {
-            // 진행 중 애니메이션 즉시 취소 + 기존 카드 제거 (번쩍임 방지)
-            currentAnimator?.cancel()
-            currentAnimator = null
-            removeInternal()
+            // 기존 카드 즉시 정리 (애니메이션 포함)
+            teardown()
 
             windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             val density = ctx.resources.displayMetrics.density
@@ -110,6 +115,8 @@ object CardOverlay {
             }
 
             windowManager?.addView(cardView, params)
+            isShowing = true
+            currentText = text
 
             // 등장 애니메이션: Fade + Scale 0.95→1.0
             cardView?.let { v ->
@@ -135,40 +142,58 @@ object CardOverlay {
             OtwFileLogger.log(TAG, "표시: $text")
         } catch (e: Exception) {
             Log.w(TAG, "표시 실패: ${e.message}")
+            isShowing = false
+            currentText = null
         }
     }
 
     private fun animateOut() {
-        val v = cardView ?: return
+        val v = cardView ?: run {
+            isShowing = false
+            currentText = null
+            return
+        }
         try {
             val fadeOut = ObjectAnimator.ofFloat(v, "alpha", 1f, 0f).apply {
                 duration = ANIM_OUT_MS
                 addListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
-                        removeInternal()
+                        removeViewSafe()
+                        isShowing = false
+                        currentText = null
+                    }
+                    override fun onAnimationCancel(animation: Animator) {
+                        // cancel 시에도 정리 (showInternal의 teardown에서 호출)
+                        removeViewSafe()
                     }
                 })
             }
             currentAnimator = fadeOut
             fadeOut.start()
         } catch (_: Exception) {
-            removeInternal()
+            removeViewSafe()
+            isShowing = false
+            currentText = null
         }
     }
 
     fun hide() {
-        handler.post {
-            currentAnimator?.cancel()
-            currentAnimator = null
-            removeInternal()
-        }
+        handler.post { teardown(); isShowing = false; currentText = null }
     }
 
-    private fun removeInternal() {
+    /** 애니메이션 + dismiss 예약 + 뷰 일괄 정리 */
+    private fun teardown() {
+        currentAnimator?.removeAllListeners()
+        currentAnimator?.cancel()
+        currentAnimator = null
         dismissRunnable?.let { handler.removeCallbacks(it) }
         dismissRunnable = null
+        removeViewSafe()
+    }
+
+    private fun removeViewSafe() {
         try {
-            cardView?.let { windowManager?.removeView(it) }
+            cardView?.let { windowManager?.removeViewImmediate(it) }
         } catch (_: Exception) {}
         cardView = null
     }

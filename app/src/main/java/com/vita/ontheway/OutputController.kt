@@ -18,10 +18,11 @@ object OutputController {
     private const val TAG = "OutputController"
     private const val TTS_COOLDOWN_MS = 30_000L
     private const val TTS_MAX_LENGTH = 20
-    private const val OVERLAY_COOLDOWN_MS = 500L
+    private const val OVERLAY_COOLDOWN_MS = 2000L
 
     private var lastTtsTime = 0L
     private var lastOverlayTime = 0L
+    private var lastOverlayText = ""
 
     private val nf = NumberFormat.getNumberInstance()
 
@@ -94,13 +95,17 @@ object OutputController {
 
         val now = System.currentTimeMillis()
 
-        // Overlay 쿨다운 (500ms)
-        if (now - lastOverlayTime >= OVERLAY_COOLDOWN_MS) {
+        // Overlay 쿨다운 (2초) + 동일 메시지 dedup
+        val isSameMsg = overlayText == lastOverlayText && now - lastOverlayTime < OVERLAY_COOLDOWN_MS
+        if (!isSameMsg) {
             lastOverlayTime = now
+            lastOverlayText = overlayText
             val textColor = CardOverlay.colorForUnitPrice(pricePerKm)
             try { CardOverlay.show(ctx, overlayText, textColor) } catch (e: Exception) {
                 Log.w(TAG, "Overlay 실패: ${e.message}")
             }
+        } else {
+            OtwFileLogger.log(TAG, "Overlay 쿨다운 스킵 (동일 메시지 ${now - lastOverlayTime}ms): \"$overlayText\"")
         }
 
         // TTS (FULL만, 30초 쿨다운)
