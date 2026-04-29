@@ -80,15 +80,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private enum class AiContext { DESTINATION, ORIGIN, DEPARTURE, NONE }
     private var aiContext: AiContext = AiContext.DESTINATION
 
-    // ═══ v4.2 컬러 — 운전 중 가독성 최우선 ═══
-    private val C_WHITE    = Color.WHITE  // 카드 배경
-    private val C_BRIGHT   = Color.parseColor("#333333")  // 본문 텍스트
-    private val C_BLUE     = Color.parseColor("#5B6ABF")  // 퍼플 액센트
-    private val C_BLUE_LT  = Color.parseColor("#7B8AD0")  // 밝은 퍼플
-    private val C_SUB      = Color.parseColor("#999999")  // 서브
-    private val C_DIM      = Color.parseColor("#BBBBBB")  // 힌트
-    private val C_CARD     = Color.parseColor("#FFFFFF")  // 카드/다이얼로그
-    private val C_BUBBLE   = Color.parseColor("#E8E8E8")  // 에이전트 버블
+    // ═══ v5.0 컬러 — 딥 다크 터미널 ═══
+    private val C_BG       = Color.parseColor("#0A0A0F")  // 배경
+    private val C_WHITE    = Color.parseColor("#1A1A2E")  // 카드 배경
+    private val C_BRIGHT   = Color.WHITE                  // 본문 텍스트
+    private val C_BLUE     = Color.parseColor("#00FF88")  // 초록 액센트
+    private val C_BLUE_LT  = Color.parseColor("#00FF88")  // 초록 액센트
+    private val C_SUB      = Color.parseColor("#A0A0C0")  // 서브
+    private val C_DIM      = Color.parseColor("#A0A0C0")  // 힌트
+    private val C_CARD     = Color.parseColor("#1A1A2E")  // 카드/다이얼로그
+    private val C_BUBBLE   = Color.parseColor("#1A1A2E")  // 에이전트 버블
+    private val C_WARN     = Color.parseColor("#FF4D6D")  // 경고
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private val MP = ViewGroup.LayoutParams.MATCH_PARENT
@@ -140,10 +142,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // v3.8: 오염 데이터 정리 마이그레이션
         FilterLog.migrateV38Cleanup(this)
 
-        window.statusBarColor = Color.WHITE
-        window.navigationBarColor = Color.WHITE
-        // 라이트 테마: 상태바 아이콘 어둡게
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        window.statusBarColor = C_BG
+        window.navigationBarColor = C_BG
 
         setContentView(R.layout.activity_main)
         tts = TextToSpeech(this, this)
@@ -349,9 +349,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val isStatus = tab == "status"
 
         // 탭 스타일
-        tabStatus.setTextColor(if (isStatus) Color.parseColor("#5B6ABF") else Color.parseColor("#999999"))
+        tabStatus.setTextColor(if (isStatus) C_BLUE else C_SUB)
         tabStatus.setTypeface(null, if (isStatus) Typeface.BOLD else Typeface.NORMAL)
-        tabChat.setTextColor(if (!isStatus) Color.parseColor("#5B6ABF") else Color.parseColor("#999999"))
+        tabChat.setTextColor(if (!isStatus) C_BLUE else C_SUB)
         tabChat.setTypeface(null, if (!isStatus) Typeface.BOLD else Typeface.NORMAL)
 
         // 인디케이터 위치 (왼쪽 절반 / 오른쪽 절반)
@@ -454,8 +454,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             platRow.addView(TextView(this).apply {
                 text = label; textSize = 11f; gravity = Gravity.CENTER
                 val sel = label == dashFilterPlatform
-                setTextColor(if (sel) Color.WHITE else Color.parseColor("#5B6ABF"))
-                setBackgroundColor(if (sel) Color.parseColor("#5B6ABF") else Color.parseColor("#F0F0F0"))
+                setTextColor(if (sel) Color.parseColor("#0A0A0F") else C_BLUE)
+                setBackgroundColor(if (sel) C_BLUE else C_WHITE)
                 setPadding(dp(10), dp(6), dp(10), dp(6))
                 setOnClickListener { dashFilterPlatform = label; refreshDashboard() }
             }, lp(0, WC, 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
@@ -471,8 +471,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             verdRow.addView(TextView(this).apply {
                 text = label; textSize = 11f; gravity = Gravity.CENTER
                 val sel = label == dashFilterVerdict
-                setTextColor(if (sel) Color.WHITE else Color.parseColor("#666666"))
-                setBackgroundColor(if (sel) Color.parseColor("#666666") else Color.parseColor("#F0F0F0"))
+                setTextColor(if (sel) Color.parseColor("#0A0A0F") else C_SUB)
+                setBackgroundColor(if (sel) C_SUB else C_WHITE)
                 setPadding(dp(8), dp(6), dp(8), dp(6))
                 setOnClickListener { dashFilterVerdict = label; refreshDashboard() }
             }, lp(0, WC, 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
@@ -502,7 +502,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (logs.isEmpty()) {
             recentCallList.addView(TextView(this).apply {
                 text = "기록 없음"
-                textSize = 13f; setTextColor(Color.parseColor("#999999"))
+                textSize = 13f; setTextColor(C_SUB)
                 setPadding(dp(20), dp(12), dp(20), dp(12))
             })
             return
@@ -521,20 +521,20 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val bgColor: Int
             when (verdictKr) {
                 "잡으세요" -> {
-                    verdictColor = Color.parseColor("#1976D2")
-                    bgColor = Color.parseColor("#E3F2FD")  // 연한 파란색
+                    verdictColor = Color.parseColor("#00FF88")
+                    bgColor = Color.parseColor("#1A1A2E")
                 }
                 "괜찮습니다" -> {
-                    verdictColor = Color.parseColor("#388E3C")
-                    bgColor = Color.parseColor("#E8F5E9")  // 연한 초록색
+                    verdictColor = Color.parseColor("#4CC9F0")
+                    bgColor = Color.parseColor("#1A1A2E")
                 }
                 "넘기세요" -> {
-                    verdictColor = Color.parseColor("#E53935")
-                    bgColor = Color.parseColor("#FFEBEE")  // 연한 빨간색
+                    verdictColor = Color.parseColor("#FF4D6D")
+                    bgColor = Color.parseColor("#1A1A2E")
                 }
                 else -> {
-                    verdictColor = Color.parseColor("#999999")
-                    bgColor = Color.WHITE
+                    verdictColor = C_SUB
+                    bgColor = C_WHITE
                 }
             }
 
@@ -553,14 +553,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
 
             row.addView(TextView(this).apply {
-                text = ts; textSize = 12f; setTextColor(Color.parseColor("#999999"))
+                text = ts; textSize = 12f; setTextColor(C_SUB)
             }, lp(WC, WC).apply { marginEnd = dp(10) })
             row.addView(TextView(this).apply {
-                text = platform; textSize = 12f; setTextColor(Color.parseColor("#5B6ABF"))
+                text = platform; textSize = 12f; setTextColor(C_BLUE)
                 setTypeface(null, Typeface.BOLD)
             }, lp(WC, WC).apply { marginEnd = dp(10) })
             row.addView(TextView(this).apply {
-                text = "${fmt(price)}원"; textSize = 13f; setTextColor(Color.BLACK)
+                text = "${fmt(price)}원"; textSize = 13f; setTextColor(Color.WHITE)
             }, lp(0, WC, 1f))
             row.addView(TextView(this).apply {
                 text = verdictKr; textSize = 13f; setTextColor(verdictColor)
@@ -574,7 +574,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             recentCallList.addView(row)
 
             recentCallList.addView(View(this).apply {
-                setBackgroundColor(Color.parseColor("#F0F0F0"))
+                setBackgroundColor(Color.parseColor("#0A0A0F"))
             }, lp(MP, dp(1)).apply { setMargins(dp(20), 0, dp(20), 0) })
         }
     }
@@ -1012,12 +1012,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
         val card = recentHourlyCard as? androidx.cardview.widget.CardView
         if (isDriving) {
-            card?.setCardBackgroundColor(Color.WHITE)
-            recentHourlyRate.setTextColor(Color.parseColor("#5B6ABF"))
+            card?.setCardBackgroundColor(C_WHITE)
+            recentHourlyRate.setTextColor(C_BLUE)
             hourlyRateOffText?.visibility = View.GONE
         } else {
-            card?.setCardBackgroundColor(Color.parseColor("#EEEEEE"))
-            recentHourlyRate.setTextColor(Color.parseColor("#BBBBBB"))
+            card?.setCardBackgroundColor(Color.parseColor("#0D0D15"))
+            recentHourlyRate.setTextColor(C_SUB)
             hourlyRateOffText?.visibility = View.VISIBLE
         }
     }
@@ -1683,9 +1683,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 }
             }
             drivingModeStatusTv?.text = if (isDriving) "운행 모드: ON" else "운행 모드: OFF"
-            drivingModeStatusTv?.setTextColor(if (isDriving) Color.parseColor("#2E7D32") else Color.parseColor("#000000"))
+            drivingModeStatusTv?.setTextColor(if (isDriving) Color.parseColor("#00FF88") else C_SUB)
             findViewById<LinearLayout>(R.id.drivingModeCard)?.setBackgroundColor(
-                if (isDriving) Color.parseColor("#E8F5E9") else Color.parseColor("#F5F5F5")
+                if (isDriving) Color.parseColor("#1A2E1A") else C_WHITE
             )
             val ms = DrivingModeManager.getTodayDrivingTimeMs(this)
             val h = ms / 3_600_000; val m = (ms % 3_600_000) / 60_000

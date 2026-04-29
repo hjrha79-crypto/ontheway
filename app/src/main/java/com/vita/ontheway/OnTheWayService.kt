@@ -136,6 +136,10 @@ class OnTheWayService : AccessibilityService() {
     private data class RecentCall(val platform: String, val price: Int, val time: Long)
     private val recentCalls = mutableListOf<RecentCall>()
 
+    // v3.24: 배민 묶음→단건 중복 방지
+    private var lastBundleTime: Long = 0L
+    private var lastBundlePrice: Int = 0
+
     // v3.18: 세션 매니저
     private var sessionManager: SessionManager? = null
 
@@ -991,6 +995,15 @@ class OnTheWayService : AccessibilityService() {
             return
         }
 
+        // v3.24: 배민 묶음→단건 중복 방지 (묶음 후 10초 내 단건 = 부분콜 DROP)
+        if (call.platform == "baemin" && !call.isMulti && call.bundleCount <= 1
+            && lastBundleTime > 0 && now - lastBundleTime < 10_000) {
+            Log.d("DeliveryFilter", "묶음 단건 중복 DROP: ${call.price}원 (묶음 ${lastBundlePrice}원 ${(now - lastBundleTime)/1000}초 전)")
+            OtwFileLogger.log("DeliveryFilter", "묶음 단건 중복 DROP: ${call.price}원 (묶음 ${lastBundlePrice}원)")
+            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "bundle_single_dedup baemin ${call.price}원")
+            return
+        }
+
         // P0 fix: 같은 플랫폼+금액 30초 이내 = 중복 DROP (distance 무관)
         val simpleDedupKey = "${call.platform}_${call.price}"
         val lastSimple = callSpeakHistory.entries.find { it.key.startsWith(simpleDedupKey) }
@@ -1022,6 +1035,11 @@ class OnTheWayService : AccessibilityService() {
         // 묶음 총액 기록 (부분 파싱 중복 방지)
         if (call.isMulti) {
             TtsDeduplicator.recordBundleTotal(call.platform, call.price)
+            // v3.24: 묶음 시각/금액 기록 (단건 중복 방지용)
+            if (call.platform == "baemin") {
+                lastBundleTime = now
+                lastBundlePrice = call.price
+            }
         }
 
         // v3.18: SessionManager 경유 (세션 생성/추적용, suppression은 위에서 이미 처리)

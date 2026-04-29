@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#FFFFFF"
+    android:background="#0A0A0F"
     android:fitsSystemWindows="true">
 
     <!-- ═══ HEADER ═══ -->
@@ -24,7 +24,7 @@
             android:layout_height="wrap_content"
             android:text="OnTheWay"
             android:textSize="18sp"
-            android:textColor="#000000"
+            android:textColor="#00FF88"
             android:fontFamily="sans-serif-medium"
             android:paddingEnd="12dp" />
 
@@ -35,7 +35,7 @@
             android:layout_weight="1"
             android:text="0원"
             android:textSize="18sp"
-            android:textColor="#5B6ABF"
+            android:textColor="#00FF88"
             android:fontFamily="sans-serif-medium" />
 
         <TextView
@@ -44,7 +44,7 @@
             android:layout_height="32dp"
             android:text="접근성"
             android:textSize="11sp"
-            android:textColor="#999999"
+            android:textColor="#A0A0C0"
             android:gravity="center"
             android:paddingStart="6dp"
             android:paddingEnd="6dp" />
@@ -55,7 +55,7 @@
             android:layout_height="32dp"
             android:text="즐겨찾기"
             android:textSize="11sp"
-            android:textColor="#999999"
+            android:textColor="#A0A0C0"
             android:gravity="center"
             android:paddingStart="6dp"
             android:paddingEnd="6dp" />
@@ -66,7 +66,7 @@
             android:layout_height="32dp"
             android:text="설정"
             android:textSize="11sp"
-            android:textColor="#999999"
+            android:textColor="#A0A0C0"
             android:gravity="center"
             android:paddingStart="6dp"
             android:paddingEnd="6dp" />
@@ -77,7 +77,7 @@
             android:layout_height="32dp"
             android:text="통계"
             android:textSize="11sp"
-            android:textColor="#999999"
+            android:textColor="#A0A0C0"
             android:gravity="center"
             android:paddingStart="6dp"
             android:paddingEnd="6dp" />
@@ -98,7 +98,7 @@
             android:layout_height="wrap_content"
             android:text="0콜 · 0원/h · 목표 100,000원"
             android:textSize="11sp"
-            android:textColor="#999999"
+            android:textColor="#A0A0C0"
             android:paddingBottom="5dp" />
 
         <FrameLayout
@@ -123,7 +123,7 @@
         android:layout_marginBottom="6dp"
         android:orientation="horizontal"
         android:padding="12dp"
-        android:background="#F5F5F5"
+        android:background="#1A1A2E"
         android:gravity="center_vertical">
 
         <LinearLayout
@@ -139,7 +139,7 @@
                 android:text="운행 모드: OFF"
                 android:textSize="15sp"
                 android:textStyle="bold"
-                android:textColor="#000000" />
+                android:textColor="#FFFFFF" />
 
             <TextView
                 android:id="@+id/drivingModeDurationTv"
@@ -147,7 +147,7 @@
                 android:layout_height="wrap_content"
                 android:text="오늘 운행: 0분"
                 android:textSize="12sp"
-                android:textColor="#666666"
+                android:textColor="#A0A0C0"
                 android:layout_marginTop="2dp" />
         </LinearLayout>
 
@@ -175,7 +175,7 @@
             android:layout_height="wrap_content"
             app:cardCornerRadius="8dp"
             app:cardElevation="1dp"
-            app:cardBackgroundColor="#FFFFFF">
+            app:cardBackgroundColor="#1A1A2E">
 
             <LinearLayout
                 android:id="@+id/recentHourlyCardInner"
@@ -189,7 +189,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="체감 시급 (최근 1시간)"
-                    android:textColor="#888888"
+                    android:textColor="#A0A0C0"
                     android:textSize="13sp" />
 
                 <TextView
@@ -198,7 +198,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="—원/h"
-                    android:textColor="#5B6ABF"
+                    android:textColor="#00FF88"
                     android:textSize="28sp"
                     android:textStyle="bold" />
 
@@ -251,7 +251,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="#FFFFFF"
+        android:background="#0A0A0F"
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
         android:paddingTop="2dp"
@@ -264,7 +264,7 @@
             android:layout_weight="1"
             android:text="상태"
             android:textSize="14sp"
-            android:textColor="#5B6ABF"
+            android:textColor="#00FF88"
             android:fontFamily="sans-serif-medium"
             android:gravity="center" />
 
@@ -275,7 +275,7 @@
             android:layout_weight="1"
             android:text="채팅"
             android:textSize="14sp"
-            android:textColor="#999999"
+            android:textColor="#A0A0C0"
             android:gravity="center" />
     </LinearLayout>
 
@@ -284,12 +284,12 @@
         android:id="@+id/tabIndicatorBar"
         android:layout_width="match_parent"
         android:layout_height="2dp"
-        android:background="#EEEEEE">
+        android:background="#1A1A2E">
         <View
             android:id="@+id/tabIndicator"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:background="#5B6ABF" />
+            android:background="#00FF88" />
     </FrameLayout>
 
     <!-- ═══ 상태 대시보드 (기본 표시) ═══ -->
@@ -300,7 +300,7 @@
         android:layout_weight="1"
         android:fillViewport="true"
         android:scrollbars="none"
-        android:background="#F5F5F5"
+        android:background="#0A0A0F"
         android:visibility="visible">
 
         <LinearLayout
@@ -317,7 +317,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:background="#FFFFFF"
+                android:background="#1A1A2E"
                 android:paddingStart="20dp"
                 android:paddingEnd="20dp"
                 android:paddingTop="16dp"
@@ -331,7 +331,7 @@
                     android:layout_height="wrap_content"
                     android:text="필터 대기 중"
                     android:textSize="16sp"
-                    android:textColor="#5B6ABF"
+                    android:textColor="#00FF88"
                     android:fontFamily="sans-serif-medium" />
 
                 <TextView
@@ -340,7 +340,7 @@
                     android:layout_height="wrap_content"
                     android:text=""
                     android:textSize="13sp"
-                    android:textColor="#666666"
+                    android:textColor="#A0A0C0"
                     android:paddingTop="4dp" />
             </LinearLayout>
 
@@ -349,7 +349,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:background="#FFFFFF"
+                android:background="#1A1A2E"
                 android:paddingStart="20dp"
                 android:paddingEnd="20dp"
                 android:paddingTop="14dp"
@@ -362,7 +362,7 @@
                     android:layout_height="wrap_content"
                     android:text="마지막 콜"
                     android:textSize="11sp"
-                    android:textColor="#999999"
+                    android:textColor="#A0A0C0"
                     android:paddingBottom="4dp" />
 
                 <TextView
@@ -371,7 +371,7 @@
                     android:layout_height="wrap_content"
                     android:text="대기 중..."
                     android:textSize="18sp"
-                    android:textColor="#333333"
+                    android:textColor="#FFFFFF"
                     android:fontFamily="sans-serif-medium" />
             </LinearLayout>
 
@@ -380,7 +380,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:background="#FFFFFF"
+                android:background="#1A1A2E"
                 android:paddingTop="14dp"
                 android:paddingBottom="8dp"
                 android:elevation="2dp">
@@ -390,7 +390,7 @@
                     android:layout_height="wrap_content"
                     android:text="최근 콜"
                     android:textSize="11sp"
-                    android:textColor="#999999"
+                    android:textColor="#A0A0C0"
                     android:paddingStart="20dp"
                     android:paddingBottom="8dp" />
 
@@ -408,7 +408,7 @@
                 android:layout_height="wrap_content"
                 android:text=""
                 android:textSize="11sp"
-                android:textColor="#BBBBBB"
+                android:textColor="#A0A0C0"
                 android:gravity="center"
                 android:paddingTop="8dp"
                 android:paddingBottom="4dp" />
@@ -444,7 +444,7 @@
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#EEEEEE" />
+            android:background="#1A1A2E" />
 
         <!-- CHAT -->
         <ScrollView
@@ -454,7 +454,7 @@
             android:layout_weight="1"
             android:fillViewport="true"
             android:scrollbars="none"
-            android:background="#F5F5F5">
+            android:background="#0A0A0F">
             <LinearLayout
                 android:id="@+id/chatLayout"
                 android:layout_width="match_parent"
@@ -495,14 +495,14 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:textSize="14sp"
-                android:textColor="#666666" />
+                android:textColor="#A0A0C0" />
             <TextView
                 android:id="@+id/detailBtn"
                 android:layout_width="wrap_content"
                 android:layout_height="28dp"
                 android:text="상세"
                 android:textSize="11sp"
-                android:textColor="#999999"
+                android:textColor="#A0A0C0"
                 android:gravity="center"
                 android:paddingStart="10dp"
                 android:paddingEnd="10dp"
@@ -515,7 +515,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="44sp"
-            android:textColor="#000000"
+            android:textColor="#FFFFFF"
             android:fontFamily="sans-serif-medium"
             android:letterSpacing="-0.03" />
 
@@ -524,7 +524,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="14sp"
-            android:textColor="#5B6ABF"
+            android:textColor="#00FF88"
             android:paddingTop="2dp"
             android:paddingBottom="14dp" />
 
@@ -552,7 +552,7 @@
                 android:layout_weight="1"
                 android:text="넘기기"
                 android:textSize="14sp"
-                android:textColor="#666666"
+                android:textColor="#A0A0C0"
                 android:gravity="center"
                 android:background="@drawable/skip_btn_bg_new" />
         </LinearLayout>
@@ -565,7 +565,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="#FFFFFF"
+        android:background="#0A0A0F"
         android:paddingStart="12dp"
         android:paddingEnd="12dp"
         android:paddingTop="6dp"
@@ -590,7 +590,7 @@
             android:layout_marginEnd="8dp"
             android:hint="메시지 입력..."
             android:textSize="15sp"
-            android:textColor="#000000"
+            android:textColor="#FFFFFF"
             android:textColorHint="#999999"
             android:background="@drawable/input_field_bg"
             android:paddingStart="16dp"

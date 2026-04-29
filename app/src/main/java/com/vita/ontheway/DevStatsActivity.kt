@@ -19,14 +19,14 @@ import java.util.*
 // ──────────────────────────────────────────
 class DevStatsActivity : AppCompatActivity() {
 
-    private val C_BG      = Color.parseColor("#07090f")
-    private val C_SURFACE = Color.parseColor("#0d1117")
-    private val C_BORDER  = Color.parseColor("#161d28")
-    private val C_ACCENT  = Color.parseColor("#00e5a0")
-    private val C_TEXT    = Color.parseColor("#dce8f0")
-    private val C_MUTED   = Color.parseColor("#4a5a6e")
-    private val C_WARN    = Color.parseColor("#f5a623")
-    private val C_URGENT  = Color.parseColor("#ff4444")
+    private val C_BG      = Color.parseColor("#0A0A0F")
+    private val C_SURFACE = Color.parseColor("#1A1A2E")
+    private val C_BORDER  = Color.parseColor("#1A1A2E")
+    private val C_ACCENT  = Color.parseColor("#00F5A0")
+    private val C_TEXT    = Color.WHITE
+    private val C_MUTED   = Color.parseColor("#A0A0C0")
+    private val C_WARN    = Color.parseColor("#FFD60A")
+    private val C_URGENT  = Color.parseColor("#FF4D6D")
 
     private val dp get() = resources.displayMetrics.density
     fun Int.dp() = (this * dp).toInt()
