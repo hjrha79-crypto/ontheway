@@ -25,7 +25,11 @@ data class FeedbackEntry(
     val deliveryRating: String? = null,
     val priceRating: String? = null,
     val judgmentRating: String? = null,
-    val entryPoint: String? = null        // "thumbs_up" / "thumbs_down"
+    val entryPoint: String? = null,       // "thumbs_up" / "thumbs_down"
+    // v3.24: 거리 차이 자동 수집
+    val platformDistanceKm: Float? = null,
+    val onthewayDistanceKm: Float? = null,
+    val distanceDiffKm: Float? = null
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("ts", ts)
@@ -45,6 +49,9 @@ data class FeedbackEntry(
         put("price_rating", priceRating ?: JSONObject.NULL)
         put("judgment_rating", judgmentRating ?: JSONObject.NULL)
         put("entry_point", entryPoint ?: JSONObject.NULL)
+        put("platform_distance_km", platformDistanceKm?.toDouble() ?: JSONObject.NULL)
+        put("ontheway_distance_km", onthewayDistanceKm?.toDouble() ?: JSONObject.NULL)
+        put("distance_diff_km", distanceDiffKm?.toDouble() ?: JSONObject.NULL)
         put("event_type", "call_feedback_submitted")
         put("source_app", "on_the_way")
     }
@@ -75,7 +82,10 @@ data class FeedbackEntry(
                 deliveryRating = json.optString("delivery_rating").takeIf { it.isNotBlank() && it != "null" },
                 priceRating = json.optString("price_rating").takeIf { it.isNotBlank() && it != "null" },
                 judgmentRating = json.optString("judgment_rating").takeIf { it.isNotBlank() && it != "null" },
-                entryPoint = json.optString("entry_point").takeIf { it.isNotBlank() && it != "null" }
+                entryPoint = json.optString("entry_point").takeIf { it.isNotBlank() && it != "null" },
+                platformDistanceKm = if (json.has("platform_distance_km") && !json.isNull("platform_distance_km")) json.optDouble("platform_distance_km").toFloat() else null,
+                onthewayDistanceKm = if (json.has("ontheway_distance_km") && !json.isNull("ontheway_distance_km")) json.optDouble("ontheway_distance_km").toFloat() else null,
+                distanceDiffKm = if (json.has("distance_diff_km") && !json.isNull("distance_diff_km")) json.optDouble("distance_diff_km").toFloat() else null
             )
         } catch (e: Exception) {
             Log.w("FeedbackLogger", "엔트리 파싱 실패: ${e.message}")
@@ -95,7 +105,9 @@ object FeedbackLogger {
             driverAction: String = "unknown",
             pickupRating: String? = null, deliveryRating: String? = null,
             priceRating: String? = null, judgmentRating: String? = null,
-            entryPoint: String? = null) {
+            entryPoint: String? = null,
+            platformDistanceKm: Float? = null, onthewayDistanceKm: Float? = null,
+            distanceDiffKm: Float? = null) {
         try {
             val entry = FeedbackEntry(
                 ts = System.currentTimeMillis(),
@@ -113,7 +125,10 @@ object FeedbackLogger {
                 deliveryRating = deliveryRating,
                 priceRating = priceRating,
                 judgmentRating = judgmentRating,
-                entryPoint = entryPoint
+                entryPoint = entryPoint,
+                platformDistanceKm = platformDistanceKm,
+                onthewayDistanceKm = onthewayDistanceKm,
+                distanceDiffKm = distanceDiffKm
             )
             val file = File(ctx.filesDir, FILE_NAME)
             file.appendText(entry.toJson().toString() + "\n")

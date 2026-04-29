@@ -35,11 +35,11 @@ class UserModeActivity : AppCompatActivity() {
     private val C_GREEN    = Color.parseColor("#06D6A0")
     private val C_RED      = Color.parseColor("#EF233C")
 
-    private lateinit var earningText: TextView
-    private lateinit var earningSubText: TextView
+    private lateinit var hourlyLabel: TextView
+    private lateinit var hourlyText: TextView
+    private lateinit var callCountText: TextView
     private lateinit var driveBtn: TextView
     private lateinit var statsCard: LinearLayout
-    private lateinit var statHourly: TextView
     private lateinit var statDistance: TextView
     private lateinit var statReturn: TextView
     private lateinit var statWait: TextView
@@ -118,22 +118,23 @@ class UserModeActivity : AppCompatActivity() {
         headerRow.addView(settingsBtn)
         container.addView(headerRow)
 
-        container.addView(TextView(this).apply {
-            text = "오늘 수익"; textSize = 14f; setTextColor(C_SUB)
+        hourlyLabel = TextView(this).apply {
+            text = "시간당 수익"; textSize = 12f; setTextColor(C_SUB)
             gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
-        })
+        }
+        container.addView(hourlyLabel)
 
-        earningText = TextView(this).apply {
-            textSize = 48f; setTextColor(C_TEXT); gravity = Gravity.CENTER
+        hourlyText = TextView(this).apply {
+            textSize = 48f; setTextColor(C_SUB); gravity = Gravity.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        container.addView(earningText)
+        container.addView(hourlyText)
 
-        earningSubText = TextView(this).apply {
+        callCountText = TextView(this).apply {
             textSize = 12f; setTextColor(C_SUB); gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, dp(24))
         }
-        container.addView(earningSubText)
+        container.addView(callCountText)
 
         // ═══ 접근성 권한 경고 배너 (운행 버튼 위) ═══
         accessibilityBanner = TextView(this).apply {
@@ -161,30 +162,18 @@ class UserModeActivity : AppCompatActivity() {
         driveBtn.setOnClickListener { toggleDrivingMode() }
         container.addView(driveBtn)
 
-        // ═══ 3. 통계 카드 (운행 중일 때만 표시) ═══
+        // ═══ 3. 통계 카드 1x3 (운행 중일 때만 표시) ═══
         statsCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
             background = roundRect(C_CARD, 12)
             setPadding(dp(16), dp(12), dp(16), dp(12))
             elevation = dp(2).toFloat()
             layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(16) }
             visibility = View.GONE
         }
-
-        val statsRow1 = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(8) }
-        }
-        statHourly = statCell("시간당", statsRow1)
-        statDistance = statCell("총 거리", statsRow1)
-        statsCard.addView(statsRow1)
-
-        val statsRow2 = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        statReturn = statCell("복귀", statsRow2)
-        statWait = statCell("대기", statsRow2)
-        statsCard.addView(statsRow2)
+        statDistance = statCell("이동거리", statsCard)
+        statReturn = statCell("복귀예상", statsCard)
+        statWait = statCell("대기", statsCard)
         container.addView(statsCard)
 
         // ═══ 4. 마지막 콜 카드 ═══
@@ -239,18 +228,20 @@ class UserModeActivity : AppCompatActivity() {
 
     // ── UI 갱신 ──
     private fun refreshUI() {
-        val earning = EarningManager.getTodayEarning(this)
         val callCount = EarningManager.getTodayCallCount(this)
         val goal = EarningManager.getGoal(this)
-        earningText.text = "${fmt.format(earning)}원"
-        earningText.setTextColor(when {
-            earning <= 0 -> C_TEXT
-            goal > 0 && earning >= goal -> C_GREEN
+        val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
+        val hourlyRate = EarningsCalculator.calculateHourlyRate(this)
+
+        // 시간당 수익 (메인 숫자)
+        hourlyText.text = hourlyRate?.let { "${fmt.format(it)}원/h" } ?: "0원/h"
+        hourlyText.setTextColor(when {
+            hourlyRate == null || hourlyRate <= 0L -> C_SUB
+            goal > 0 && hourlyRate >= goal -> C_GREEN
             else -> C_BLUE
         })
-        earningSubText.text = "오늘 ${callCount}콜"
+        callCountText.text = "오늘 ${callCount}콜"
 
-        val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
         driveBtn.text = if (isDriving) "운행 중지" else "운행 시작"
         driveBtn.background = if (isDriving)
             gradientRect(C_BTN_ST_S, C_BTN_ST_E, 16)
@@ -258,10 +249,9 @@ class UserModeActivity : AppCompatActivity() {
             gradientRect(C_BTN_GO_S, C_BTN_GO_E, 16)
         driveBtn.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), Color.parseColor("#40000000"))
 
-        // 통계 (운행 중일 때만)
+        // 3개 숫자 카드 (운행 중일 때만)
         if (isDriving) {
             statsCard.visibility = View.VISIBLE
-            statHourly.text = EarningsCalculator.calculateHourlyRate(this)?.let { "${fmt.format(it)}원" } ?: "—"
             statDistance.text = EarningsCalculator.calculateTotalDistance(this).let {
                 if (it > 0) "${"%.1f".format(it)}km" else "—"
             }

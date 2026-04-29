@@ -63,13 +63,19 @@ object CallDetailDialog {
             "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오T"; else -> platform
         }
 
-        // 내부 verdict (데이터용, 사용자 비노출)
-        val verdictKr: String
-        val verdictColor: Int
-        when {
-            verdict == "REJECT" -> { verdictKr = "REJECT"; verdictColor = Color.parseColor("#EF233C") }
-            reason.contains("잡으세요") -> { verdictKr = "ACCEPT_TOP"; verdictColor = Color.parseColor("#4361EE") }
-            else -> { verdictKr = "ACCEPT"; verdictColor = Color.parseColor("#06D6A0") }
+        // 내부 verdict (데이터용, FeedbackLogger 전달용)
+        val verdictKr = when {
+            verdict == "REJECT" -> "REJECT"
+            reason.contains("잡으세요") -> "ACCEPT_TOP"
+            else -> "ACCEPT"
+        }
+
+        // 플랫폼 색상
+        val platformColor = when (platform) {
+            "baemin" -> Color.parseColor("#FF2D55")
+            "coupang" -> Color.parseColor("#FF6B00")
+            "kakaot" -> Color.parseColor("#F7B731")
+            else -> Color.parseColor("#6C757D")
         }
 
         val container = LinearLayout(context).apply {
@@ -77,16 +83,16 @@ object CallDetailDialog {
             setPadding(dp(20), dp(16), dp(20), dp(8))
         }
 
-        // 금액 (근거 헤더 — 판정 단어 대신 금액 강조)
+        // 금액 헤더 (판단 텍스트 없음)
         container.addView(TextView(context).apply {
-            text = "${nf.format(price)}원"; textSize = 28f; setTextColor(verdictColor)
+            text = "${nf.format(price)}원"; textSize = 28f; setTextColor(Color.parseColor("#1A1A2E"))
             setTypeface(typeface, Typeface.BOLD)
         })
 
-        // 플랫폼
+        // 플랫폼 (플랫폼 고유 색상)
         container.addView(TextView(context).apply {
             text = pName; textSize = 14f
-            setTextColor(Color.parseColor("#6C757D")); setPadding(0, dp(2), 0, 0)
+            setTextColor(platformColor); setPadding(0, dp(2), 0, 0)
         })
 
         fun divider() {
@@ -170,7 +176,9 @@ object CallDetailDialog {
                 setPadding(dp(24), dp(8), dp(24), dp(8))
                 setOnClickListener {
                     val ep = if (isUp) "thumbs_up" else "thumbs_down"
-                    BidirectionalFeedbackDialog.show(context, ep) { matrix ->
+                    val otwDist = if (dist >= 0) dist.toFloat() else null
+                    BidirectionalFeedbackDialog.show(context, ep,
+                        onthewayDistanceKm = otwDist) { matrix ->
                         val fb = if (isUp) "up" else "down"
                         FeedbackLogger.log(context, platform = platform, store = storeName,
                             price = price, distanceKm = if (dist >= 0) dist else 0.0,
@@ -178,7 +186,10 @@ object CallDetailDialog {
                             feedback = fb, reasons = matrix.toReasonsList(),
                             pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
                             priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
-                            entryPoint = matrix.entryPoint)
+                            entryPoint = matrix.entryPoint,
+                            platformDistanceKm = matrix.platformDistanceKm,
+                            onthewayDistanceKm = matrix.onthewayDistanceKm,
+                            distanceDiffKm = matrix.distanceDiffKm)
                         Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
                     }
                 }

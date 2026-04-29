@@ -28,7 +28,10 @@ object BidirectionalFeedbackDialog {
         val deliveryRating: String?,
         val priceRating: String?,
         val judgmentRating: String?,
-        val entryPoint: String         // "thumbs_up" / "thumbs_down"
+        val entryPoint: String,        // "thumbs_up" / "thumbs_down"
+        val platformDistanceKm: Float? = null,
+        val onthewayDistanceKm: Float? = null,
+        val distanceDiffKm: Float? = null
     ) {
         fun toReasonsList(): List<String> {
             val list = mutableListOf<String>()
@@ -52,6 +55,8 @@ object BidirectionalFeedbackDialog {
     fun show(
         context: Context,
         entryPoint: String,
+        platformDistanceKm: Float? = null,
+        onthewayDistanceKm: Float? = null,
         onSave: (MatrixResult) -> Unit
     ) {
         try {
@@ -110,12 +115,17 @@ object BidirectionalFeedbackDialog {
 
             dialog.setOnShowListener {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val diffKm = if (platformDistanceKm != null && onthewayDistanceKm != null)
+                        platformDistanceKm - onthewayDistanceKm else null
                     val result = MatrixResult(
                         pickupRating = pickup.rating,
                         deliveryRating = delivery.rating,
                         priceRating = price.rating,
                         judgmentRating = judgment.rating,
-                        entryPoint = entryPoint
+                        entryPoint = entryPoint,
+                        platformDistanceKm = platformDistanceKm,
+                        onthewayDistanceKm = onthewayDistanceKm,
+                        distanceDiffKm = diffKm
                     )
                     onSave(result)
                     dialog.dismiss()
