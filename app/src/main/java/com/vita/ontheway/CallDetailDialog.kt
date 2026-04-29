@@ -151,7 +151,7 @@ object CallDetailDialog {
         val dummyCall = DeliveryCall(price = price, distance = if (dist >= 0) dist else null,
             isMulti = bundleCount > 1, platform = platform, bundleCount = bundleCount)
         val evidenceReason = OutputController.toEvidenceReason(reason, price, dummyCall)
-        section("근거", evidenceReason.ifEmpty { simplifyReason(reason, verdict) })
+        section("사유", evidenceReason.ifEmpty { simplifyReason(reason, verdict) })
         divider()
         section("감지", sdfHms.format(Date(ts)))
 

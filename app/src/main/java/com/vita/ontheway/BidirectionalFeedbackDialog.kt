@@ -143,9 +143,11 @@ object BidirectionalFeedbackDialog {
             })
 
             val goodBtn = TextView(context).apply {
+                text = "O"; textSize = 16f; setTextColor(C_TEXT)
                 setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
             }
             val badBtn = TextView(context).apply {
+                text = "O"; textSize = 16f; setTextColor(C_TEXT)
                 setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
             }
 

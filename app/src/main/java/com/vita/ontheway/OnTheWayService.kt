@@ -1093,7 +1093,7 @@ class OnTheWayService : AccessibilityService() {
             ctx = this,
             ttsText = evidenceMsg,
             overlayText = evidenceMsg ?: "${java.text.NumberFormat.getNumberInstance().format(call.price)}원",
-            mode = if (evidenceMsg != null) outputMode else OutputMode.SILENT,
+            mode = if (evidenceMsg != null) outputMode else OutputMode.OVERLAY_ONLY,
             tts = tts,
             ttsReady = ttsReady
         )
