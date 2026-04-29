@@ -31,7 +31,7 @@ import android.widget.TextView
 object CardOverlay {
 
     private const val TAG = "CardOverlay"
-    private const val DISMISS_MS = 1500L
+    private const val DISMISS_MS = 3000L
     private const val ANIM_OUT_MS = 200L
 
     val COLOR_GREEN = Color.parseColor("#00F5A0")
