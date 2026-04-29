@@ -40,7 +40,15 @@ object BaeminParser {
         "button",
         "image",
         "container",
-        "view"
+        "view",
+        "신규배차_끄기버튼",
+        "신규배차_거절버튼",
+        "신규배차_수락버튼",
+        "신규배차",
+        "배차수락",
+        "이전내역",
+        "픽업 완료 되었습니다",
+        "지도앱으로 검색하기"
     )
 
     /**
@@ -65,7 +73,11 @@ object BaeminParser {
         val tokens = raw.split("+", ",").map { it.trim() }
         val removed = mutableListOf<String>()
         val clean = tokens.filter { token ->
-            val isBlacklisted = token.isNotBlank() && STORE_NAME_BLACKLIST.contains(token.lowercase())
+            val isBlacklisted = token.isNotBlank() && (
+                STORE_NAME_BLACKLIST.contains(token) ||
+                STORE_NAME_BLACKLIST.contains(token.lowercase()) ||
+                token.startsWith("T2CG")
+            )
             if (isBlacklisted) removed.add(token)
             !isBlacklisted && token.isNotBlank()
         }
@@ -111,9 +123,21 @@ object BaeminParser {
         val rawStoreName = storeAfterPickup ?: storeNames.firstOrNull() ?: ""
         val storeName = sanitizeStoreName(StoreNameCleaner.validateStoreName(rawStoreName))
 
-        val destination = texts.firstOrNull { t ->
+        // 방법1: "전달지" 다음 토큰 (가장 정확)
+        val destIdx = texts.indexOfFirst { it.trim() == "전달지" }
+        val destAfterLabel = if (destIdx >= 0 && destIdx + 1 < texts.size) {
+            val candidate = texts[destIdx + 1].trim()
+            if (candidate.isNotBlank() && candidate !in UI_LABELS && !PRICE_PATTERN.containsMatchIn(candidate)
+                && !candidate.contains("원") && !candidate.contains("P"))
+                candidate else null
+        } else null
+
+        // 방법2: 기존 패턴 매칭
+        val destByPattern = texts.firstOrNull { t ->
             t.length in 3..30 && DEST_PATTERN.matches(t.trim())
-        }?.trim() ?: ""
+        }?.trim()
+
+        val destination = destAfterLabel ?: destByPattern ?: ""
 
         // 포인트 파싱 (배민커넥트 거리 지표)
         val point = POINT_PATTERN.find(joined)?.groupValues?.get(1)?.toDoubleOrNull()

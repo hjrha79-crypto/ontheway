@@ -125,9 +125,11 @@ class DeliveryNotificationService : NotificationListenerService() {
               "timeSinceConnect=${now - listenerConnectedAt}ms")
         val pkg = sbn.packageName ?: return
 
-        // v3.22: 운행 모드 OFF 절전
+        // v3.22: 운행 모드 OFF 절전 — 배민/쿠팡 콜 알림은 절전 예외
         if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING && !FeatureFlags.backgroundCapture) {
-            return
+            if (pkg != PKG_BAEMIN && pkg != PKG_COUPANG) {
+                return
+            }
         }
 
         if (pkg !in TARGET_PACKAGES) {

@@ -167,11 +167,14 @@ class OnTheWayService : AccessibilityService() {
 
         // v3.22: 운행 모드 OFF 절전 — window 재연결은 위에서 이미 처리
         if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING && !FeatureFlags.backgroundCapture) {
-            powerSaveSkipCount++
-            if (powerSaveSkipCount % 100 == 1L) {
-                OtwFileLogger.log("PowerSave", "절전 스킵 누적 ${powerSaveSkipCount}건 (pkg=$pkg)")
+            // 타겟 앱 콜 화면이면 절전 예외 (배민/쿠팡 콜 감지 유지, GPS만 꺼짐)
+            if (pkg != PKG_BAEMIN && pkg != PKG_COUPANG) {
+                powerSaveSkipCount++
+                if (powerSaveSkipCount % 100 == 1L) {
+                    OtwFileLogger.log("PowerSave", "절전 스킵 누적 ${powerSaveSkipCount}건 (pkg=$pkg)")
+                }
+                return
             }
-            return
         }
 
         // 2026-04-25 P0: 자기 패키지 즉시 차단 (자기 참조 유령 세션 방지)
