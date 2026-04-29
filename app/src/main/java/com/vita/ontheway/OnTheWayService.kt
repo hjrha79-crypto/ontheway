@@ -1005,7 +1005,7 @@ class OnTheWayService : AccessibilityService() {
         }
 
         // P0 fix: 같은 플랫폼+금액 30초 이내 = 중복 DROP (distance 무관)
-        val simpleDedupKey = "${call.platform}_${call.price}"
+        val simpleDedupKey = "${call.platform}_${call.price}_"
         val lastSimple = callSpeakHistory.entries.find { it.key.startsWith(simpleDedupKey) }
         if (lastSimple != null && now - lastSimple.value < 30_000) {
             Log.d("DeliveryFilter", "30초 중복 DROP: $simpleDedupKey")
@@ -1064,6 +1064,7 @@ class OnTheWayService : AccessibilityService() {
 
         // 판정 결과 → 상태 변수 설정 (TTS 여부와 무관하게 항상 실행)
         callSpeakHistory[callKey] = now
+        TtsDeduplicator.recordProcessed(call.platform, call.price)
         lastDeliveryReason = result.reason
         lastDeliverySessionId = callSessionEvt?.eventId
         // 내부 verdict (데이터/JudgmentMatch용 — 사용자에게는 노출 X)

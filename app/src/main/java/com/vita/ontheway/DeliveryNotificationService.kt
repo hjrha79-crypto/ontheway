@@ -186,9 +186,15 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         // 판정 + TTS
         for (call in calls) {
-            // 쿠팡: Accessibility가 10초 이내 처리했으면 NotificationListener는 스킵
+            // Accessibility가 30초 이내 처리했으면 알림 경로 전체 스킵 (DB 중복 방지)
+            if (TtsDeduplicator.wasProcessedWithin(call.platform, call.price)) {
+                Log.d("DeliveryNoti", "Accessibility 처리 완료 → 알림 스킵: ${call.platform} ${call.price}원")
+                DropReason.recordDrop(DropReason.DROP_DUPLICATE, "notification wasProcessed ${call.platform}_${call.price}")
+                continue
+            }
+            // 쿠팡: Accessibility가 10초 이내 TTS 발화했으면 스킵 (하위 호환)
             if (pkg == PKG_COUPANG && TtsDeduplicator.wasSpokenWithin("coupang", call.price, 10_000)) {
-                Log.d("DeliveryNoti", "쿠팡 Accessibility 우선 - 알림 스킵: ${call.price}원")
+                Log.d("DeliveryNoti", "쿠팡 Accessibility TTS 우선 - 알림 스킵: ${call.price}원")
                 continue
             }
             // v3.18: SessionManager 경유
@@ -196,6 +202,7 @@ class DeliveryNotificationService : NotificationListenerService() {
                 call.platform, call.storeName, call.price, "notification_posted"
             )
             val result = CallFilter.judge(call, this)
+            TtsDeduplicator.recordProcessed(call.platform, call.price)
             Log.d("DeliveryNoti", "파싱 결과: price=${call.price}, result=${result.verdict} (${result.reason})")
             FilterLog.record(this, call, result, eventId = session?.eventId, sessionState = session?.state?.name)
 
