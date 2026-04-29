@@ -87,7 +87,11 @@ object DrivingModeManager {
 
         val startedAt = prefs.getLong(KEY_STARTED_AT, 0L)
         val ongoing = if (startedAt > 0L && getMode(ctx) == DrivingMode.DRIVING) {
-            System.currentTimeMillis() - startedAt
+            val now = System.currentTimeMillis()
+            // 자정 이전 시작이면 오늘 자정부터만 계산
+            val todayMidnight = todayMidnightMs()
+            val effectiveStart = maxOf(startedAt, todayMidnight)
+            now - effectiveStart
         } else 0L
 
         return accumulated + ongoing
@@ -95,4 +99,13 @@ object DrivingModeManager {
 
     private fun todayStr() =
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+    private fun todayMidnightMs(): Long {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
 }

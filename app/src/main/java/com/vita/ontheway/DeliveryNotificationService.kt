@@ -196,6 +196,30 @@ class DeliveryNotificationService : NotificationListenerService() {
             val result = CallFilter.judge(call, this)
             Log.d("DeliveryNoti", "파싱 결과: price=${call.price}, result=${result.verdict} (${result.reason})")
             FilterLog.record(this, call, result, eventId = session?.eventId, sessionState = session?.state?.name)
+
+            // Bug 3 fix: CallLogDb에도 기록 (UserModeActivity 표시용)
+            val ctx = this
+            val notiPlatform = call.platform; val notiPrice = call.price
+            val notiDist = call.distance; val notiVerdict = result.verdict.name
+            val notiReason = result.reason; val notiStore = call.storeName
+            val notiDest = call.destination; val notiBundleCount = call.bundleCount
+            val notiIsMultiPickup = call.isMultiPickup
+            val notiUp = if (notiDist != null && notiDist > 0) (notiPrice / notiDist).toInt() else 0
+            ioExecutor.execute {
+                try {
+                    CallLogDb.get(ctx).insert(
+                        platform = notiPlatform, price = notiPrice,
+                        distance = notiDist, unitPrice = notiUp,
+                        point = null, verdict = notiVerdict,
+                        reason = notiReason, bundleCount = notiBundleCount,
+                        isMultiPickup = notiIsMultiPickup, storeName = notiStore,
+                        destination = notiDest,
+                        sourceType = V2Event.mapSourceType(notiPlatform),
+                        parsingMethod = V2Event.PARSING_NOTIFICATION
+                    )
+                } catch (e: Exception) { Log.w("DeliveryNoti", "DB 저장 실패: ${e.message}") }
+            }
+
             // 쿠팡은 알림 = 즉시 finalize
             if (call.platform == "coupang") {
                 sessionManager?.finalizeActiveSession("notification_complete")
@@ -218,7 +242,7 @@ class DeliveryNotificationService : NotificationListenerService() {
                 ctx = this,
                 ttsText = evidenceMsg,
                 overlayText = evidenceMsg ?: "${java.text.NumberFormat.getNumberInstance().format(call.price)}원",
-                mode = if (evidenceMsg != null) outputMode else OutputMode.SILENT,
+                mode = if (evidenceMsg != null) outputMode else OutputMode.OVERLAY_ONLY,
                 tts = tts,
                 ttsReady = ttsReady
             )

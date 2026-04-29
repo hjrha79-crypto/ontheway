@@ -988,6 +988,16 @@ class OnTheWayService : AccessibilityService() {
             return
         }
 
+        // P0 fix: 같은 플랫폼+금액 30초 이내 = 중복 DROP (distance 무관)
+        val simpleDedupKey = "${call.platform}_${call.price}"
+        val lastSimple = callSpeakHistory.entries.find { it.key.startsWith(simpleDedupKey) }
+        if (lastSimple != null && now - lastSimple.value < 30_000) {
+            Log.d("DeliveryFilter", "30초 중복 DROP: $simpleDedupKey")
+            OtwFileLogger.log("DeliveryFilter", "30초 중복 DROP: $simpleDedupKey")
+            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "30s dedup $simpleDedupKey")
+            return
+        }
+
         val callKey = "${call.platform}_${call.price}_${call.distance ?: 0}"
 
         // 안전 조건: 1콜 1음성
