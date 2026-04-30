@@ -165,7 +165,7 @@ object CallDetailDialog {
         // 👍👎
         divider()
         val sessionId = "s_${ts}_${price}"
-        val existingFb = FeedbackLogger.findBySessionId(context, sessionId)
+        val existingFb = FeedbackLogger.findByCall(context, ts, price)
 
         fun openFeedbackDialog(isEdit: Boolean, existingEntry: FeedbackEntry?) {
             val ep = existingEntry?.entryPoint ?: "thumbs_up"
