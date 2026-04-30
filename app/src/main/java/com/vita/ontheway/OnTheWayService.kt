@@ -249,6 +249,9 @@ class OnTheWayService : AccessibilityService() {
         // v3.0: 수락 버튼 클릭 감지 (수익 트래킹)
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val clickedText = event.text?.joinToString("") ?: event.contentDescription?.toString() ?: ""
+            if (pkg in DELIVERY_PACKAGES && clickedText.isNotBlank()) {
+                OtwFileLogger.log("CLICK", "pkg=$pkg text=${event.text} desc=${event.contentDescription}")
+            }
             if (ACCEPT_BUTTON_TEXTS.any { clickedText.contains(it) }) {
                 onAcceptDetected()
                 // v3.20: AcceptDetectionLogger
