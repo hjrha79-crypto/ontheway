@@ -32,8 +32,12 @@ class ReviewActivity : AppCompatActivity() {
     private lateinit var cardContainer: LinearLayout
     private lateinit var statusText: TextView
     private lateinit var completeBtn: TextView
+    private lateinit var loadMoreBtn: TextView
     private val cardStates = mutableMapOf<Int, String>() // index -> "ACCEPTED"/"REJECTED"
-    private var reviewEntries = listOf<ReviewEntry>()
+    private var reviewEntries = mutableListOf<ReviewEntry>()
+    private var allCandidates = listOf<ReviewEntry>()
+    private var currentPage = 1
+    private val PAGE_SIZE = 10
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,9 +45,12 @@ class ReviewActivity : AppCompatActivity() {
         window.navigationBarColor = C_BG
 
         val db = CallLogDb.get(this)
-        reviewEntries = ReviewSelector.selectTopCalls(this)
+        val allCalls = db.getTodayCallLogs() // 이미 최신순
+        val alreadyReviewed = db.getReviewedCallTimestamps()
+        allCandidates = allCalls.filter { it.callTs !in alreadyReviewed }
+        reviewEntries = allCandidates.take(PAGE_SIZE).toMutableList()
 
-        // 아직 review_log에 없는 건 삽입
+        // review_log에 삽입
         val alreadyTs = db.getReviewedCallTimestamps()
         for (entry in reviewEntries) {
             if (entry.callTs !in alreadyTs) {
@@ -60,7 +67,7 @@ class ReviewActivity : AppCompatActivity() {
         // 상단 헤더
         val dateStr = SimpleDateFormat("yyyy.MM.dd", Locale.KOREA).format(Date())
         container.addView(TextView(this).apply {
-            text = "오늘 복기 (${reviewEntries.size}건)"
+            text = "오늘 복기 (${allCandidates.size}건)"
             textSize = 22f; setTextColor(C_WHITE)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         })
@@ -70,7 +77,7 @@ class ReviewActivity : AppCompatActivity() {
             setPadding(0, dp(4), 0, dp(20))
         })
 
-        if (reviewEntries.isEmpty()) {
+        if (allCandidates.isEmpty()) {
             container.addView(TextView(this).apply {
                 text = "오늘 복기할 콜이 없습니다"
                 textSize = 16f; setTextColor(C_SUB); gravity = Gravity.CENTER
@@ -84,6 +91,18 @@ class ReviewActivity : AppCompatActivity() {
             cardContainer.addView(buildCard(idx, entry))
         }
         container.addView(cardContainer)
+
+        // 더보기 버튼
+        loadMoreBtn = TextView(this).apply {
+            text = "더보기"
+            textSize = 14f; setTextColor(C_SUB); gravity = Gravity.CENTER
+            background = roundRect(Color.parseColor("#1A1A2E"), 8)
+            setPadding(0, dp(12), 0, dp(12))
+            layoutParams = LinearLayout.LayoutParams(MP, WC).apply { topMargin = dp(8) }
+            visibility = if (allCandidates.size > PAGE_SIZE) View.VISIBLE else View.GONE
+        }
+        loadMoreBtn.setOnClickListener { loadMore() }
+        container.addView(loadMoreBtn)
 
         // 하단 상태 + 완료 버튼
         statusText = TextView(this).apply {
@@ -106,6 +125,31 @@ class ReviewActivity : AppCompatActivity() {
 
         root.addView(container)
         setContentView(root)
+        updateStatus()
+    }
+
+    private fun loadMore() {
+        currentPage++
+        val start = (currentPage - 1) * PAGE_SIZE
+        val end = minOf(start + PAGE_SIZE, allCandidates.size)
+        if (start >= allCandidates.size) return
+
+        val newEntries = allCandidates.subList(start, end)
+        val db = CallLogDb.get(this)
+        val alreadyTs = db.getReviewedCallTimestamps()
+        for (entry in newEntries) {
+            if (entry.callTs !in alreadyTs) {
+                db.insertReview(entry.callTs, entry.platform, entry.price, entry.verdict, entry.verdictMsg)
+            }
+        }
+
+        val baseIdx = reviewEntries.size
+        reviewEntries.addAll(newEntries)
+        for ((i, entry) in newEntries.withIndex()) {
+            cardContainer.addView(buildCard(baseIdx + i, entry))
+        }
+
+        if (end >= allCandidates.size) loadMoreBtn.visibility = View.GONE
         updateStatus()
     }
 
@@ -234,7 +278,9 @@ class ReviewActivity : AppCompatActivity() {
         val remaining = reviewEntries.size - cardStates.size
         if (remaining > 0) {
             statusText.text = "${remaining}건 남음"
+            statusText.setTextColor(C_SUB)
             completeBtn.isEnabled = false; completeBtn.alpha = 0.4f
+            completeBtn.background = roundRect(Color.parseColor("#333355"), 12)
         } else {
             statusText.text = "모든 콜 복기 완료!"
             statusText.setTextColor(C_GREEN)

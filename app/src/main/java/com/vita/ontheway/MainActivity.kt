@@ -445,6 +445,26 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun refreshDashboard() {
         recentCallList.removeAllViews()
 
+        // 복기 버튼 (콜 리스트 위)
+        try {
+            val unreviewedCount = CallLogDb.get(this).getTodayUnreviewed().size
+            val todayCalls = CallLogDb.get(this).getTodayCallLogs().size
+            val reviewedTs = CallLogDb.get(this).getReviewedCallTimestamps()
+            val pendingCount = if (unreviewedCount > 0) unreviewedCount
+                else if (todayCalls > 0 && reviewedTs.isEmpty()) minOf(todayCalls, 10)
+                else 0
+            if (pendingCount > 0) {
+                recentCallList.addView(TextView(this).apply {
+                    text = "\uD83D\uDCDD 복기 (${pendingCount}건)"
+                    textSize = 14f; setTextColor(Color.parseColor("#00F5A0"))
+                    gravity = Gravity.CENTER
+                    setBackgroundColor(Color.parseColor("#1A2E1A"))
+                    setPadding(0, dp(10), 0, dp(10))
+                    setOnClickListener { startActivity(Intent(this@MainActivity, ReviewActivity::class.java)) }
+                }, LinearLayout.LayoutParams(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) })
+            }
+        } catch (_: Exception) {}
+
         // v3.2: 플랫폼 필터 탭
         val platRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
