@@ -83,9 +83,9 @@ object CallDetailDialog {
             setPadding(dp(20), dp(16), dp(20), dp(8))
         }
 
-        // 금액 헤더 (판단 텍스트 없음)
+        // 금액 헤더
         container.addView(TextView(context).apply {
-            text = "${nf.format(price)}원"; textSize = 28f; setTextColor(Color.parseColor("#1A1A2E"))
+            text = "${nf.format(price)}원"; textSize = 24f; setTextColor(Color.parseColor("#1A1A2E"))
             setTypeface(typeface, Typeface.BOLD)
         })
 
@@ -157,7 +157,8 @@ object CallDetailDialog {
         val dummyCall = DeliveryCall(price = price, distance = if (dist >= 0) dist else null,
             isMulti = bundleCount > 1, platform = platform, bundleCount = bundleCount)
         val evidenceReason = OutputController.toEvidenceReason(reason, price, dummyCall)
-        section("사유", evidenceReason.ifEmpty { simplifyReason(reason, verdict) })
+        val displayReason = evidenceReason.ifEmpty { simplifyReason(reason, verdict) }
+        if (displayReason.isNotEmpty()) section("사유", displayReason)
         divider()
         section("감지", sdfHms.format(Date(ts)))
 
@@ -205,7 +206,7 @@ object CallDetailDialog {
     }
 
     private fun simplifyReason(raw: String, verdict: String): String {
-        return when {
+        val simplified = when {
             verdict == "REJECT" && raw.contains("묶음 최소") -> {
                 Regex("""묶음 최소\s*([\d,]+)원""").find(raw)?.let { "묶음 최소 ${it.groupValues[1]}원 미달" } ?: raw
             }
@@ -215,13 +216,13 @@ object CallDetailDialog {
             verdict == "REJECT" && raw.contains("최소배달료") -> {
                 Regex("""([\d,]+)원 미달""").find(raw)?.let { "최소 ${it.groupValues[1]}원 미달" } ?: raw
             }
-            verdict != "REJECT" && raw.contains("잡으세요") -> {
-                Regex("""잡으세요:\s*([가-힣]+\s*[가-힣]+)""").find(raw)?.let { "잡으세요 · ${it.groupValues[1].trim()}" } ?: "잡으세요"
-            }
             raw.contains("묶음 통과") -> "묶음 통과"
             raw.contains("최소배달료 통과") -> "통과"
             raw.length > 40 -> raw.take(40) + "..."
             else -> raw
         }
+        // FORBIDDEN_WORDS 필터: 판단형 단어 포함 시 빈 문자열 반환
+        if (OutputController.FORBIDDEN_WORDS.any { simplified.contains(it) }) return ""
+        return simplified
     }
 }
