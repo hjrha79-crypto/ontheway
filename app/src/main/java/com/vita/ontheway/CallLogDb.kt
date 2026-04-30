@@ -390,7 +390,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
         return entries
     }
 
-    /** review_log에 이미 등록된 call_ts 조회 */
+    /** review_log에 이미 등록된 call_ts 조회 (모든 상태) */
     fun getReviewedCallTimestamps(): Set<Long> {
         val todayStart = todayStartMs()
         val timestamps = mutableSetOf<Long>()
@@ -400,6 +400,42 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
         )
         cursor.use { while (it.moveToNext()) timestamps.add(it.getLong(0)) }
         return timestamps
+    }
+
+    /** 복기 완료된 (reviewed_at NOT NULL) call_ts만 조회 */
+    fun getCompletedReviewTimestamps(): Set<Long> {
+        val todayStart = todayStartMs()
+        val timestamps = mutableSetOf<Long>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT call_ts FROM review_log WHERE call_ts >= ? AND reviewed_at IS NOT NULL",
+            arrayOf(todayStart.toString())
+        )
+        cursor.use { while (it.moveToNext()) timestamps.add(it.getLong(0)) }
+        return timestamps
+    }
+
+    /** insert or update: 없으면 insert, 있으면 update */
+    fun upsertReview(callTs: Long, platform: String?, price: Int, verdict: String?, verdictMsg: String?, userAction: String, platformDistanceKm: Double? = null) {
+        val existing = readableDatabase.rawQuery(
+            "SELECT id FROM review_log WHERE call_ts=? AND price=?",
+            arrayOf(callTs.toString(), price.toString())
+        )
+        val exists = existing.use { it.moveToFirst() }
+        if (exists) {
+            updateUserAction(callTs, price, userAction, platformDistanceKm)
+        } else {
+            val cv = ContentValues().apply {
+                put("call_ts", callTs)
+                put("platform", platform)
+                put("price", price)
+                put("verdict", verdict)
+                put("verdict_msg", verdictMsg)
+                put("user_action", userAction)
+                put("reviewed_at", System.currentTimeMillis())
+                if (platformDistanceKm != null) put("platform_distance_km", platformDistanceKm)
+            }
+            writableDatabase.insert("review_log", null, cv)
+        }
     }
 
     private fun todayStartMs(): Long {

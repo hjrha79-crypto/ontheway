@@ -46,17 +46,9 @@ class ReviewActivity : AppCompatActivity() {
 
         val db = CallLogDb.get(this)
         val allCalls = db.getTodayCallLogs() // 이미 최신순
-        val alreadyReviewed = db.getReviewedCallTimestamps()
-        allCandidates = allCalls.filter { it.callTs !in alreadyReviewed }
+        val completedTs = db.getCompletedReviewTimestamps()
+        allCandidates = allCalls.filter { it.callTs !in completedTs }
         reviewEntries = allCandidates.take(PAGE_SIZE).toMutableList()
-
-        // review_log에 삽입
-        val alreadyTs = db.getReviewedCallTimestamps()
-        for (entry in reviewEntries) {
-            if (entry.callTs !in alreadyTs) {
-                db.insertReview(entry.callTs, entry.platform, entry.price, entry.verdict, entry.verdictMsg)
-            }
-        }
 
         val root = ScrollView(this).apply { setBackgroundColor(C_BG) }
         val container = LinearLayout(this).apply {
@@ -135,14 +127,6 @@ class ReviewActivity : AppCompatActivity() {
         if (start >= allCandidates.size) return
 
         val newEntries = allCandidates.subList(start, end)
-        val db = CallLogDb.get(this)
-        val alreadyTs = db.getReviewedCallTimestamps()
-        for (entry in newEntries) {
-            if (entry.callTs !in alreadyTs) {
-                db.insertReview(entry.callTs, entry.platform, entry.price, entry.verdict, entry.verdictMsg)
-            }
-        }
-
         val baseIdx = reviewEntries.size
         reviewEntries.addAll(newEntries)
         for ((i, entry) in newEntries.withIndex()) {
@@ -190,7 +174,7 @@ class ReviewActivity : AppCompatActivity() {
         val infoLine = when {
             entry.storeName.isNotBlank() -> entry.storeName
             entry.destination.isNotBlank() -> entry.destination
-            else -> "(정보 없음)"
+            else -> if (entry.platform == "coupang") "(알림 콜)" else "(정보 없음)"
         }
         val extras = mutableListOf<String>()
         if (entry.bundleCount > 1) extras.add("묶음 ${entry.bundleCount}건")
@@ -271,7 +255,8 @@ class ReviewActivity : AppCompatActivity() {
 
     private fun saveAction(entry: ReviewEntry, action: String, distanceInput: EditText?) {
         val dist = distanceInput?.text?.toString()?.toDoubleOrNull()
-        CallLogDb.get(this).updateUserAction(entry.callTs, entry.price, action, dist)
+        val db = CallLogDb.get(this)
+        db.upsertReview(entry.callTs, entry.platform, entry.price, entry.verdict, entry.verdictMsg, action, dist)
     }
 
     private fun updateStatus() {

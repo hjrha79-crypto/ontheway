@@ -447,12 +447,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         // 복기 버튼 (콜 리스트 위)
         try {
-            val unreviewedCount = CallLogDb.get(this).getTodayUnreviewed().size
-            val todayCalls = CallLogDb.get(this).getTodayCallLogs().size
-            val reviewedTs = CallLogDb.get(this).getReviewedCallTimestamps()
-            val pendingCount = if (unreviewedCount > 0) unreviewedCount
-                else if (todayCalls > 0 && reviewedTs.isEmpty()) minOf(todayCalls, 10)
-                else 0
+            val db = CallLogDb.get(this)
+            val todayCalls = db.getTodayCallLogs().size
+            val completedTs = db.getCompletedReviewTimestamps()
+            val pendingCount = todayCalls - completedTs.size
             if (pendingCount > 0) {
                 recentCallList.addView(TextView(this).apply {
                     text = "\uD83D\uDCDD 복기 (${pendingCount}건)"
