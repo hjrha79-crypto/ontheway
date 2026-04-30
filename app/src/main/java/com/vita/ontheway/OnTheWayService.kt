@@ -179,13 +179,14 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
-        // v3.22: 운행 모드 OFF 절전 — window 재연결은 위에서 이미 처리
-        if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING && !FeatureFlags.backgroundCapture) {
-            // 타겟 앱 콜 화면이면 절전 예외 (배민/쿠팡 콜 감지 유지, GPS만 꺼짐)
-            if (pkg != PKG_BAEMIN && pkg != PKG_COUPANG) {
+        // v3.23: 배민/쿠팡은 운행 모드와 무관하게 항상 처리
+        val isDeliveryApp = (pkg == PKG_BAEMIN || pkg == PKG_COUPANG)
+        if (!isDeliveryApp) {
+            // 타 앱 이벤트: 운행 OFF 시 스킵
+            if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING && !FeatureFlags.backgroundCapture) {
                 powerSaveSkipCount++
                 if (powerSaveSkipCount % 100 == 1L) {
-                    OtwFileLogger.log("PowerSave", "절전 스킵 누적 ${powerSaveSkipCount}건 (pkg=$pkg)")
+                    OtwFileLogger.log("PowerSave", "[절전] pkg=${pkg} → 스킵 (누적 ${powerSaveSkipCount}건)")
                 }
                 return
             }
