@@ -142,12 +142,28 @@ class ReviewActivity : AppCompatActivity() {
         })
         card.addView(topRow)
 
+        // 가게명/목적지/묶음/거리
+        val infoLine = when {
+            entry.storeName.isNotBlank() -> entry.storeName
+            entry.destination.isNotBlank() -> entry.destination
+            else -> "(정보 없음)"
+        }
+        val extras = mutableListOf<String>()
+        if (entry.bundleCount > 1) extras.add("묶음 ${entry.bundleCount}건")
+        if (entry.distance != null) extras.add("${String.format("%.1f", entry.distance)}km")
+        val infoText = if (extras.isNotEmpty()) "$infoLine · ${extras.joinToString(" · ")}" else infoLine
+        card.addView(TextView(this).apply {
+            text = infoText
+            textSize = 13f; setTextColor(C_WHITE)
+            setPadding(0, dp(6), 0, dp(2))
+        })
+
         // 판정 메시지
         if (entry.verdictMsg.isNotBlank()) {
             card.addView(TextView(this).apply {
                 text = entry.verdictMsg
-                textSize = 13f; setTextColor(C_SUB)
-                setPadding(0, dp(6), 0, dp(8))
+                textSize = 12f; setTextColor(C_SUB)
+                setPadding(0, dp(2), 0, dp(8))
             })
         }
 

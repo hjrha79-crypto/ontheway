@@ -365,11 +365,12 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
         val todayStart = todayStartMs()
         val entries = mutableListOf<ReviewEntry>()
         val cursor = readableDatabase.rawQuery(
-            "SELECT timestamp, platform, price, verdict, reason FROM $TABLE WHERE timestamp >= ? ORDER BY timestamp DESC",
+            "SELECT timestamp, platform, price, verdict, reason, storeName, destination, distance, bundleCount FROM $TABLE WHERE timestamp >= ? ORDER BY timestamp DESC",
             arrayOf(todayStart.toString())
         )
         cursor.use {
             while (it.moveToNext()) {
+                val dist = it.getDouble(7)
                 entries.add(ReviewEntry(
                     id = 0,
                     callTs = it.getLong(0),
@@ -378,7 +379,11 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
                     verdict = it.getString(3) ?: "",
                     verdictMsg = it.getString(4) ?: "",
                     userAction = "UNKNOWN",
-                    platformDistanceKm = null
+                    platformDistanceKm = null,
+                    storeName = it.getString(5) ?: "",
+                    destination = it.getString(6) ?: "",
+                    distance = if (dist < 0) null else dist,
+                    bundleCount = it.getInt(8)
                 ))
             }
         }
@@ -415,5 +420,9 @@ data class ReviewEntry(
     val verdict: String,
     val verdictMsg: String,
     val userAction: String,
-    val platformDistanceKm: Double?
+    val platformDistanceKm: Double?,
+    val storeName: String = "",
+    val destination: String = "",
+    val distance: Double? = null,
+    val bundleCount: Int = 1
 )
