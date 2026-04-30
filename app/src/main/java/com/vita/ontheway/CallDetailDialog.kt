@@ -178,6 +178,7 @@ object CallDetailDialog {
                     val ep = if (isUp) "thumbs_up" else "thumbs_down"
                     val otwDist = if (dist >= 0) dist.toFloat() else null
                     BidirectionalFeedbackDialog.show(context, ep,
+                        platform = platform,
                         onthewayDistanceKm = otwDist) { matrix ->
                         val fb = if (isUp) "up" else "down"
                         FeedbackLogger.log(context, platform = platform, store = storeName,

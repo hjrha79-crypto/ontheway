@@ -3,9 +3,11 @@ package com.vita.ontheway
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -58,6 +60,7 @@ object BidirectionalFeedbackDialog {
     fun show(
         context: Context,
         entryPoint: String,
+        platform: String = "",
         platformDistanceKm: Float? = null,
         onthewayDistanceKm: Float? = null,
         onSave: (MatrixResult) -> Unit
@@ -176,6 +179,41 @@ object BidirectionalFeedbackDialog {
                 }
             }
 
+            // 배민 표시 거리 입력 (배민일 때만)
+            var distanceInput: EditText? = null
+            if (platform == "baemin") {
+                root.addView(View(context).apply {
+                    setBackgroundColor(C_DIVIDER)
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
+                    ).apply { setMargins(0, dp(12), 0, dp(12)) }
+                })
+                val distRow = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(4), 0, dp(4))
+                }
+                distRow.addView(TextView(context).apply {
+                    text = "배민 표시 거리 (선택)"; textSize = 14f; setTextColor(C_TEXT)
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.2f)
+                })
+                distanceInput = EditText(context).apply {
+                    hint = "예: 3.2"; textSize = 14f; setTextColor(C_TEXT); setHintTextColor(C_SUB)
+                    inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    setBackgroundColor(Color.parseColor("#F5F5F5"))
+                    setPadding(dp(8), dp(6), dp(8), dp(6))
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f).apply {
+                        marginEnd = dp(4)
+                    }
+                }
+                distRow.addView(distanceInput)
+                distRow.addView(TextView(context).apply {
+                    text = "km"; textSize = 14f; setTextColor(C_SUB)
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                })
+                root.addView(distRow)
+            }
+
             val dialog = AlertDialog.Builder(context)
                 .setTitle("이 콜 어땠나요?")
                 .setView(root)
@@ -185,18 +223,26 @@ object BidirectionalFeedbackDialog {
 
             dialog.setOnShowListener {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                    val diffKm = if (platformDistanceKm != null && onthewayDistanceKm != null)
-                        platformDistanceKm - onthewayDistanceKm else null
+                    val userInputDist = distanceInput?.text?.toString()?.trim()
+                        ?.toFloatOrNull()
+                    val effectivePlatformDist = userInputDist ?: platformDistanceKm
+                    val diffKm = if (effectivePlatformDist != null && onthewayDistanceKm != null)
+                        effectivePlatformDist - onthewayDistanceKm else null
                     val result = MatrixResult(
                         pickupRating = pickup.rating,
                         deliveryRating = delivery.rating,
                         priceRating = price.rating,
                         judgmentRating = judgment.rating,
                         entryPoint = entryPoint,
-                        platformDistanceKm = platformDistanceKm,
+                        platformDistanceKm = effectivePlatformDist,
                         onthewayDistanceKm = onthewayDistanceKm,
                         distanceDiffKm = diffKm
                     )
+                    if (userInputDist != null) {
+                        val otwStr = if (onthewayDistanceKm != null) "${"%.1f".format(onthewayDistanceKm)}km" else "N/A"
+                        val diffStr = if (diffKm != null) "${"%.1f".format(diffKm)}km" else "N/A"
+                        OtwFileLogger.log("Feedback", "배민 표시 거리 입력: ${"%.1f".format(userInputDist)}km / GPS 이동: $otwStr / 차이: $diffStr")
+                    }
                     onSave(result)
                     dialog.dismiss()
                 }
