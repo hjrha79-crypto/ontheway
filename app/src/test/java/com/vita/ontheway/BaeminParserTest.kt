@@ -173,6 +173,24 @@ class BaeminParserTest {
     }
 
     @Test
+    fun `고객센터 - 도움이 필요하세요 포함 시 DROP`() {
+        val texts = listOf("도움이 필요하세요", "배달료 3,500원", "픽업지", "맘스터치")
+        assertNull(BaeminParser.parse(texts))
+    }
+
+    @Test
+    fun `고객센터 - 채팅문의 포함 시 DROP`() {
+        val texts = listOf("채팅문의", "배달료 5,000원")
+        assertNull(BaeminParser.parse(texts))
+    }
+
+    @Test
+    fun `고객센터 - 아래 항목을 선택해 문제를 해결하세요 포함 시 DROP`() {
+        val texts = listOf("아래 항목을 선택해 문제를 해결하세요", "배달료 4,000원", "픽업지", "테스트가게")
+        assertNull(BaeminParser.parse(texts))
+    }
+
+    @Test
     fun `정상 콜 - 신규배차_수락버튼 포함 rawText는 정상 파싱`() {
         val texts = listOf("신규배차_수락버튼", "배달료 3,500원", "픽업지", "맘스터치")
         val result = BaeminParser.parse(texts)
