@@ -7,7 +7,7 @@ object TtsDeduplicator {
 
     // 콜 처리 기록 (TTS 여부 무관, DB 중복 방지용)
     private val processedHistory = mutableMapOf<String, Long>()
-    private const val PROCESSED_DEDUP_MS = 30_000L
+    private const val PROCESSED_DEDUP_MS = 60_000L
 
     // 묶음 총액 기록 (부분 파싱 중복 방지)
     private val bundleTotals = mutableMapOf<String, Long>()  // "platform_totalPrice" → ts
@@ -61,7 +61,7 @@ object TtsDeduplicator {
         processedHistory[key] = System.currentTimeMillis()
     }
 
-    /** 30초 이내에 동일 콜이 처리된 적 있는지 확인 */
+    /** 60초 이내에 동일 콜이 처리된 적 있는지 확인 */
     fun wasProcessedWithin(platform: String, price: Int, windowMs: Long = PROCESSED_DEDUP_MS): Boolean {
         val key = "${platform}_${price}"
         val now = System.currentTimeMillis()

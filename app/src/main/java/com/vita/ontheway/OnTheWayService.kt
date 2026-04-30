@@ -1004,13 +1004,14 @@ class OnTheWayService : AccessibilityService() {
             return
         }
 
-        // P0 fix: 같은 플랫폼+금액 30초 이내 = 중복 DROP (distance 무관)
+        // P0 fix: 같은 플랫폼+금액 중복 DROP (distance 무관) — 쿠팡 60초, 기타 30초
         val simpleDedupKey = "${call.platform}_${call.price}_"
         val lastSimple = callSpeakHistory.entries.find { it.key.startsWith(simpleDedupKey) }
-        if (lastSimple != null && now - lastSimple.value < 30_000) {
-            Log.d("DeliveryFilter", "30초 중복 DROP: $simpleDedupKey")
-            OtwFileLogger.log("DeliveryFilter", "30초 중복 DROP: $simpleDedupKey")
-            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "30s dedup $simpleDedupKey")
+        val simpleDedupMs = if (call.platform == "coupang") 60_000L else 30_000L
+        if (lastSimple != null && now - lastSimple.value < simpleDedupMs) {
+            Log.d("DeliveryFilter", "${simpleDedupMs/1000}초 중복 DROP: $simpleDedupKey")
+            OtwFileLogger.log("DeliveryFilter", "${simpleDedupMs/1000}초 중복 DROP: $simpleDedupKey")
+            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "${simpleDedupMs/1000}s dedup $simpleDedupKey")
             return
         }
 
