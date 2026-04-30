@@ -1085,6 +1085,24 @@ class SettingsActivity : AppCompatActivity() {
             setPadding(dp(16), 0, dp(16), dp(12))
         })
 
+        // 복기 화면
+        devToolCard.addView(TextView(this).apply {
+            text = "복기"
+            textSize = 15f; setTextColor(Color.parseColor("#5B6ABF"))
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#F0F0F0"))
+            setPadding(0, dp(16), 0, dp(16))
+            setOnClickListener {
+                startActivity(Intent(this@SettingsActivity, ReviewActivity::class.java))
+            }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(12), dp(16), dp(12)) })
+        devToolCard.addView(TextView(this).apply {
+            text = "오늘 핵심 콜 복기 (잡았어요/안잡았어요)"
+            textSize = 12f; setTextColor(Color.parseColor("#999999"))
+            setPadding(dp(16), 0, dp(16), dp(12))
+        })
+
         root.addView(devToolCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── 버전 번호 (5회 탭 → 개발자 옵션) ───

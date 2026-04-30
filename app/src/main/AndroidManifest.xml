@@ -38,6 +38,7 @@
         <activity android:name=".DeveloperOptionsActivity" android:exported="false" />
         <activity android:name=".DevStatsActivity" android:exported="false" />
         <activity android:name=".CoupangDiagnosticViewerActivity" android:exported="false" />
+        <activity android:name=".ReviewActivity" android:exported="false" />
         <activity
             android:name=".AcceptFeedbackActivity"
             android:exported="false"

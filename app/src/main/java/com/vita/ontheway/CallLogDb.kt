@@ -8,7 +8,7 @@ import android.util.Log
 import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 4) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
 
     private val appCtx: Context = ctx.applicationContext
 
@@ -52,6 +52,25 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 4) {
         db.execSQL("CREATE INDEX idx_platform ON $TABLE(platform)")
 
         createLocationTraceTable(db)
+        createReviewLogTable(db)
+    }
+
+    private fun createReviewLogTable(db: SQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS review_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                call_ts INTEGER NOT NULL,
+                platform TEXT,
+                price INTEGER,
+                verdict TEXT,
+                verdict_msg TEXT,
+                user_action TEXT DEFAULT 'UNKNOWN',
+                platform_distance_km REAL,
+                reviewed_at INTEGER,
+                created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_review_call_ts ON review_log(call_ts)")
     }
 
     private fun createLocationTraceTable(db: SQLiteDatabase) {
@@ -83,6 +102,10 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 4) {
         if (old < 4) {
             createLocationTraceTable(db)
             Log.d("CallLogDb", "v3->v4: location_trace table created")
+        }
+        if (old < 5) {
+            createReviewLogTable(db)
+            Log.d("CallLogDb", "v4->v5: review_log table created")
         }
     }
 
@@ -265,4 +288,132 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 4) {
         cursor.close()
         return count
     }
+
+    // ═══ review_log CRUD ═══
+
+    fun insertReview(callTs: Long, platform: String?, price: Int, verdict: String?, verdictMsg: String?) {
+        val cv = ContentValues().apply {
+            put("call_ts", callTs)
+            put("platform", platform)
+            put("price", price)
+            put("verdict", verdict)
+            put("verdict_msg", verdictMsg)
+        }
+        writableDatabase.insert("review_log", null, cv)
+    }
+
+    fun updateUserAction(callTs: Long, price: Int, userAction: String, platformDistanceKm: Double? = null) {
+        val cv = ContentValues().apply {
+            put("user_action", userAction)
+            put("reviewed_at", System.currentTimeMillis())
+            if (platformDistanceKm != null) put("platform_distance_km", platformDistanceKm)
+        }
+        writableDatabase.update("review_log", cv, "call_ts=? AND price=?",
+            arrayOf(callTs.toString(), price.toString()))
+    }
+
+    fun getTodayUnreviewed(): List<ReviewEntry> {
+        val todayStart = todayStartMs()
+        val entries = mutableListOf<ReviewEntry>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, call_ts, platform, price, verdict, verdict_msg, user_action, platform_distance_km FROM review_log WHERE call_ts >= ? AND user_action = 'UNKNOWN' ORDER BY call_ts DESC",
+            arrayOf(todayStart.toString())
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                entries.add(ReviewEntry(
+                    id = it.getInt(0),
+                    callTs = it.getLong(1),
+                    platform = it.getString(2) ?: "",
+                    price = it.getInt(3),
+                    verdict = it.getString(4) ?: "",
+                    verdictMsg = it.getString(5) ?: "",
+                    userAction = it.getString(6) ?: "UNKNOWN",
+                    platformDistanceKm = if (it.isNull(7)) null else it.getDouble(7)
+                ))
+            }
+        }
+        return entries
+    }
+
+    fun getTodayReviewed(): List<ReviewEntry> {
+        val todayStart = todayStartMs()
+        val entries = mutableListOf<ReviewEntry>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT id, call_ts, platform, price, verdict, verdict_msg, user_action, platform_distance_km FROM review_log WHERE call_ts >= ? AND user_action != 'UNKNOWN' ORDER BY call_ts DESC",
+            arrayOf(todayStart.toString())
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                entries.add(ReviewEntry(
+                    id = it.getInt(0),
+                    callTs = it.getLong(1),
+                    platform = it.getString(2) ?: "",
+                    price = it.getInt(3),
+                    verdict = it.getString(4) ?: "",
+                    verdictMsg = it.getString(5) ?: "",
+                    userAction = it.getString(6) ?: "UNKNOWN",
+                    platformDistanceKm = if (it.isNull(7)) null else it.getDouble(7)
+                ))
+            }
+        }
+        return entries
+    }
+
+    /** 오늘 call_logs에서 복기 대상 로드 */
+    fun getTodayCallLogs(): List<ReviewEntry> {
+        val todayStart = todayStartMs()
+        val entries = mutableListOf<ReviewEntry>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT timestamp, platform, price, verdict, reason FROM $TABLE WHERE timestamp >= ? ORDER BY timestamp DESC",
+            arrayOf(todayStart.toString())
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                entries.add(ReviewEntry(
+                    id = 0,
+                    callTs = it.getLong(0),
+                    platform = it.getString(1) ?: "",
+                    price = it.getInt(2),
+                    verdict = it.getString(3) ?: "",
+                    verdictMsg = it.getString(4) ?: "",
+                    userAction = "UNKNOWN",
+                    platformDistanceKm = null
+                ))
+            }
+        }
+        return entries
+    }
+
+    /** review_log에 이미 등록된 call_ts 조회 */
+    fun getReviewedCallTimestamps(): Set<Long> {
+        val todayStart = todayStartMs()
+        val timestamps = mutableSetOf<Long>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT call_ts FROM review_log WHERE call_ts >= ?",
+            arrayOf(todayStart.toString())
+        )
+        cursor.use { while (it.moveToNext()) timestamps.add(it.getLong(0)) }
+        return timestamps
+    }
+
+    private fun todayStartMs(): Long {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
 }
+
+data class ReviewEntry(
+    val id: Int,
+    val callTs: Long,
+    val platform: String,
+    val price: Int,
+    val verdict: String,
+    val verdictMsg: String,
+    val userAction: String,
+    val platformDistanceKm: Double?
+)

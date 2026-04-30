@@ -33,6 +33,7 @@ class UserModeActivity : AppCompatActivity() {
     private lateinit var callCountText: TextView
     private lateinit var driveBtn: TextView
     private lateinit var accessibilityBanner: TextView
+    private lateinit var reviewBtn: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private val fmt = NumberFormat.getNumberInstance()
@@ -147,6 +148,20 @@ class UserModeActivity : AppCompatActivity() {
         driveBtn.setOnClickListener { toggleDrivingMode() }
         container.addView(driveBtn)
 
+        // ═══ 5. 복기 버튼 (운행 OFF 시) ═══
+        reviewBtn = TextView(this).apply {
+            textSize = 15f; setTextColor(C_WHITE); gravity = Gravity.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            setPadding(0, dp(14), 0, dp(14))
+            background = roundRect(Color.parseColor("#2A2A4A"), 12)
+            layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(16) }
+            visibility = View.GONE
+        }
+        reviewBtn.setOnClickListener {
+            startActivity(Intent(this, ReviewActivity::class.java))
+        }
+        container.addView(reviewBtn)
+
         root.addView(container)
         setContentView(root)
         refreshUI(); startAutoRefresh()
@@ -197,6 +212,26 @@ class UserModeActivity : AppCompatActivity() {
             gradientRect(C_BTN_GO_S, C_BTN_GO_E, 16)
 
         accessibilityBanner.visibility = if (isAccessibilityEnabled()) View.GONE else View.VISIBLE
+
+        // 복기 버튼: 운행 OFF + 미복기 콜 존재 시 표시
+        if (!isDriving) {
+            try {
+                val unreviewedCount = CallLogDb.get(this).getTodayUnreviewed().size
+                val todayCalls = CallLogDb.get(this).getTodayCallLogs().size
+                val reviewedTs = CallLogDb.get(this).getReviewedCallTimestamps()
+                val pendingCount = if (unreviewedCount > 0) unreviewedCount
+                    else if (todayCalls > 0 && reviewedTs.isEmpty()) minOf(todayCalls, 5)
+                    else 0
+                if (pendingCount > 0) {
+                    reviewBtn.text = "\uD83D\uDCDD 오늘 복기하기 (${pendingCount}건)"
+                    reviewBtn.visibility = View.VISIBLE
+                } else {
+                    reviewBtn.visibility = View.GONE
+                }
+            } catch (_: Exception) { reviewBtn.visibility = View.GONE }
+        } else {
+            reviewBtn.visibility = View.GONE
+        }
     }
 
     private fun roundRect(color: Int, radiusDp: Int): GradientDrawable {
