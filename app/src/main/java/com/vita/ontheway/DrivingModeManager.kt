@@ -75,32 +75,37 @@ object DrivingModeManager {
      * 날짜 변경 감지 + 자동 리셋.
      * 운행 중 자정을 넘겼으면:
      * - 오늘 누적 시간 0으로 리셋
-     * - startedAt을 오늘 자정으로 갱신
+     * - startedAt을 현재 시각으로 갱신 (팬텀 시간 방지)
      */
     fun checkAndResetDate(ctx: Context) {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val today = todayStr()
 
-        // 누적 시간 날짜 리셋
-        val savedDate = prefs.getString(KEY_TOTAL_DATE, "")
-        if (savedDate != null && savedDate.isNotEmpty() && savedDate != today) {
-            prefs.edit()
-                .putLong(KEY_TOTAL_TODAY, 0L)
-                .putString(KEY_TOTAL_DATE, today)
-                .apply()
-            Log.d(TAG, "날짜 변경 감지: $savedDate → $today, 누적 시간 리셋")
+        // 누적 시간 날짜 리셋 (날짜가 다르거나, 날짜 미기록인데 누적값이 남아있는 경우)
+        val savedDate = prefs.getString(KEY_TOTAL_DATE, "") ?: ""
+        if (savedDate != today) {
+            val oldTotal = prefs.getLong(KEY_TOTAL_TODAY, 0L)
+            if (savedDate.isNotEmpty() || oldTotal > 0) {
+                prefs.edit()
+                    .putLong(KEY_TOTAL_TODAY, 0L)
+                    .putString(KEY_TOTAL_DATE, today)
+                    .apply()
+                Log.d(TAG, "날짜 변경 감지: \"$savedDate\" → $today, 누적 시간 리셋 (이전 ${oldTotal / 1000}s)")
+                OtwFileLogger.log(TAG, "날짜 리셋: \"$savedDate\" → $today (이전 ${oldTotal / 1000}s)")
+            }
         }
 
         // 운행 중이��� startedAt이 오늘이 아니면 → 자정으로 갱신
         if (getMode(ctx) == DrivingMode.DRIVING) {
             val startedDate = prefs.getString(KEY_STARTED_DATE, "")
             if (startedDate != null && startedDate.isNotEmpty() && startedDate != today) {
-                val todayMidnight = todayMidnightMs()
+                val now = System.currentTimeMillis()
                 prefs.edit()
-                    .putLong(KEY_STARTED_AT, todayMidnight)
+                    .putLong(KEY_STARTED_AT, now)
                     .putString(KEY_STARTED_DATE, today)
                     .apply()
-                Log.d(TAG, "운행 중 날짜 변경: startedAt → 오늘 자정 ($todayMidnight)")
+                Log.d(TAG, "운행 중 날짜 변경: startedAt → 현재 시각 ($now)")
+                OtwFileLogger.log(TAG, "운행 중 날짜 변경: startedAt → 현재 시각")
             }
         }
     }
