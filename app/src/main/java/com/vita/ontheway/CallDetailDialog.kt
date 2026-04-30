@@ -166,6 +166,7 @@ object CallDetailDialog {
         divider()
         val sessionId = "s_${ts}_${price}"
         val existingFb = FeedbackLogger.findByCall(context, ts, price)
+        OtwFileLogger.log("FeedbackCheck", "ts=$ts price=$price sid=$sessionId → found=${existingFb != null}${if (existingFb != null) " fb=${existingFb.feedback} esid=${existingFb.sessionId}" else ""}")
 
         fun openFeedbackDialog(isEdit: Boolean, existingEntry: FeedbackEntry?) {
             val ep = existingEntry?.entryPoint ?: "thumbs_up"
