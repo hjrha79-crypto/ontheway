@@ -278,11 +278,11 @@ object BidirectionalFeedbackDialog {
         holder: RatingHolder
     ): Pair<LinearLayout, RowButtons> {
         val goodBtn = TextView(context).apply {
-            text = "O"; textSize = 16f; setTextColor(C_TEXT)
+            text = "\uD83D\uDC4D"; textSize = 18f; setTextColor(C_TEXT)
             setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
         }
         val badBtn = TextView(context).apply {
-            text = "O"; textSize = 16f; setTextColor(C_TEXT)
+            text = "\uD83D\uDC4E"; textSize = 18f; setTextColor(C_TEXT)
             setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
         }
 
