@@ -565,7 +565,22 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             row.addView(TextView(this).apply {
                 text = verdictKr; textSize = 13f; setTextColor(verdictColor)
                 setTypeface(null, Typeface.BOLD)
-            })
+            }, lp(WC, WC).apply { marginEnd = dp(6) })
+
+            // 피드백 상태 점
+            val callTs = entry.getLong("ts")
+            val fb = FeedbackLogger.findByCall(this, callTs, price)
+            val dotColor = when (fb?.feedback) {
+                "up" -> Color.parseColor("#2ECC71")
+                "down" -> Color.parseColor("#E74C3C")
+                else -> Color.parseColor("#444444")
+            }
+            row.addView(View(this).apply {
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(dotColor)
+                }
+            }, lp(dp(8), dp(8)))
 
             row.isClickable = true
             row.isFocusable = true

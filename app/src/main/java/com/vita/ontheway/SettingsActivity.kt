@@ -384,8 +384,16 @@ class SettingsActivity : AppCompatActivity() {
                     text = "$timeStr  $platformLabel  $storeTxt"
                     textSize = 13f; setTextColor(Color.BLACK); setSingleLine(true)
                 })
+                val distInfo = if (fb.platformDistanceKm != null || fb.onthewayDistanceKm != null) {
+                    val pDist = fb.platformDistanceKm?.let { "${"%.1f".format(it)}km" } ?: "-"
+                    val oDist = fb.onthewayDistanceKm?.let { "${"%.1f".format(it)}km" } ?: "-"
+                    val diff = fb.distanceDiffKm?.let { "${"%.1f".format(it)}km" } ?: "-"
+                    "$platformLabel $pDist / OTW $oDist / 차이 $diff"
+                } else {
+                    fb.reasons.joinToString(", ").ifEmpty { "-" }
+                }
                 infoCol.addView(TextView(this@SettingsActivity).apply {
-                    text = "${fmt(fb.price)}원 · ${fb.reasons.joinToString(", ").ifEmpty { "-" }}"
+                    text = "${fmt(fb.price)}원 · $distInfo"
                     textSize = 12f; setTextColor(Color.parseColor("#666666")); setSingleLine(true)
                 })
                 row.addView(infoCol, lp(0, WC, 1f))

@@ -164,6 +164,12 @@ object FeedbackLogger {
         return getAll(ctx).firstOrNull { it.sessionId == sessionId }
     }
 
+    /** 콜 타임스탬프+가격으로 피드백 조회 (콜 리스트 표시용) */
+    fun findByCall(ctx: Context, callTs: Long, price: Int): FeedbackEntry? {
+        val sessionId = "s_${callTs}_${price}"
+        return findBySessionId(ctx, sessionId)
+    }
+
     /** session_id 기준 덮어쓰기 (전체 파일 재작성) */
     fun updateBySessionId(ctx: Context, sessionId: String, newEntry: FeedbackEntry): Boolean {
         return try {

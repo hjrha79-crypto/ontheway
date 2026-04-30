@@ -164,43 +164,56 @@ object CallDetailDialog {
 
         // 👍👎
         divider()
-        val feedbackRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, dp(4))
-        }
         val sessionId = "s_${ts}_${price}"
-        fun fbBtn(emoji: String, isUp: Boolean): TextView {
-            return TextView(context).apply {
-                text = emoji; textSize = 20f; gravity = Gravity.CENTER
-                setBackgroundColor(Color.parseColor("#F0F0F0"))
-                setPadding(dp(24), dp(8), dp(24), dp(8))
-                setOnClickListener {
-                    val ep = if (isUp) "thumbs_up" else "thumbs_down"
-                    val otwDist = if (dist >= 0) dist.toFloat() else null
-                    BidirectionalFeedbackDialog.show(context, ep,
-                        platform = platform,
-                        onthewayDistanceKm = otwDist) { matrix ->
-                        val fb = if (isUp) "up" else "down"
-                        FeedbackLogger.log(context, platform = platform, store = storeName,
-                            price = price, distanceKm = if (dist >= 0) dist else 0.0,
-                            verdict = verdictKr, reason = reason, sessionId = sessionId,
-                            feedback = fb, reasons = matrix.toReasonsList(),
-                            pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
-                            priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
-                            entryPoint = matrix.entryPoint,
-                            platformDistanceKm = matrix.platformDistanceKm,
-                            onthewayDistanceKm = matrix.onthewayDistanceKm,
-                            distanceDiffKm = matrix.distanceDiffKm)
-                        Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
+        val existingFb = FeedbackLogger.findBySessionId(context, sessionId)
+
+        if (existingFb != null) {
+            // 이미 피드백 완료
+            val fbEmoji = if (existingFb.feedback == "up") "\uD83D\uDC4D" else "\uD83D\uDC4E"
+            container.addView(TextView(context).apply {
+                text = "$fbEmoji 피드백 완료"
+                textSize = 14f; setTextColor(Color.parseColor("#999999"))
+                gravity = Gravity.CENTER
+                setPadding(0, dp(8), 0, dp(8))
+            })
+        } else {
+            val feedbackRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(0, dp(4), 0, dp(4))
+            }
+            fun fbBtn(emoji: String, isUp: Boolean): TextView {
+                return TextView(context).apply {
+                    text = emoji; textSize = 20f; gravity = Gravity.CENTER
+                    setBackgroundColor(Color.parseColor("#F0F0F0"))
+                    setPadding(dp(24), dp(8), dp(24), dp(8))
+                    setOnClickListener {
+                        val ep = if (isUp) "thumbs_up" else "thumbs_down"
+                        val otwDist = if (dist >= 0) dist.toFloat() else null
+                        BidirectionalFeedbackDialog.show(context, ep,
+                            platform = platform,
+                            onthewayDistanceKm = otwDist) { matrix ->
+                            val fb = if (isUp) "up" else "down"
+                            FeedbackLogger.log(context, platform = platform, store = storeName,
+                                price = price, distanceKm = if (dist >= 0) dist else 0.0,
+                                verdict = verdictKr, reason = reason, sessionId = sessionId,
+                                feedback = fb, reasons = matrix.toReasonsList(),
+                                pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
+                                priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
+                                entryPoint = matrix.entryPoint,
+                                platformDistanceKm = matrix.platformDistanceKm,
+                                onthewayDistanceKm = matrix.onthewayDistanceKm,
+                                distanceDiffKm = matrix.distanceDiffKm)
+                            Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
+            feedbackRow.addView(fbBtn("\uD83D\uDC4D", true),
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(12) })
+            feedbackRow.addView(fbBtn("\uD83D\uDC4E", false))
+            container.addView(feedbackRow)
         }
-        feedbackRow.addView(fbBtn("\uD83D\uDC4D", true),
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(12) })
-        feedbackRow.addView(fbBtn("\uD83D\uDC4E", false))
-        container.addView(feedbackRow)
 
         AlertDialog.Builder(context).setView(container).setPositiveButton("확인", null).show()
     }
