@@ -601,7 +601,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         verdictKr: String, reason: String, feedbackSessionId: String
     ) {
         val ep = if (isUp) "thumbs_up" else "thumbs_down"
-        BidirectionalFeedbackDialog.show(this, ep) { matrix ->
+        BidirectionalFeedbackDialog.show(this, ep, platform = platformCode) { matrix ->
             val fb = if (isUp) "up" else "down"
             val existing = FeedbackLogger.findBySessionId(this, feedbackSessionId)
             if (existing != null) {
@@ -632,7 +632,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     deliveryRating = matrix.deliveryRating,
                     priceRating = matrix.priceRating,
                     judgmentRating = matrix.judgmentRating,
-                    entryPoint = matrix.entryPoint
+                    entryPoint = matrix.entryPoint,
+                    platformDistanceKm = matrix.platformDistanceKm,
+                    onthewayDistanceKm = matrix.onthewayDistanceKm,
+                    distanceDiffKm = matrix.distanceDiffKm
                 )
                 android.widget.Toast.makeText(this, "$emoji 기록됨", android.widget.Toast.LENGTH_SHORT).show()
             }
