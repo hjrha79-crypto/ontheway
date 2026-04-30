@@ -191,6 +191,7 @@ object CallDetailDialog {
                     Toast.makeText(context, "피드백 수정됨", Toast.LENGTH_SHORT).show()
                 } else {
                     val fb = if (ep == "thumbs_up") "up" else "down"
+                    val ptVal = if (point > 0) point.toFloat() else null
                     FeedbackLogger.log(context, platform = platform, store = storeName,
                         price = price, distanceKm = if (dist >= 0) dist else 0.0,
                         verdict = verdictKr, reason = reason, sessionId = sessionId,
@@ -200,7 +201,8 @@ object CallDetailDialog {
                         entryPoint = matrix.entryPoint,
                         platformDistanceKm = matrix.platformDistanceKm,
                         onthewayDistanceKm = matrix.onthewayDistanceKm,
-                        distanceDiffKm = matrix.distanceDiffKm)
+                        distanceDiffKm = matrix.distanceDiffKm,
+                        pointValue = ptVal)
                     val emoji = if (ep == "thumbs_up") "\uD83D\uDC4D" else "\uD83D\uDC4E"
                     Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
                 }
@@ -243,6 +245,7 @@ object CallDetailDialog {
                             platform = platform,
                             onthewayDistanceKm = otwDist) { matrix ->
                             val fb = if (isUp) "up" else "down"
+                            val ptVal2 = if (point > 0) point.toFloat() else null
                             FeedbackLogger.log(context, platform = platform, store = storeName,
                                 price = price, distanceKm = if (dist >= 0) dist else 0.0,
                                 verdict = verdictKr, reason = reason, sessionId = sessionId,
@@ -252,7 +255,8 @@ object CallDetailDialog {
                                 entryPoint = matrix.entryPoint,
                                 platformDistanceKm = matrix.platformDistanceKm,
                                 onthewayDistanceKm = matrix.onthewayDistanceKm,
-                                distanceDiffKm = matrix.distanceDiffKm)
+                                distanceDiffKm = matrix.distanceDiffKm,
+                                pointValue = ptVal2)
                             Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
                             onFeedbackChanged?.invoke()
                         }

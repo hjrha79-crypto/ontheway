@@ -29,7 +29,8 @@ data class FeedbackEntry(
     // v3.24: 거리 차이 자동 수집
     val platformDistanceKm: Float? = null,
     val onthewayDistanceKm: Float? = null,
-    val distanceDiffKm: Float? = null
+    val distanceDiffKm: Float? = null,
+    val pointValue: Float? = null          // 배민 포인트 (예: 27.5)
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("ts", ts)
@@ -52,6 +53,7 @@ data class FeedbackEntry(
         put("platform_distance_km", platformDistanceKm?.toDouble() ?: JSONObject.NULL)
         put("ontheway_distance_km", onthewayDistanceKm?.toDouble() ?: JSONObject.NULL)
         put("distance_diff_km", distanceDiffKm?.toDouble() ?: JSONObject.NULL)
+        put("point_value", pointValue?.toDouble() ?: JSONObject.NULL)
         put("event_type", "call_feedback_submitted")
         put("source_app", "on_the_way")
     }
@@ -85,7 +87,8 @@ data class FeedbackEntry(
                 entryPoint = json.optString("entry_point").takeIf { it.isNotBlank() && it != "null" },
                 platformDistanceKm = if (json.has("platform_distance_km") && !json.isNull("platform_distance_km")) json.optDouble("platform_distance_km").toFloat() else null,
                 onthewayDistanceKm = if (json.has("ontheway_distance_km") && !json.isNull("ontheway_distance_km")) json.optDouble("ontheway_distance_km").toFloat() else null,
-                distanceDiffKm = if (json.has("distance_diff_km") && !json.isNull("distance_diff_km")) json.optDouble("distance_diff_km").toFloat() else null
+                distanceDiffKm = if (json.has("distance_diff_km") && !json.isNull("distance_diff_km")) json.optDouble("distance_diff_km").toFloat() else null,
+                pointValue = if (json.has("point_value") && !json.isNull("point_value")) json.optDouble("point_value").toFloat() else null
             )
         } catch (e: Exception) {
             Log.w("FeedbackLogger", "엔트리 파싱 실패: ${e.message}")
@@ -107,7 +110,7 @@ object FeedbackLogger {
             priceRating: String? = null, judgmentRating: String? = null,
             entryPoint: String? = null,
             platformDistanceKm: Float? = null, onthewayDistanceKm: Float? = null,
-            distanceDiffKm: Float? = null) {
+            distanceDiffKm: Float? = null, pointValue: Float? = null) {
         try {
             val entry = FeedbackEntry(
                 ts = System.currentTimeMillis(),
@@ -128,7 +131,8 @@ object FeedbackLogger {
                 entryPoint = entryPoint,
                 platformDistanceKm = platformDistanceKm,
                 onthewayDistanceKm = onthewayDistanceKm,
-                distanceDiffKm = distanceDiffKm
+                distanceDiffKm = distanceDiffKm,
+                pointValue = pointValue
             )
             val json = entry.toJson()
             val file = File(ctx.filesDir, FILE_NAME)
