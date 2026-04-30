@@ -798,45 +798,73 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         // v3.19: 👍 👎 피드백 버튼
         addDivider()
-        val feedbackRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, dp(4))
-        }
         val callTs = entry.getLong("ts")
         val feedbackSessionId = "s_${callTs}_${price}"
-        fun makeFeedbackButton(emoji: String, isUp: Boolean): TextView {
-            return TextView(this@MainActivity).apply {
-                text = emoji
-                textSize = 20f
+        val existingFb = FeedbackLogger.findByCall(this, callTs, price)
+
+        if (existingFb != null) {
+            // 기존 피드백 있음 → 수정하기 버튼
+            val fbRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                setBackgroundColor(Color.parseColor("#F0F0F0"))
-                setPadding(dp(24), dp(8), dp(24), dp(8))
+                setPadding(0, dp(8), 0, dp(8))
+            }
+            val fbEmoji = if (existingFb.feedback == "up") "\uD83D\uDC4D" else "\uD83D\uDC4E"
+            fbRow.addView(TextView(this).apply {
+                text = "$fbEmoji 피드백 완료"
+                textSize = 14f; setTextColor(Color.parseColor("#999999"))
+            })
+            fbRow.addView(TextView(this).apply {
+                text = "수정하기"; textSize = 13f; setTextColor(Color.parseColor("#4CC9F0"))
+                setPadding(dp(12), 0, 0, 0)
                 setOnClickListener {
-                    try {
-                        // v3.20: 중복 체크
-                        val existing = FeedbackLogger.findBySessionId(this@MainActivity, feedbackSessionId)
-                        if (existing != null) {
-                            val prevFb = if (existing.feedback == "up") "\uD83D\uDC4D" else "\uD83D\uDC4E"
-                            val prevReasons = existing.reasons.joinToString(", ")
-                            android.app.AlertDialog.Builder(this@MainActivity)
-                                .setTitle("이미 기록된 피드백")
-                                .setMessage("이전: $prevFb · $prevReasons\n다시 기록하시겠어요?")
-                                .setPositiveButton("덮어쓰기") { _, _ ->
-                                    showFeedbackAndSave(isUp, emoji, platformCode, storeName, price, dist, verdictKr, reason, feedbackSessionId)
-                                }
-                                .setNegativeButton("취소", null)
-                                .show()
-                        } else {
-                            showFeedbackAndSave(isUp, emoji, platformCode, storeName, price, dist, verdictKr, reason, feedbackSessionId)
-                        }
-                    } catch (_: Exception) {}
+                    BidirectionalFeedbackDialog.show(this@MainActivity,
+                        existingFb.entryPoint ?: "thumbs_up",
+                        platform = platformCode,
+                        onthewayDistanceKm = if (dist >= 0) dist.toFloat() else null,
+                        existing = existingFb) { matrix ->
+                        val updated = existingFb.copy(
+                            reasons = matrix.toReasonsList(),
+                            pickupRating = matrix.pickupRating,
+                            deliveryRating = matrix.deliveryRating,
+                            priceRating = matrix.priceRating,
+                            judgmentRating = matrix.judgmentRating,
+                            entryPoint = matrix.entryPoint,
+                            platformDistanceKm = matrix.platformDistanceKm,
+                            onthewayDistanceKm = matrix.onthewayDistanceKm,
+                            distanceDiffKm = matrix.distanceDiffKm
+                        )
+                        val sid = existingFb.sessionId ?: feedbackSessionId
+                        FeedbackLogger.updateBySessionId(this@MainActivity, sid, updated)
+                        android.widget.Toast.makeText(this@MainActivity, "피드백 수정됨", android.widget.Toast.LENGTH_SHORT).show()
+                        refreshDashboard()
+                    }
+                }
+            })
+            container.addView(fbRow, LinearLayout.LayoutParams(MP, WC))
+        } else {
+            // 새 피드백
+            val feedbackRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                setPadding(0, dp(4), 0, dp(4))
+            }
+            fun makeFeedbackButton(emoji: String, isUp: Boolean): TextView {
+                return TextView(this@MainActivity).apply {
+                    text = emoji
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                    setBackgroundColor(Color.parseColor("#F0F0F0"))
+                    setPadding(dp(24), dp(8), dp(24), dp(8))
+                    setOnClickListener {
+                        showFeedbackAndSave(isUp, emoji, platformCode, storeName, price, dist, verdictKr, reason, feedbackSessionId)
+                    }
                 }
             }
+            feedbackRow.addView(makeFeedbackButton("\uD83D\uDC4D", true), LinearLayout.LayoutParams(WC, WC).apply { marginEnd = dp(12) })
+            feedbackRow.addView(makeFeedbackButton("\uD83D\uDC4E", false))
+            container.addView(feedbackRow, LinearLayout.LayoutParams(MP, WC))
         }
-        feedbackRow.addView(makeFeedbackButton("\uD83D\uDC4D", true), LinearLayout.LayoutParams(WC, WC).apply { marginEnd = dp(12) })
-        feedbackRow.addView(makeFeedbackButton("\uD83D\uDC4E", false))
-        container.addView(feedbackRow, LinearLayout.LayoutParams(MP, WC))
 
         // 다이얼로그 빌드
         val dlg = AlertDialog.Builder(this)
