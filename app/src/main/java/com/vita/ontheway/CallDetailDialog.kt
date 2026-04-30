@@ -22,7 +22,7 @@ object CallDetailDialog {
     private val nf = NumberFormat.getNumberInstance()
     private val sdfHms = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
-    fun showById(context: Context, rowId: Long) {
+    fun showById(context: Context, rowId: Long, onFeedbackChanged: (() -> Unit)? = null) {
         try {
             val db = CallLogDb.get(context).readableDatabase
             val cursor = db.rawQuery(
@@ -47,7 +47,7 @@ object CallDetailDialog {
                 val pickupKm = if (!it.isNull(12)) it.getDouble(12) else -1.0
 
                 showInternal(context, ts, platform, price, dist, unitPrice, point,
-                    verdict, reason, bundleCount, isMultiPickup, storeName, destination, pickupKm)
+                    verdict, reason, bundleCount, isMultiPickup, storeName, destination, pickupKm, onFeedbackChanged)
             }
         } catch (_: Exception) {}
     }
@@ -56,7 +56,7 @@ object CallDetailDialog {
         context: Context, ts: Long, platform: String, price: Int, dist: Double,
         unitPrice: Int, point: Double, verdict: String, reason: String,
         bundleCount: Int, isMultiPickup: Boolean, storeName: String,
-        destination: String, pickupKm: Double
+        destination: String, pickupKm: Double, onFeedbackChanged: (() -> Unit)? = null
     ) {
         val dp = { v: Int -> (v * context.resources.displayMetrics.density).toInt() }
         val pName = when (platform) {
@@ -167,15 +167,64 @@ object CallDetailDialog {
         val sessionId = "s_${ts}_${price}"
         val existingFb = FeedbackLogger.findBySessionId(context, sessionId)
 
+        fun openFeedbackDialog(isEdit: Boolean, existingEntry: FeedbackEntry?) {
+            val ep = existingEntry?.entryPoint ?: "thumbs_up"
+            val otwDist = if (dist >= 0) dist.toFloat() else null
+            BidirectionalFeedbackDialog.show(context, ep,
+                platform = platform,
+                onthewayDistanceKm = otwDist,
+                existing = existingEntry) { matrix ->
+                if (isEdit && existingEntry != null) {
+                    val updated = existingEntry.copy(
+                        feedback = existingEntry.feedback,
+                        reasons = matrix.toReasonsList(),
+                        pickupRating = matrix.pickupRating,
+                        deliveryRating = matrix.deliveryRating,
+                        priceRating = matrix.priceRating,
+                        judgmentRating = matrix.judgmentRating,
+                        entryPoint = matrix.entryPoint,
+                        platformDistanceKm = matrix.platformDistanceKm,
+                        onthewayDistanceKm = matrix.onthewayDistanceKm,
+                        distanceDiffKm = matrix.distanceDiffKm
+                    )
+                    FeedbackLogger.updateBySessionId(context, sessionId, updated)
+                    Toast.makeText(context, "피드백 수정됨", Toast.LENGTH_SHORT).show()
+                } else {
+                    val fb = if (ep == "thumbs_up") "up" else "down"
+                    FeedbackLogger.log(context, platform = platform, store = storeName,
+                        price = price, distanceKm = if (dist >= 0) dist else 0.0,
+                        verdict = verdictKr, reason = reason, sessionId = sessionId,
+                        feedback = fb, reasons = matrix.toReasonsList(),
+                        pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
+                        priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
+                        entryPoint = matrix.entryPoint,
+                        platformDistanceKm = matrix.platformDistanceKm,
+                        onthewayDistanceKm = matrix.onthewayDistanceKm,
+                        distanceDiffKm = matrix.distanceDiffKm)
+                    val emoji = if (ep == "thumbs_up") "\uD83D\uDC4D" else "\uD83D\uDC4E"
+                    Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
+                }
+                onFeedbackChanged?.invoke()
+            }
+        }
+
         if (existingFb != null) {
-            // 이미 피드백 완료
-            val fbEmoji = if (existingFb.feedback == "up") "\uD83D\uDC4D" else "\uD83D\uDC4E"
-            container.addView(TextView(context).apply {
-                text = "$fbEmoji 피드백 완료"
-                textSize = 14f; setTextColor(Color.parseColor("#999999"))
+            val fbRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
                 setPadding(0, dp(8), 0, dp(8))
+            }
+            val fbEmoji = if (existingFb.feedback == "up") "\uD83D\uDC4D" else "\uD83D\uDC4E"
+            fbRow.addView(TextView(context).apply {
+                text = "$fbEmoji 피드백 완료"
+                textSize = 14f; setTextColor(Color.parseColor("#999999"))
             })
+            fbRow.addView(TextView(context).apply {
+                text = "수정하기"; textSize = 13f; setTextColor(Color.parseColor("#4CC9F0"))
+                setPadding(dp(12), 0, 0, 0)
+                setOnClickListener { openFeedbackDialog(true, existingFb) }
+            })
+            container.addView(fbRow)
         } else {
             val feedbackRow = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -188,9 +237,9 @@ object CallDetailDialog {
                     setBackgroundColor(Color.parseColor("#F0F0F0"))
                     setPadding(dp(24), dp(8), dp(24), dp(8))
                     setOnClickListener {
-                        val ep = if (isUp) "thumbs_up" else "thumbs_down"
+                        val epStr = if (isUp) "thumbs_up" else "thumbs_down"
                         val otwDist = if (dist >= 0) dist.toFloat() else null
-                        BidirectionalFeedbackDialog.show(context, ep,
+                        BidirectionalFeedbackDialog.show(context, epStr,
                             platform = platform,
                             onthewayDistanceKm = otwDist) { matrix ->
                             val fb = if (isUp) "up" else "down"
@@ -205,6 +254,7 @@ object CallDetailDialog {
                                 onthewayDistanceKm = matrix.onthewayDistanceKm,
                                 distanceDiffKm = matrix.distanceDiffKm)
                             Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
+                            onFeedbackChanged?.invoke()
                         }
                     }
                 }

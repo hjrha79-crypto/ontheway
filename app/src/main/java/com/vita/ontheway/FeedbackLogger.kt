@@ -166,8 +166,12 @@ object FeedbackLogger {
 
     /** 콜 타임스탬프+가격으로 피드백 조회 (콜 리스트 표시용) */
     fun findByCall(ctx: Context, callTs: Long, price: Int): FeedbackEntry? {
+        // 정확한 sessionId 매칭 (CallDetailDialog 경로)
         val sessionId = "s_${callTs}_${price}"
-        return findBySessionId(ctx, sessionId)
+        val exact = findBySessionId(ctx, sessionId)
+        if (exact != null) return exact
+        // 시간 근접 + 가격 일치 매칭 (MainActivity 경로: sessionId = "s_{feedbackTime}")
+        return getAll(ctx).firstOrNull { it.price == price && kotlin.math.abs(it.ts - callTs) < 120_000 }
     }
 
     /** session_id 기준 덮어쓰기 (전체 파일 재작성) */

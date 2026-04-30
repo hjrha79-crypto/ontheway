@@ -64,6 +64,7 @@ object BidirectionalFeedbackDialog {
         platform: String = "",
         platformDistanceKm: Float? = null,
         onthewayDistanceKm: Float? = null,
+        existing: FeedbackEntry? = null,
         onSave: (MatrixResult) -> Unit
     ) {
         try {
@@ -92,10 +93,10 @@ object BidirectionalFeedbackDialog {
                 })
             })
 
-            // 세부 3항목
-            val pickup = RatingHolder()
-            val delivery = RatingHolder()
-            val price = RatingHolder()
+            // 세부 3항목 (기존값 복원)
+            val pickup = RatingHolder(existing?.pickupRating)
+            val delivery = RatingHolder(existing?.deliveryRating)
+            val price = RatingHolder(existing?.priceRating)
 
             val pickupRow = makeRow(context, dp, "픽업 위치", pickup)
             val deliveryRow = makeRow(context, dp, "배달 위치", delivery)
@@ -107,6 +108,14 @@ object BidirectionalFeedbackDialog {
 
             val detailRows = listOf(pickupRow.second, deliveryRow.second, priceRow.second)
 
+            // 기존값 버튼 색상 복원
+            for (row in detailRows) {
+                when (row.holder.rating) {
+                    "GOOD" -> row.goodBtn.setBackgroundColor(C_GOOD)
+                    "BAD" -> row.badBtn.setBackgroundColor(C_BAD)
+                }
+            }
+
             // 구분선
             root.addView(View(context).apply {
                 setBackgroundColor(C_DIVIDER)
@@ -116,11 +125,15 @@ object BidirectionalFeedbackDialog {
             })
 
             // 판정 자체 (별도 섹션)
-            val judgment = RatingHolder()
+            val judgment = RatingHolder(existing?.judgmentRating)
             val judgmentRow = makeRow(context, dp, "판정 자체", judgment)
             root.addView(judgmentRow.first)
 
             val judgmentButtons = judgmentRow.second
+            when (judgment.rating) {
+                "GOOD" -> judgmentButtons.goodBtn.setBackgroundColor(C_GOOD)
+                "BAD" -> judgmentButtons.badBtn.setBackgroundColor(C_BAD)
+            }
 
             // 상호 배타 로직: 판정자체 ↔ 세부항목
             fun clearDetailRows() {
@@ -200,6 +213,7 @@ object BidirectionalFeedbackDialog {
                 })
                 distanceInput = EditText(context).apply {
                     hint = "예: 3.2"; textSize = 14f; setTextColor(C_TEXT); setHintTextColor(C_SUB)
+                    existing?.platformDistanceKm?.let { setText("%.1f".format(it)) }
                     inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
                     setBackgroundColor(Color.parseColor("#F5F5F5"))
                     setPadding(dp(8), dp(6), dp(8), dp(6))
