@@ -803,7 +803,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, dp(4))
         }
-        val feedbackSessionId = "s_${System.currentTimeMillis()}"
+        val callTs = entry.getLong("ts")
+        val feedbackSessionId = "s_${callTs}_${price}"
         fun makeFeedbackButton(emoji: String, isUp: Boolean): TextView {
             return TextView(this@MainActivity).apply {
                 text = emoji
