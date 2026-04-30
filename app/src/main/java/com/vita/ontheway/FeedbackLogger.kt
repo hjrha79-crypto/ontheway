@@ -169,9 +169,14 @@ object FeedbackLogger {
         // 정확한 sessionId 매칭 (CallDetailDialog 경로)
         val sessionId = "s_${callTs}_${price}"
         val exact = findBySessionId(ctx, sessionId)
-        if (exact != null) return exact
+        if (exact != null) {
+            OtwFileLogger.log("FeedbackLookup", "findByCall 정확매칭: ts=$callTs price=$price → fb=${exact.feedback} sid=${exact.sessionId}")
+            return exact
+        }
         // 시간 근접 + 가격 일치 매칭 (MainActivity 경로: sessionId = "s_{feedbackTime}")
-        return getAll(ctx).firstOrNull { it.price == price && kotlin.math.abs(it.ts - callTs) < 120_000 }
+        val approx = getAll(ctx).firstOrNull { it.price == price && kotlin.math.abs(it.ts - callTs) < 120_000 }
+        OtwFileLogger.log("FeedbackLookup", "findByCall 근접매칭: ts=$callTs price=$price → ${if (approx != null) "fb=${approx.feedback} diff=${kotlin.math.abs(approx.ts - callTs)}ms sid=${approx.sessionId}" else "null"}")
+        return approx
     }
 
     /** session_id 기준 덮어쓰기 (전체 파일 재작성) */
