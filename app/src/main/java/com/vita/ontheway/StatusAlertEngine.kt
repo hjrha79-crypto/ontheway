@@ -10,14 +10,10 @@ import android.content.Context
  */
 object StatusAlertEngine {
 
-    private var alerted4h = false
-    private var alerted5h = false
     private var alertedGoal = false
 
     /** 운행 시작 시 리셋 */
     fun reset() {
-        alerted4h = false
-        alerted5h = false
         alertedGoal = false
     }
 
@@ -27,33 +23,8 @@ object StatusAlertEngine {
      */
     fun checkAndAlert(ctx: Context) {
         try {
-            checkDrivingTime(ctx)
             checkGoalAchieved(ctx)
         } catch (_: Exception) {}
-    }
-
-    private fun checkDrivingTime(ctx: Context) {
-        val drivingMs = DrivingModeManager.getTodayDrivingTimeMs(ctx)
-        val drivingHours = drivingMs / 3_600_000.0
-
-        if (drivingHours >= 5.0 && !alerted5h) {
-            alerted5h = true
-            alerted4h = true
-            OutputController.emitStatusAlert(
-                ctx = ctx, ttsText = "운행 5시간", overlayText = "운행 5시간",
-                tts = OnTheWayService.instance?.let { getTts(it) },
-                ttsReady = OnTheWayService.instance?.let { isTtsReady(it) } ?: false
-            )
-            OtwFileLogger.log("StatusAlert", "운행 5시간 경고 발생")
-        } else if (drivingHours >= 4.0 && !alerted4h) {
-            alerted4h = true
-            OutputController.emitStatusAlert(
-                ctx = ctx, ttsText = "운행 4시간", overlayText = "운행 4시간",
-                tts = OnTheWayService.instance?.let { getTts(it) },
-                ttsReady = OnTheWayService.instance?.let { isTtsReady(it) } ?: false
-            )
-            OtwFileLogger.log("StatusAlert", "운행 4시간 경고 발생")
-        }
     }
 
     private fun checkGoalAchieved(ctx: Context) {
