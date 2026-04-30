@@ -102,6 +102,10 @@ class OnTheWayService : AccessibilityService() {
         val packageEventCount = mutableMapOf<String, Int>()
     }
 
+    // 서비스 시작 시각 (재시작 시 오래된 이벤트 DROP용)
+    private var serviceStartTime: Long = 0L
+    private var serviceStartUptime: Long = 0L
+
     // 1콜 1음성: callKey → 마지막 발화 시각
     private val callSpeakHistory = mutableMapOf<String, Long>()
     // callKey → 최초 감지 시각 (3초 안전창)
@@ -153,6 +157,12 @@ class OnTheWayService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
         val pkg = event.packageName?.toString() ?: return
+
+        // 서비스 시작 5초 이전 이벤트 DROP (재시작 시 오래된 큐 방지)
+        if (serviceStartUptime > 0 && event.eventTime < serviceStartUptime - 5_000) {
+            DropReason.recordDrop(DropReason.DROP_STALE, "eventTime=${event.eventTime} < startUptime=$serviceStartUptime", pkg)
+            return
+        }
 
         // [Hotfix-2 P0-1] 타겟 앱 윈도우 상태 변경 감지 + 자동 재연결
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
@@ -1352,6 +1362,8 @@ class OnTheWayService : AccessibilityService() {
 
     override fun onInterrupt() { instance = null }
     override fun onServiceConnected() {
+        serviceStartTime = System.currentTimeMillis()
+        serviceStartUptime = android.os.SystemClock.uptimeMillis()
         Log.d(TAG_ACCESSIBILITY, "onServiceConnected: 접근성 서비스 연결됨, refreshCount 리셋")
         OtwFileLogger.log(TAG_ACCESSIBILITY, "onServiceConnected: 접근성 서비스 연결됨, refreshCount 리셋")
         refreshCount = 0

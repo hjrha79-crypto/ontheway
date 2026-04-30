@@ -70,9 +70,12 @@ class DeliveryNotificationService : NotificationListenerService() {
         super.onDestroy()
     }
 
+    private var serviceStartTime: Long = 0L
+
     override fun onListenerConnected() {
         super.onListenerConnected()
         val now = System.currentTimeMillis()
+        serviceStartTime = now
         listenerConnectedAt = now
         lastConnectedTime.set(now)
         val rebindCount = rebindRequestCount.get()
@@ -134,6 +137,12 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         if (pkg !in TARGET_PACKAGES) {
             DropReason.recordDrop(DropReason.DROP_PACKAGE_FILTER, "notification non-target", pkg)
+            return
+        }
+
+        // 서비스 시작 5초 이전에 게시된 알림 DROP (재시작 시 오래된 큐 방지)
+        if (serviceStartTime > 0 && sbn.postTime < serviceStartTime - 5_000) {
+            DropReason.recordDrop(DropReason.DROP_STALE, "postTime=${sbn.postTime} < startTime=$serviceStartTime", pkg)
             return
         }
 
