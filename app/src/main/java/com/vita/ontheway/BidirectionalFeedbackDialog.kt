@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 
 /**
@@ -214,9 +215,13 @@ object BidirectionalFeedbackDialog {
                 root.addView(distRow)
             }
 
+            val scrollView = ScrollView(context).apply {
+                addView(root)
+            }
+
             val dialog = AlertDialog.Builder(context)
                 .setTitle("이 콜 어땠나요?")
-                .setView(root)
+                .setView(scrollView)
                 .setPositiveButton("저장", null)
                 .setNegativeButton("취소", null)
                 .create()
