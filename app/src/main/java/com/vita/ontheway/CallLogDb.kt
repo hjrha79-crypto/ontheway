@@ -262,6 +262,19 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
         } catch (e: Exception) { 0 }
     }
 
+    /** 쿠팡 Accessibility에서 가게명 파싱 시 NLS 레코드 업데이트 */
+    fun updateStoreNameIfEmpty(platform: String, price: Int, storeName: String) {
+        if (storeName.isBlank()) return
+        try {
+            writableDatabase.execSQL(
+                "UPDATE $TABLE SET storeName=? WHERE id=(SELECT id FROM $TABLE WHERE platform=? AND price=? AND (storeName IS NULL OR storeName='') ORDER BY timestamp DESC LIMIT 1)",
+                arrayOf(storeName, platform, price.toString())
+            )
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "updateStoreNameIfEmpty 실패: ${e.message}")
+        }
+    }
+
     /** 90일 이상 오래된 데이터 정리 */
     fun cleanup() {
         val cutoff = System.currentTimeMillis() - 90L * 24 * 3600 * 1000

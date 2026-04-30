@@ -1184,6 +1184,10 @@ class OnTheWayService : AccessibilityService() {
                     parsingMethod = dbParsingMethod,
                     driverAction = dbDriverAction
                 )
+                // 쿠팡: Accessibility에서 가게명 있으면 NLS 레코드도 업데이트
+                if (dbPlatform == "coupang" && dbStoreName.isNotBlank()) {
+                    CallLogDb.get(ctx).updateStoreNameIfEmpty("coupang", dbPrice, dbStoreName)
+                }
             } catch (e: Exception) { Log.w("DeliveryFilter", "DB 저장 실패: ${e.message}") }
         }
 
