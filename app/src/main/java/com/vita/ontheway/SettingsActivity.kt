@@ -388,7 +388,7 @@ class SettingsActivity : AppCompatActivity() {
                     val pDist = fb.platformDistanceKm?.let { "${"%.1f".format(it)}km" } ?: "-"
                     val oDist = fb.onthewayDistanceKm?.let { "${"%.1f".format(it)}km" } ?: "-"
                     val diff = fb.distanceDiffKm?.let { "${"%.1f".format(it)}km" } ?: "-"
-                    "$platformLabel $pDist / OTW $oDist / 차이 $diff"
+                    "${platformLabel}표시 $pDist / OTW계산 $oDist / 차이 $diff"
                 } else {
                     fb.reasons.joinToString(", ").ifEmpty { "-" }
                 }
