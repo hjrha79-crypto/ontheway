@@ -10,6 +10,7 @@ enum class DropReason {
     DROP_COOLDOWN,         // 쿨다운 중
     DROP_NOT_DRIVING,      // 미사용 (나중 확장)
     DROP_SCREEN_FILTER,    // 대기/비콜 화면 필터
+    DROP_HISTORY_SCREEN,   // 배민 이전내역(완료 배달 목록) 화면
     DROP_STALE,            // 서비스 시작 전 오래된 이벤트
     DROP_OTHER;            // 기타
 

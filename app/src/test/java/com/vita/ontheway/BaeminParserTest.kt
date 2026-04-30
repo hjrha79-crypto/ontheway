@@ -18,7 +18,7 @@ class BaeminParserTest {
         )
         val result = BaeminParser.parse(texts)
         assertNotNull("파싱 결과가 비어 있음", result)
-        if (result.isNotEmpty()) {
+        if (result!!.isNotEmpty()) {
             assertEquals(1.065, result[0].distance!!, 0.01)
         }
     }
@@ -31,7 +31,7 @@ class BaeminParserTest {
             "픽업지",
             "테스트가게"
         )
-        val result = BaeminParser.parse(texts)
+        val result = BaeminParser.parse(texts)!!
         if (result.isNotEmpty()) {
             assertEquals(4.3, result[0].distance!!, 0.01)
         }
@@ -45,7 +45,7 @@ class BaeminParserTest {
             "픽업지",
             "테스트가게"
         )
-        val result = BaeminParser.parse(texts)
+        val result = BaeminParser.parse(texts)!!
         if (result.isNotEmpty()) {
             assertNull(result[0].distance)
         }
@@ -59,7 +59,7 @@ class BaeminParserTest {
             "픽업지",
             "먼가게"
         )
-        val result = BaeminParser.parse(texts)
+        val result = BaeminParser.parse(texts)!!
         if (result.isNotEmpty()) {
             assertEquals(3.691, result[0].distance!!, 0.01)
         }
@@ -73,7 +73,7 @@ class BaeminParserTest {
             "픽업지",
             "근거리가게"
         )
-        val result = BaeminParser.parse(texts)
+        val result = BaeminParser.parse(texts)!!
         if (result.isNotEmpty()) {
             assertEquals(0.5, result[0].distance!!, 0.01)
         }
@@ -128,7 +128,7 @@ class BaeminParserTest {
             "전달지",
             "경기 광주시 태성로 25 (태전동)"
         )
-        val result = BaeminParser.parse(texts)
+        val result = BaeminParser.parse(texts)!!
         assertTrue(result.isNotEmpty())
         assertEquals("경기 광주시 태성로 25 (태전동)", result[0].destination)
     }
@@ -141,8 +141,43 @@ class BaeminParserTest {
             "맘스터치",
             "광주구 태전동 123"
         )
-        val result = BaeminParser.parse(texts)
+        val result = BaeminParser.parse(texts)!!
         assertTrue(result.isNotEmpty())
         assertEquals("광주구 태전동 123", result[0].destination)
+    }
+
+    // ── 이전내역 화면 DROP 테스트 ──
+
+    @Test
+    fun `이전내역 - 배정받은 배달이 없습니다 포함 시 DROP`() {
+        val texts = listOf("배정받은 배달이 없습니다", "배달료 3,500원", "픽업지", "맘스터치")
+        assertNull(BaeminParser.parse(texts))
+    }
+
+    @Test
+    fun `이전내역 - 신규배차가 중지되었습니다 포함 시 DROP`() {
+        val texts = listOf("신규배차가 중지되었습니다", "배달료 5,000원")
+        assertNull(BaeminParser.parse(texts))
+    }
+
+    @Test
+    fun `이전내역 - 배달리스트 포함 시 DROP`() {
+        val texts = listOf("배달리스트", "맘스터치", "배달료 3,500원")
+        assertNull(BaeminParser.parse(texts))
+    }
+
+    @Test
+    fun `이전내역 - 픽업 완료 되었습니다 포함 시 DROP`() {
+        val texts = listOf("픽업 완료 되었습니다", "배달료 7,000원", "픽업지", "테스트가게")
+        assertNull(BaeminParser.parse(texts))
+    }
+
+    @Test
+    fun `정상 콜 - 신규배차_수락버튼 포함 rawText는 정상 파싱`() {
+        val texts = listOf("신규배차_수락버튼", "배달료 3,500원", "픽업지", "맘스터치")
+        val result = BaeminParser.parse(texts)
+        assertNotNull("정상 콜이 DROP되면 안됨", result)
+        assertTrue(result!!.isNotEmpty())
+        assertEquals(3500, result[0].price)
     }
 }

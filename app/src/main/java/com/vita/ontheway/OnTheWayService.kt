@@ -799,6 +799,10 @@ class OnTheWayService : AccessibilityService() {
                 // 파싱하여 세션에 데이터 피딩
                 PerfTrace.mark("BAEMIN", "parse_start")
                 val sessionCalls = BaeminParser.parse(texts)
+                if (sessionCalls == null) {
+                    DropReason.recordDrop(DropReason.DROP_HISTORY_SCREEN, "history screen in bundle session", pkg)
+                    return
+                }
                 PerfTrace.mark("BAEMIN", "parse_end", "results=${sessionCalls.size}")
                 val sessionPoint = BaeminParser.parsePoint(texts)
                 for (call in sessionCalls) {
@@ -856,7 +860,10 @@ class OnTheWayService : AccessibilityService() {
         PerfTrace.mark(platformTag, "parse_start")
         val calls = when (pkg) {
             PKG_COUPANG -> CoupangParser.parse(texts)
-            PKG_BAEMIN  -> BaeminParser.parse(texts)
+            PKG_BAEMIN  -> BaeminParser.parse(texts) ?: run {
+                DropReason.recordDrop(DropReason.DROP_HISTORY_SCREEN, "history screen detected", pkg)
+                return
+            }
             else        -> return
         }
         PerfTrace.mark(platformTag, "parse_end", "results=${calls.size}")

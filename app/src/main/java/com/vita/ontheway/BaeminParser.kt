@@ -30,6 +30,14 @@ object BaeminParser {
     private val BUNDLE_PATTERN = Regex("묶음|\\d+건", RegexOption.IGNORE_CASE)
     private val BUNDLE_COUNT_PATTERN = Regex("(\\d+)\\s*건")
 
+    // 이전내역(완료된 배달 목록) 화면 키워드 — 신규 콜 오인 방지
+    val HISTORY_SCREEN_KEYWORDS = listOf(
+        "배정받은 배달이 없습니다",
+        "신규배차가 중지되었습니다",
+        "배달리스트",
+        "픽업 완료 되었습니다"
+    )
+
     // 가게명 오염 블랙리스트: accessibility tree에서 혼입되는 UI 컴포넌트 텍스트
     private val STORE_NAME_BLACKLIST = setOf(
         "touchable-image-container",
@@ -87,9 +95,15 @@ object BaeminParser {
         return clean.joinToString("+")
     }
 
-    fun parse(texts: List<String>): List<DeliveryCall> {
+    fun parse(texts: List<String>): List<DeliveryCall>? {
         val results = mutableListOf<DeliveryCall>()
         val joined = texts.joinToString(" ")
+
+        // 이전내역 화면 감지 → DROP
+        if (HISTORY_SCREEN_KEYWORDS.any { joined.contains(it) }) {
+            OtwFileLogger.log("BaeminParser", "DROP_HISTORY_SCREEN")
+            return null
+        }
 
         // v3.17: 가게명 추출 — "픽업지" 다음 토큰 우선, 기존 패턴 매칭 보조
         val UI_LABELS = setOf(

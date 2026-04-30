@@ -37,7 +37,7 @@ class CallSimulationTest {
     @Test
     fun `01 배민 저가 3000원 8P ACCEPT`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 3,000원", "8.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertEquals(3000, calls[0].price)
         assertEquals(8.0, calls[0].point!!, 0.01)
@@ -50,7 +50,7 @@ class CallSimulationTest {
     @Test
     fun `02 배민 중가 5500원 10P ACCEPT`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 5,500원", "10.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertEquals(5500, calls[0].price)
         // 10P = 2.5km, 단가 2200원/km >= 2000 -> ACCEPT
@@ -62,7 +62,7 @@ class CallSimulationTest {
     @Test
     fun `03 배민 고가 10000원 16P ACCEPT`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 10,000원", "16.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // 10000 >= 7000 -> 고액 보호 -> ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
@@ -73,7 +73,7 @@ class CallSimulationTest {
     @Test
     fun `04 배민 고액보호 7500원 20P ACCEPT`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 7,500원", "20.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // 7500 >= 7000 -> 고액 보호 -> ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
@@ -84,7 +84,7 @@ class CallSimulationTest {
     @Test
     fun `05 배민 저포인트 3500원 6P ACCEPT`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 3,500원", "6.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertEquals(6.0, calls[0].point!!, 0.01)
         // 6P = 1.5km, 단가 2333원/km >= 2000 -> ACCEPT
@@ -96,7 +96,7 @@ class CallSimulationTest {
     @Test
     fun `06 배민 고포인트 4000원 30P REJECT 단가미달`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 4,000원", "30.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // v3.21: 30P→4.5km, 단가 889원/km < 2000 → REJECT 단가 미달
         val result = CallFilter.judge(calls[0], ctx)
@@ -111,7 +111,7 @@ class CallSimulationTest {
     fun `07 배민 묶음 2건 단일픽업 5500원 REJECT 건당미달`() {
         // 묶음은 results.size >= 2 로 판정, bundleCount = results.size
         val texts = listOf("맘스터치", "배달료 3,000원", "배달료 2,500원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertTrue("묶음 판정 실패", calls[0].isMulti)
         assertEquals(5500, calls[0].price)
@@ -125,7 +125,7 @@ class CallSimulationTest {
     @Test
     fun `08 배민 묶음 2건 단일픽업 4500원 REJECT`() {
         val texts = listOf("맘스터치", "배달료 2,500원", "배달료 2,000원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertEquals(4500, calls[0].price)
         // 4500 < bundleMin(5500) -> REJECT
@@ -137,7 +137,7 @@ class CallSimulationTest {
     @Test
     fun `09 배민 묶음 2건 다중픽업 7000원 REJECT 건당미달`() {
         val texts = listOf("맘스터치", "버거킹", "배달료 4,000원", "배달료 3,000원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertTrue("다중픽업 판정 실패", calls[0].isMultiPickup)
         assertEquals(7000, calls[0].price)
@@ -150,7 +150,7 @@ class CallSimulationTest {
     @Test
     fun `10 배민 묶음 3건 8000원 REJECT 건당미달`() {
         val texts = listOf("맘스터치", "배달료 3,000원", "배달료 2,800원", "배달료 2,200원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertEquals(8000, calls[0].price)
         assertEquals(3, calls[0].bundleCount)
@@ -163,7 +163,7 @@ class CallSimulationTest {
     @Test
     fun `11 배민 묶음 3건 7000원 REJECT`() {
         val texts = listOf("맘스터치", "배달료 2,500원", "배달료 2,300원", "배달료 2,200원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertEquals(7000, calls[0].price)
         // 7000 < bundleMin(8000) -> REJECT
@@ -178,7 +178,7 @@ class CallSimulationTest {
     fun `12 배민 미션 완료시최대 비콜`() {
         // "완료 시 최대" 는 OnTheWayService에서 스킵 + 파서에 "배달료" 없어 파싱 불가
         val texts = listOf("완료 시 최대", "20,000원", "미션 전체보기")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("비콜이어야 함 (미션 텍스트)", calls.isEmpty())
         println("12 PASS: 배민 미션 텍스트 비콜 필터링 성공")
     }
@@ -187,7 +187,7 @@ class CallSimulationTest {
     fun `13 배민 비콜 배달을시작해`() {
         // "배달을 시작해" 는 OnTheWayService에서 스킵 + 파서에 "배달료" 없어 파싱 불가
         val texts = listOf("배달을 시작해", "신규배차를 켜세요")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("비콜이어야 함", calls.isEmpty())
         println("13 PASS: 배민 비콜 필터링 성공")
     }
@@ -226,7 +226,7 @@ class CallSimulationTest {
     @Test
     fun `17 거리없음 3500원 ACCEPT`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 3,500원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertNull("거리 없어야 함", calls[0].distance)
         assertNull("포인트 없어야 함", calls[0].point)
@@ -239,7 +239,7 @@ class CallSimulationTest {
     @Test
     fun `18 거리없음 2500원 REJECT`() {
         val texts = listOf("맘스터치", "역삼동", "배달료 2,500원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // 2500 < 3000(minPrice) -> REJECT
         val result = CallFilter.judge(calls[0], ctx)
@@ -252,7 +252,7 @@ class CallSimulationTest {
     @Test
     fun `21 배민 단가 경계 4000원 8P 정확히 2000원km ACCEPT`() {
         val texts = listOf("맘스터치", "배달료 4,000원", "8.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // 8P = 2.0km, 단가 4000/2.0 = 2000 >= 2000 -> ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
@@ -263,7 +263,7 @@ class CallSimulationTest {
     @Test
     fun `22 배민 포인트구간 경계 16P 4000원 REJECT 단가미달`() {
         val texts = listOf("맘스터치", "배달료 4,000원", "16.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // v3.21: 16P→2.4km, 단가 1667원/km < 2000 → REJECT 단가 미달
         val result = CallFilter.judge(calls[0], ctx)
@@ -274,7 +274,7 @@ class CallSimulationTest {
     @Test
     fun `23 배민 고액 8000원 12P ACCEPT`() {
         val texts = listOf("맘스터치", "배달료 8,000원", "12.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // 8000 >= 7000 -> 고액 보호 -> ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
@@ -286,7 +286,7 @@ class CallSimulationTest {
     @Test
     fun `24 배민 고액보호 7500원 12P ACCEPT`() {
         val texts = listOf("맘스터치", "배달료 7,500원", "12.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // 7500 >= 7000 -> 고액 보호 -> ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
@@ -299,7 +299,7 @@ class CallSimulationTest {
     @Test
     fun `25 배민 포인트 경계 15P 3000원 REJECT 단가미달`() {
         val texts = listOf("맘스터치", "배달료 3,000원", "15.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // v3.21: 15P→2.25km, 단가 1333원/km < 2000 → REJECT 단가 미달
         val result = CallFilter.judge(calls[0], ctx)
@@ -310,7 +310,7 @@ class CallSimulationTest {
     @Test
     fun `26 배민 포인트 16P 구간 3500원 REJECT 단가미달`() {
         val texts = listOf("맘스터치", "배달료 3,500원", "16.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // v3.21: 16P→2.4km, 단가 1458원/km < 2000 → REJECT 단가 미달
         val result = CallFilter.judge(calls[0], ctx)
@@ -321,7 +321,7 @@ class CallSimulationTest {
     @Test
     fun `27 배민 포인트 경계 25P 4000원 REJECT 단가미달`() {
         val texts = listOf("맘스터치", "배달료 4,000원", "25.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // v3.21: 25P→3.75km, 단가 1067원/km < 2000 → REJECT 단가 미달
         val result = CallFilter.judge(calls[0], ctx)
@@ -332,7 +332,7 @@ class CallSimulationTest {
     @Test
     fun `28 배민 포인트 26P 구간 4500원 REJECT 단가미달`() {
         val texts = listOf("맘스터치", "배달료 4,500원", "26.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // v3.21: 26P→3.9km, 단가 1154원/km < 2000 → REJECT 단가 미달
         val result = CallFilter.judge(calls[0], ctx)
@@ -345,7 +345,7 @@ class CallSimulationTest {
     @Test
     fun `29 배민 묶음 2건 다중픽업 6900원 REJECT`() {
         val texts = listOf("맘스터치", "버거킹", "배달료 3,900원", "배달료 3,000원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertTrue("다중픽업 판정 실패", calls[0].isMultiPickup)
         assertEquals(6900, calls[0].price)
@@ -358,7 +358,7 @@ class CallSimulationTest {
     @Test
     fun `30 배민 묶음 3건 다중픽업 10000원 REJECT 건당미달`() {
         val texts = listOf("맘스터치", "버거킹", "배달료 4,000원", "배달료 3,500원", "배달료 2,500원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertTrue("다중픽업 판정 실패", calls[0].isMultiPickup)
         assertEquals(10000, calls[0].price)
@@ -371,7 +371,7 @@ class CallSimulationTest {
     @Test
     fun `31 배민 묶음 3건 다중픽업 9500원 REJECT`() {
         val texts = listOf("맘스터치", "버거킹", "배달료 4,000원", "배달료 3,300원", "배달료 2,200원")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         assertTrue("다중픽업 판정 실패", calls[0].isMultiPickup)
         assertEquals(9500, calls[0].price)
@@ -424,7 +424,7 @@ class CallSimulationTest {
     @Test
     fun `35 배민 비콜 가게정보`() {
         val texts = listOf("가게정보", "맛집", "영업시간")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("비콜이어야 함", calls.isEmpty())
         println("35 PASS: 배민 가게정보 비콜 필터링 성공")
     }
@@ -432,7 +432,7 @@ class CallSimulationTest {
     @Test
     fun `36 배민 비콜 주행기록기반`() {
         val texts = listOf("주행기록 기반", "운행 분석")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("비콜이어야 함", calls.isEmpty())
         println("36 PASS: 배민 주행기록 비콜 필터링 성공")
     }
@@ -440,7 +440,7 @@ class CallSimulationTest {
     @Test
     fun `37 배민 비콜 배달완료`() {
         val texts = listOf("배달 완료", "수고하셨습니다")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("비콜이어야 함", calls.isEmpty())
         println("37 PASS: 배민 배달완료 비콜 필터링 성공")
     }
@@ -464,7 +464,7 @@ class CallSimulationTest {
     @Test
     fun `40 배민 극저가 1500원 4P REJECT`() {
         val texts = listOf("맘스터치", "배달료 1,500원", "4.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
         // 4P=1km, pointMinPrice=3000, 1500<3000 -> REJECT
         val result = CallFilter.judge(calls[0], ctx)
@@ -954,7 +954,7 @@ class CallSimulationTest {
     @Test
     fun `73 배민 단건 픽업지 다음에 가게명 추출`() {
         val texts = listOf("배민배달", "픽업지", "맘스터치 BEEF 광주태전점", "전달지", "고산동", "배달료 4,300원", "16.8P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 성공", calls.isNotEmpty())
         assertEquals("맘스터치 BEEF 광주태전점", calls[0].storeName)
         println("73 PASS: 픽업지 → '${calls[0].storeName}' 추출")
@@ -963,7 +963,7 @@ class CallSimulationTest {
     @Test
     fun `74 배민 단건 픽업지 없을 때 패턴 매칭 가게명`() {
         val texts = listOf("설빙 태전점", "고산동", "배달료 3,000원", "10.0P")
-        val calls = BaeminParser.parse(texts)
+        val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 성공", calls.isNotEmpty())
         assertEquals("설빙 태전점", calls[0].storeName)
         println("74 PASS: 패턴 매칭 → '${calls[0].storeName}' 추출")
