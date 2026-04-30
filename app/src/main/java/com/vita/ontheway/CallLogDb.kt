@@ -5,9 +5,12 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.util.Log
+import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
 class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 4) {
+
+    private val appCtx: Context = ctx.applicationContext
 
     companion object {
         const val TABLE = "call_logs"
@@ -113,8 +116,36 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 4) {
             put("parsing_method", parsingMethod)
             put("driver_action", driverAction)
         }
-        writableDatabase.insert(TABLE, null, cv)
+        val rowId = writableDatabase.insert(TABLE, null, cv)
+
+        // Supabase 업로드 (백그라운드, 실패해도 로컬 저장 완료)
+        try {
+            val ts = cv.getAsLong("timestamp") ?: System.currentTimeMillis()
+            val json = JSONObject().apply {
+                put("local_id", rowId)
+                put("ts", ts)
+                put("platform", platform)
+                put("price", price)
+                put("distance", distance ?: JSONObject.NULL)
+                put("unit_price", unitPrice)
+                put("point", point ?: JSONObject.NULL)
+                put("verdict", verdict)
+                put("reason", reason)
+                put("bundle_count", bundleCount)
+                put("is_multi_pickup", isMultiPickup)
+                put("store_name", storeName)
+                put("destination", destination)
+                put("pickup_km", pickupKm ?: JSONObject.NULL)
+                put("judge_version", V2Event.JUDGE_VERSION)
+                put("tts_suppressed", ttsSuppressed)
+                put("source_type", sourceType)
+                put("parsing_method", parsingMethod)
+                put("driver_action", driverAction)
+            }
+            SupabaseSync.uploadCallLog(appCtx, json)
+        } catch (_: Exception) {}
     }
+
 
     /** 시뮬레이션 ACCEPT 콜 조회 (driver_action == "simulated_accept") */
     fun getSimulatedAcceptCalls(sinceMs: Long): List<SimCallRow> {

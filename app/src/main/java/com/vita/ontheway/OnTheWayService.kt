@@ -1404,6 +1404,9 @@ class OnTheWayService : AccessibilityService() {
         try { ReturnTimeEstimator.restore(this) } catch (_: Exception) {}
         try { startStatusAlertLoop() } catch (_: Exception) {}
 
+        // Supabase 미전송 데이터 자동 sync
+        try { SupabaseSync.syncPending(this) } catch (_: Exception) {}
+
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
     }
 

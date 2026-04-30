@@ -130,8 +130,11 @@ object FeedbackLogger {
                 onthewayDistanceKm = onthewayDistanceKm,
                 distanceDiffKm = distanceDiffKm
             )
+            val json = entry.toJson()
             val file = File(ctx.filesDir, FILE_NAME)
-            file.appendText(entry.toJson().toString() + "\n")
+            file.appendText(json.toString() + "\n")
+            // Supabase 업로드 (백그라운드, 실패해도 로컬 저장 완료)
+            try { SupabaseSync.uploadFeedback(ctx, JSONObject(json.toString())) } catch (_: Exception) {}
         } catch (_: Exception) {
             // 에러 시 조용히 실패
         }

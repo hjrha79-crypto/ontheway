@@ -171,7 +171,8 @@ object JudgmentMatchLogger {
     }
 
     private fun writeEvent(ctx: Context, event: JudgmentMatchEvent) {
-        val json = event.toJson().toString()
+        val jsonObj = event.toJson()
+        val json = jsonObj.toString()
         val appCtx = ctx.applicationContext
         ioExecutor.execute {
             try {
@@ -185,6 +186,8 @@ object JudgmentMatchLogger {
                 Log.w(TAG, "파일 기록 실패: ${e.message}")
             }
         }
+        // Supabase 업로드 (백그라운드, 실패해도 로컬 저장 완료)
+        try { SupabaseSync.uploadJudgmentMatch(appCtx, org.json.JSONObject(json)) } catch (_: Exception) {}
     }
 
     /** 오늘 이벤트 로드 (DevStats 표시용) */
