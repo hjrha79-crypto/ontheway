@@ -1227,15 +1227,15 @@ class SettingsActivity : AppCompatActivity() {
             return
         }
         val h = android.os.Handler(android.os.Looper.getMainLooper())
-        testTts?.speak("추천, 1,800원/km", TextToSpeech.QUEUE_FLUSH, null, "demo_1")
+        testTts?.speak("추천, 단가 1,800원", TextToSpeech.QUEUE_FLUSH, null, "demo_1")
         if (preset.ordinal >= TtsPreset.MEDIUM.ordinal) {
             h.postDelayed({
-                testTts?.speak("문 앞에 두고 초인종 눌러주세요", TextToSpeech.QUEUE_ADD, null, "demo_2")
+                testTts?.speak("문 앞 초인종", TextToSpeech.QUEUE_ADD, null, "demo_2")
             }, 3000)
         }
         if (preset.ordinal >= TtsPreset.HIGH.ordinal) {
             h.postDelayed({
-                testTts?.speak("다음 A동 배달", TextToSpeech.QUEUE_ADD, null, "demo_3")
+                testTts?.speak("다음 A동", TextToSpeech.QUEUE_ADD, null, "demo_3")
             }, 6000)
         }
         val label = when (preset) {

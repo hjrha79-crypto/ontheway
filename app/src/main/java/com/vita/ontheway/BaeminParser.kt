@@ -257,14 +257,32 @@ object BaeminParser {
         "전화", "노크", "경비실", "무인택배", "비대면"
     )
 
+    /** 고객 요청사항 단축 매핑 */
+    private val REQUEST_SHORTEN = listOf(
+        Regex("문\\s*앞.*초인종") to "문 앞 초인종",
+        Regex("문\\s*앞.*놓아") to "문 앞 놓기",
+        Regex("문\\s*앞.*두고") to "문 앞 놓기",
+        Regex("벨.*누르지") to "벨 누르지 마세요",
+        Regex("초인종.*누르지") to "벨 누르지 마세요",
+        Regex("비대면") to "비대면",
+        Regex("경비실") to "경비실",
+        Regex("무인택배") to "무인택배",
+        Regex("비밀번호") to "비밀번호",
+        Regex("전화") to "전화 주세요",
+        Regex("노크") to "노크"
+    )
+
     /**
      * 배달 진행 중 화면에서 고객 요청사항 파싱.
-     * 키워드 포함 텍스트 노드를 찾아 반환.
+     * 키워드 포함 텍스트 노드를 찾아 단축 반환.
      */
     fun parseCustomerRequest(texts: List<String>): String? {
         for (text in texts) {
             val trimmed = text.trim()
             if (trimmed.length in 3..100 && CUSTOMER_REQUEST_KEYWORDS.any { trimmed.contains(it) }) {
+                for ((pattern, short) in REQUEST_SHORTEN) {
+                    if (pattern.containsMatchIn(trimmed)) return short
+                }
                 return trimmed
             }
         }

@@ -33,9 +33,9 @@ object OutputController {
 
     /** 사유 라이브러리 (랜덤 선택) */
     private val reasonLibrary = mapOf(
-        "FAR_PICKUP" to listOf("픽업 거리 멂", "픽업 부담 큼"),
-        "LOW_VALUE" to listOf("단가 낮음", "수익 나쁨"),
-        "BUNDLE_BAD" to listOf("묶음 비효율", "건당 낮음"),
+        "FAR_PICKUP" to listOf("픽업 멂", "픽업 부담"),
+        "LOW_VALUE" to listOf("단가 낮음"),
+        "BUNDLE_BAD" to listOf("건당 낮음"),
         "BUNDLE_GOOD" to listOf("묶음 효율 좋음"),
         "GOOD_ROUTE" to listOf("경로 비슷함", "흐름 좋음"),
         "HIGH_VALUE" to listOf("단가 높음", "수익 좋음")
@@ -72,8 +72,8 @@ object OutputController {
                 isMulti && perItem > 0 && perItem < 4500 ->
                     "비추천, ${pickReason("BUNDLE_BAD")}"
                 // 단가 기반
-                unitPrice >= 1700 -> "추천, ${nf.format(unitPrice)}원/km"
-                unitPrice in 1400..1699 -> "애매, ${nf.format(unitPrice)}원/km"
+                unitPrice >= 1700 -> "추천, 단가 ${nf.format(unitPrice)}원"
+                unitPrice in 1400..1699 -> "애매, 단가 ${nf.format(unitPrice)}원"
                 unitPrice < 1400 -> "비추천, ${pickReason("LOW_VALUE")}"
                 // 고액
                 price >= 8000 -> "추천, ${nf.format(price)}원"
@@ -89,8 +89,8 @@ object OutputController {
                 return validateMessage("건당 ${nf.format(perItem)}원")
             }
             val msg = when {
-                pickupKm > 0 -> "금액 ${nf.format(price)}원, 픽업 ${"%.1f".format(pickupKm)}km"
-                price > 0 -> "금액 ${nf.format(price)}원"
+                pickupKm > 0 -> "${nf.format(price)}원, 픽업 ${"%.1f".format(pickupKm)}킬로"
+                price > 0 -> "${nf.format(price)}원"
                 else -> return null
             }
             return validateMessage(msg)
