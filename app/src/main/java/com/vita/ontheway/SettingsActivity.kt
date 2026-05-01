@@ -536,19 +536,10 @@ class SettingsActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
                 setPadding(0, dp(2), 0, 0)
             })
-            val sampleTexts = mapOf(
-                TtsPreset.LOW to "추천, 1,800원/km",
-                TtsPreset.MEDIUM to "문 앞에 두고 초인종",
-                TtsPreset.HIGH to "1번 가게 먼저",
-                TtsPreset.ULTRA to "전체 안내 모드"
-            )
             itemLayout.addView(TextView(this).apply {
                 text = "\uD83D\uDD0A"; textSize = 16f; gravity = Gravity.CENTER
                 setPadding(0, dp(4), 0, dp(4))
-                setOnClickListener {
-                    val sample = sampleTexts[preset] ?: preset.label
-                    testTts?.speak(sample, TextToSpeech.QUEUE_FLUSH, null, "preset_${preset.name}")
-                }
+                setOnClickListener { playPresetDemo(preset) }
             })
             presetRow.addView(itemLayout, lp(0, WC, 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
         }
@@ -1228,6 +1219,32 @@ class SettingsActivity : AppCompatActivity() {
         testTts?.shutdown()
         testTts = null
         super.onDestroy()
+    }
+
+    private fun playPresetDemo(preset: TtsPreset) {
+        if (!testTtsReady) {
+            Toast.makeText(this, "TTS 준비 중. 잠시 후 다시 시도하세요.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val h = android.os.Handler(android.os.Looper.getMainLooper())
+        testTts?.speak("추천, 1,800원/km", TextToSpeech.QUEUE_FLUSH, null, "demo_1")
+        if (preset.ordinal >= TtsPreset.MEDIUM.ordinal) {
+            h.postDelayed({
+                testTts?.speak("문 앞에 두고 초인종 눌러주세요", TextToSpeech.QUEUE_ADD, null, "demo_2")
+            }, 3000)
+        }
+        if (preset.ordinal >= TtsPreset.HIGH.ordinal) {
+            h.postDelayed({
+                testTts?.speak("다음 A동 배달", TextToSpeech.QUEUE_ADD, null, "demo_3")
+            }, 6000)
+        }
+        val label = when (preset) {
+            TtsPreset.LOW -> "콜 판단만"
+            TtsPreset.MEDIUM -> "판단 + 고객 요청"
+            TtsPreset.HIGH -> "판단 + 요청 + 순서"
+            TtsPreset.ULTRA -> "전체 안내"
+        }
+        Toast.makeText(this, "$label 미리듣기", Toast.LENGTH_SHORT).show()
     }
 
     private fun playTtsTest() {

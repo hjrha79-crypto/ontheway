@@ -221,12 +221,19 @@ class UserModeActivity : AppCompatActivity() {
         } catch (_: Exception) { false }
     }
 
+    private val autoRefreshRunnable = object : Runnable {
+        override fun run() {
+            refreshUI()
+            handler.postDelayed(this, 5000)
+        }
+    }
+
     private fun startAutoRefresh() {
-        handler.postDelayed(object : Runnable {
-            override fun run() {
-                refreshUI()
-                handler.postDelayed(this, 5000)
-            }
-        }, 5000)
+        handler.postDelayed(autoRefreshRunnable, 5000)
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(autoRefreshRunnable)
+        super.onDestroy()
     }
 }
