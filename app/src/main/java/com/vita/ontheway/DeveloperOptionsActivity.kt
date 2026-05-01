@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -96,12 +97,111 @@ class DeveloperOptionsActivity : AppCompatActivity() {
             FeatureFlags.baeminDistanceAutoTap
         ) { checked -> FeatureFlags.baeminDistanceAutoTap = checked; FeatureFlags.save(this) })
 
-        card.addView(devToggle(
-            "AI 보조 v0.1", "애매 구간 Claude Haiku 호출 (MEDIUM만)",
-            FeatureFlags.aiAssistEnabled
-        ) { checked -> FeatureFlags.aiAssistEnabled = checked; FeatureFlags.save(this) })
-
         root.addView(card, lp(MP, WC).apply { setMargins(dp(16), dp(16), dp(16), dp(8)) })
+
+        // ─── AI API 키 설정 ───
+        val aiCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.WHITE)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        aiCard.addView(TextView(this).apply {
+            text = "AI 보조 (Claude Haiku)"; textSize = 15f
+            setTextColor(Color.BLACK); setTypeface(null, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(8))
+        })
+
+        // 현재 키 마스킹 표시
+        val currentKey = ApiKeyManager.getApiKey(this)
+        val hasKey = currentKey.isNotBlank()
+        val keyStatusTv = TextView(this).apply {
+            text = if (hasKey) "현재 키: ${ApiKeyManager.maskKey(currentKey)}" else "키 미설정"
+            textSize = 12f
+            setTextColor(if (hasKey) Color.parseColor("#4CAF50") else Color.parseColor("#E53935"))
+            setPadding(0, 0, 0, dp(8))
+        }
+        aiCard.addView(keyStatusTv)
+
+        // 입력 필드
+        val keyInput = EditText(this).apply {
+            hint = "sk-ant-api03-..."
+            textSize = 13f; setTextColor(Color.BLACK)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setBackgroundColor(Color.parseColor("#F5F5F5"))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+        }
+        aiCard.addView(keyInput, lp(MP, WC).apply { bottomMargin = dp(8) })
+
+        // 저장 / 삭제 버튼 행
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        // AI 토글 (키 없으면 비활성화)
+        val aiSwitch = Switch(this).apply {
+            isChecked = FeatureFlags.aiAssistEnabled && hasKey
+            isEnabled = hasKey
+            setOnCheckedChangeListener { _, v ->
+                FeatureFlags.aiAssistEnabled = v
+                FeatureFlags.save(this@DeveloperOptionsActivity)
+            }
+        }
+        val aiToggleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(8), 0, dp(4))
+        }
+        aiToggleRow.addView(TextView(this).apply {
+            text = "AI 보조 활성화"; textSize = 13f; setTextColor(Color.BLACK)
+        }, lp(0, WC, 1f))
+        aiToggleRow.addView(aiSwitch)
+
+        btnRow.addView(TextView(this).apply {
+            text = "저장"; textSize = 14f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#5B6ABF"))
+            setPadding(dp(20), dp(10), dp(20), dp(10))
+            setOnClickListener {
+                val raw = keyInput.text.toString().trim()
+                if (raw.isBlank()) {
+                    Toast.makeText(this@DeveloperOptionsActivity, "키를 입력하세요", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                ApiKeyManager.saveApiKey(this@DeveloperOptionsActivity, raw)
+                keyInput.setText("")
+                keyStatusTv.text = "현재 키: ${ApiKeyManager.maskKey(raw)}"
+                keyStatusTv.setTextColor(Color.parseColor("#4CAF50"))
+                aiSwitch.isEnabled = true
+                Toast.makeText(this@DeveloperOptionsActivity, "API 키 저장됨", Toast.LENGTH_SHORT).show()
+            }
+        }, lp(0, WC, 1f).apply { setMargins(0, 0, dp(4), 0) })
+
+        btnRow.addView(TextView(this).apply {
+            text = "삭제"; textSize = 14f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#E53935"))
+            setPadding(dp(20), dp(10), dp(20), dp(10))
+            setOnClickListener {
+                ApiKeyManager.clearApiKey(this@DeveloperOptionsActivity)
+                keyStatusTv.text = "키 미설정"
+                keyStatusTv.setTextColor(Color.parseColor("#E53935"))
+                aiSwitch.isChecked = false
+                aiSwitch.isEnabled = false
+                FeatureFlags.aiAssistEnabled = false
+                FeatureFlags.save(this@DeveloperOptionsActivity)
+                Toast.makeText(this@DeveloperOptionsActivity, "API 키 삭제됨", Toast.LENGTH_SHORT).show()
+            }
+        }, lp(0, WC, 1f).apply { setMargins(dp(4), 0, 0, 0) })
+
+        aiCard.addView(btnRow)
+        aiCard.addView(aiToggleRow)
+        aiCard.addView(TextView(this).apply {
+            text = "애매 구간(단가 1400~1700원/km)에서만 Claude Haiku 호출"
+            textSize = 11f; setTextColor(Color.parseColor("#999999"))
+            setPadding(0, dp(4), 0, 0)
+        })
+
+        root.addView(aiCard, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) })
 
         // 개발자 통계 (DevStatsActivity) 진입
         root.addView(TextView(this).apply {

@@ -43,6 +43,9 @@ object AiAssist {
         if (!FeatureFlags.aiAssistEnabled || !FeatureFlags.devMode) return
         if (!isAmbiguous(call)) return
 
+        val apiKey = ApiKeyManager.getApiKey(ctx)
+        if (apiKey.isBlank()) return
+
         val dist = call.distance ?: return
         val unitPrice = (call.price / dist).toInt()
         val platform = call.platform
@@ -51,7 +54,7 @@ object AiAssist {
 
         executor.execute {
             try {
-                val reason = callHaiku(platform, price, pickupKm, dist, unitPrice)
+                val reason = callHaiku(apiKey, platform, price, pickupKm, dist, unitPrice)
                 if (reason != null) {
                     OtwFileLogger.log(TAG, "AI reason: \"$reason\" for ${platform} ${price}원")
                     CallLogDb.get(ctx).updateAiReason(price, platform, reason)
@@ -64,9 +67,7 @@ object AiAssist {
         }
     }
 
-    private fun callHaiku(platform: String, price: Int, pickupKm: Double, distanceKm: Double, unitPrice: Int): String? {
-        val apiKey = Config.ANTHROPIC_API_KEY
-        if (apiKey.isBlank()) return null
+    private fun callHaiku(apiKey: String, platform: String, price: Int, pickupKm: Double, distanceKm: Double, unitPrice: Int): String? {
 
         val userMsg = "platform=$platform, price=${price}원, pickupKm=${"%.1f".format(pickupKm)}, distanceKm=${"%.1f".format(distanceKm)}, unitPrice=${unitPrice}원/km"
 
