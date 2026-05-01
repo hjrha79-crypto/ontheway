@@ -45,7 +45,7 @@ class ReviewActivity : AppCompatActivity() {
         window.navigationBarColor = C_BG
 
         val db = CallLogDb.get(this)
-        val allCalls = db.getTodayCallLogs() // 이미 최신순
+        val allCalls = db.getTwoDayCallLogs() // 최근 2일치, 최신순
         val completedTs = db.getCompletedReviewTimestamps()
         allCandidates = allCalls.filter { it.callTs !in completedTs }
         reviewEntries = allCandidates.take(PAGE_SIZE).toMutableList()
@@ -57,14 +57,13 @@ class ReviewActivity : AppCompatActivity() {
         }
 
         // 상단 헤더
-        val dateStr = SimpleDateFormat("yyyy.MM.dd", Locale.KOREA).format(Date())
         container.addView(TextView(this).apply {
-            text = "오늘 복기 (${allCandidates.size}건)"
+            text = "복기 (${allCandidates.size}건)"
             textSize = 22f; setTextColor(C_WHITE)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         })
         container.addView(TextView(this).apply {
-            text = dateStr
+            text = "최근 2일 미복기 콜"
             textSize = 13f; setTextColor(C_SUB)
             setPadding(0, dp(4), 0, dp(20))
         })
@@ -151,7 +150,7 @@ class ReviewActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val timeStr = SimpleDateFormat("HH:mm", Locale.KOREA).format(Date(entry.callTs))
+        val timeStr = formatRelativeTime(entry.callTs)
         topRow.addView(TextView(this).apply {
             text = timeStr; textSize = 13f; setTextColor(C_SUB)
         })
@@ -296,6 +295,21 @@ class ReviewActivity : AppCompatActivity() {
             if (child is EditText) return child
         }
         return null
+    }
+
+    private fun formatRelativeTime(ts: Long): String {
+        val tsCal = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+        val today = java.util.Calendar.getInstance()
+        if (tsCal.get(java.util.Calendar.YEAR) == today.get(java.util.Calendar.YEAR) &&
+            tsCal.get(java.util.Calendar.DAY_OF_YEAR) == today.get(java.util.Calendar.DAY_OF_YEAR)) {
+            return "오늘 ${SimpleDateFormat("HH:mm", Locale.KOREA).format(Date(ts))}"
+        }
+        today.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        if (tsCal.get(java.util.Calendar.YEAR) == today.get(java.util.Calendar.YEAR) &&
+            tsCal.get(java.util.Calendar.DAY_OF_YEAR) == today.get(java.util.Calendar.DAY_OF_YEAR)) {
+            return "어제 ${SimpleDateFormat("HH:mm", Locale.KOREA).format(Date(ts))}"
+        }
+        return SimpleDateFormat("MM-dd HH:mm", Locale.KOREA).format(Date(ts))
     }
 
     private fun platformBadge(platform: String) = when (platform) {

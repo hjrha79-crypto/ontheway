@@ -326,11 +326,16 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
     }
 
     fun getTodayUnreviewed(): List<ReviewEntry> {
-        val todayStart = todayStartMs()
+        return getUnreviewedCalls()
+    }
+
+    /** 최근 2일치 미복기 콜 반환 (오늘 + 어제) */
+    fun getUnreviewedCalls(): List<ReviewEntry> {
+        val twoDaysAgoStart = twoDaysAgoStartMs()
         val entries = mutableListOf<ReviewEntry>()
         val cursor = readableDatabase.rawQuery(
             "SELECT id, call_ts, platform, price, verdict, verdict_msg, user_action, platform_distance_km FROM review_log WHERE call_ts >= ? AND user_action = 'UNKNOWN' ORDER BY call_ts DESC",
-            arrayOf(todayStart.toString())
+            arrayOf(twoDaysAgoStart.toString())
         )
         cursor.use {
             while (it.moveToNext()) {
@@ -375,11 +380,19 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
 
     /** 오늘 call_logs에서 복기 대상 로드 */
     fun getTodayCallLogs(): List<ReviewEntry> {
-        val todayStart = todayStartMs()
+        return getCallLogs(todayStartMs())
+    }
+
+    /** 최근 2일치 call_logs에서 복기 대상 로드 */
+    fun getTwoDayCallLogs(): List<ReviewEntry> {
+        return getCallLogs(twoDaysAgoStartMs())
+    }
+
+    private fun getCallLogs(sinceMs: Long): List<ReviewEntry> {
         val entries = mutableListOf<ReviewEntry>()
         val cursor = readableDatabase.rawQuery(
             "SELECT timestamp, platform, price, verdict, reason, storeName, destination, distance, bundleCount FROM $TABLE WHERE timestamp >= ? ORDER BY timestamp DESC",
-            arrayOf(todayStart.toString())
+            arrayOf(sinceMs.toString())
         )
         cursor.use {
             while (it.moveToNext()) {
@@ -405,11 +418,14 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
 
     /** review_log에 이미 등록된 call_ts 조회 (모든 상태) */
     fun getReviewedCallTimestamps(): Set<Long> {
-        val todayStart = todayStartMs()
+        return getReviewedCallTimestamps(todayStartMs())
+    }
+
+    fun getReviewedCallTimestamps(sinceMs: Long): Set<Long> {
         val timestamps = mutableSetOf<Long>()
         val cursor = readableDatabase.rawQuery(
             "SELECT call_ts FROM review_log WHERE call_ts >= ?",
-            arrayOf(todayStart.toString())
+            arrayOf(sinceMs.toString())
         )
         cursor.use { while (it.moveToNext()) timestamps.add(it.getLong(0)) }
         return timestamps
@@ -417,11 +433,14 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
 
     /** 복기 완료된 (reviewed_at NOT NULL) call_ts만 조회 */
     fun getCompletedReviewTimestamps(): Set<Long> {
-        val todayStart = todayStartMs()
+        return getCompletedReviewTimestamps(twoDaysAgoStartMs())
+    }
+
+    fun getCompletedReviewTimestamps(sinceMs: Long): Set<Long> {
         val timestamps = mutableSetOf<Long>()
         val cursor = readableDatabase.rawQuery(
             "SELECT call_ts FROM review_log WHERE call_ts >= ? AND reviewed_at IS NOT NULL",
-            arrayOf(todayStart.toString())
+            arrayOf(sinceMs.toString())
         )
         cursor.use { while (it.moveToNext()) timestamps.add(it.getLong(0)) }
         return timestamps
@@ -453,6 +472,16 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
 
     private fun todayStartMs(): Long {
         val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
+    private fun twoDaysAgoStartMs(): Long {
+        val cal = java.util.Calendar.getInstance()
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
         cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
         cal.set(java.util.Calendar.MINUTE, 0)
         cal.set(java.util.Calendar.SECOND, 0)

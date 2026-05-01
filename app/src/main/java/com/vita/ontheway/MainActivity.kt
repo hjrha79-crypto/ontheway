@@ -544,7 +544,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오"; else -> "?"
         }
         val price = entry.optInt("price", 0)
-        val isMulti = entry.optBoolean("multi", false)
         val storeName = entry.optString("storeName", "")
         val verdictKr = getVerdictKr(entry)
         val verdictColor = when (verdictKr) {
@@ -563,7 +562,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
         }
 
-        // ── 접힌 상태 (항상 표시) ──
+        // ── 헤더 행 ──
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -595,18 +594,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // 복기 상태 점
         val fb = FeedbackLogger.findByCall(this, callTs, price)
         val isReviewed = callTs in completedTs
-        val dotColor = when {
-            fb?.feedback == "up" -> Color.parseColor("#2ECC71")
-            fb?.feedback == "down" -> Color.parseColor("#E74C3C")
-            isReviewed -> Color.parseColor("#2ECC71")
-            else -> Color.parseColor("#444444")
-        }
-        headerRow.addView(View(this).apply {
+        val dotColor = getDotColor(fb, isReviewed)
+        val dotView = View(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 setColor(dotColor)
             }
-        }, lp(dp(8), dp(8)))
+        }
+        headerRow.addView(dotView, lp(dp(8), dp(8)))
 
         card.addView(headerRow)
 
@@ -631,109 +626,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             card.addView(subRow)
         }
 
-        // ── 확장 영역 (처음 숨김) ──
-        val expandArea = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            setPadding(0, dp(8), 0, 0)
-        }
-
-        // 복기 버튼 행
-        val reviewRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        val acceptBtn = TextView(this).apply {
-            text = "✅ 잡았어요"; textSize = 12f; setTextColor(Color.parseColor("#00F5A0"))
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#1A2E1A"))
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            layoutParams = LinearLayout.LayoutParams(0, WC, 1f).apply { marginEnd = dp(4) }
-        }
-        val rejectBtn = TextView(this).apply {
-            text = "❌ 안잡았어요"; textSize = 12f; setTextColor(Color.parseColor("#FF4D6D"))
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#2E1A1A"))
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            layoutParams = LinearLayout.LayoutParams(0, WC, 1f).apply { marginStart = dp(4) }
-        }
-        reviewRow.addView(acceptBtn)
-        reviewRow.addView(rejectBtn)
-        expandArea.addView(reviewRow)
-
-        // 배민 거리 입력
-        var distInput: android.widget.EditText? = null
-        if (platformCode == "baemin") {
-            distInput = android.widget.EditText(this).apply {
-                hint = "배달 거리 km (선택)"
-                textSize = 12f; setTextColor(Color.WHITE); setHintTextColor(Color.parseColor("#555577"))
-                inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-                setBackgroundColor(Color.parseColor("#15152A"))
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-                visibility = View.GONE
-                layoutParams = LinearLayout.LayoutParams(MP, WC).apply { topMargin = dp(6) }
-            }
-            expandArea.addView(distInput)
-        }
-
-        // 피드백 버튼 행
-        val fbRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(6), 0, 0)
-        }
-        val upBtn = TextView(this).apply {
-            text = "\uD83D\uDC4D"; textSize = 18f; gravity = Gravity.CENTER
-            setBackgroundColor(if (fb?.feedback == "up") Color.parseColor("#1A3E1A") else Color.parseColor("#222233"))
-            setPadding(dp(20), dp(6), dp(20), dp(6))
-            layoutParams = LinearLayout.LayoutParams(0, WC, 1f).apply { marginEnd = dp(4) }
-        }
-        val downBtn = TextView(this).apply {
-            text = "\uD83D\uDC4E"; textSize = 18f; gravity = Gravity.CENTER
-            setBackgroundColor(if (fb?.feedback == "down") Color.parseColor("#3E1A1A") else Color.parseColor("#222233"))
-            setPadding(dp(20), dp(6), dp(20), dp(6))
-            layoutParams = LinearLayout.LayoutParams(0, WC, 1f).apply { marginStart = dp(4) }
-        }
-        fbRow.addView(upBtn)
-        fbRow.addView(downBtn)
-        expandArea.addView(fbRow)
-
-        card.addView(expandArea)
-
-        // 클릭 핸들러
-        acceptBtn.setOnClickListener {
-            val dist = distInput?.text?.toString()?.toDoubleOrNull()
-            CallLogDb.get(this).upsertReview(callTs, platformCode, price, entry.optString("verdict"), reason, "ACCEPTED", dist)
-            distInput?.visibility = View.VISIBLE
-            acceptBtn.alpha = 1f; rejectBtn.alpha = 0.3f
-            // 상태 점 업데이트
-            updateDotColor(headerRow, Color.parseColor("#2ECC71"))
-        }
-        rejectBtn.setOnClickListener {
-            CallLogDb.get(this).upsertReview(callTs, platformCode, price, entry.optString("verdict"), reason, "REJECTED", null)
-            distInput?.visibility = View.GONE
-            rejectBtn.alpha = 1f; acceptBtn.alpha = 0.3f
-            updateDotColor(headerRow, Color.parseColor("#2ECC71"))
-        }
-
-        upBtn.setOnClickListener {
-            showFeedbackAndSave(true, "\uD83D\uDC4D", platformCode, storeName, price,
-                entry.optDouble("distanceKm", -1.0), verdictKr, reason, "${callTs}_${price}")
-            upBtn.setBackgroundColor(Color.parseColor("#1A3E1A"))
-            downBtn.setBackgroundColor(Color.parseColor("#222233"))
-            updateDotColor(headerRow, Color.parseColor("#2ECC71"))
-        }
-        downBtn.setOnClickListener {
-            showFeedbackAndSave(false, "\uD83D\uDC4E", platformCode, storeName, price,
-                entry.optDouble("distanceKm", -1.0), verdictKr, reason, "${callTs}_${price}")
-            downBtn.setBackgroundColor(Color.parseColor("#3E1A1A"))
-            upBtn.setBackgroundColor(Color.parseColor("#222233"))
-            updateDotColor(headerRow, Color.parseColor("#E74C3C"))
-        }
-
-        // 카드 탭 → 확장/접힘 토글
+        // 카드 탭 → BottomSheet 다이얼로그
         card.setOnClickListener {
-            expandArea.visibility = if (expandArea.visibility == View.GONE) View.VISIBLE else View.GONE
+            showCallBottomSheet(entry, dotView)
         }
 
         // 롱클릭 → 기존 상세 다이얼로그
@@ -742,14 +637,204 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         return card
     }
 
-    private fun updateDotColor(headerRow: LinearLayout, color: Int) {
-        val lastChild = headerRow.getChildAt(headerRow.childCount - 1)
-        if (lastChild != null) {
-            lastChild.background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(color)
-            }
+    private fun getDotColor(fb: FeedbackEntry?, isReviewed: Boolean): Int {
+        return when {
+            fb?.feedback == "up" -> Color.parseColor("#2ECC71")
+            fb?.feedback == "down" -> Color.parseColor("#E74C3C")
+            isReviewed -> Color.parseColor("#2ECC71")
+            else -> Color.parseColor("#444444")
         }
+    }
+
+    private fun updateDotColor(dotView: View, color: Int) {
+        dotView.background = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(color)
+        }
+    }
+
+    private fun showCallBottomSheet(entry: org.json.JSONObject, dotView: View) {
+        val callTs = entry.getLong("ts")
+        val platformCode = entry.optString("platform", "")
+        val platform = when (platformCode) {
+            "coupang" -> "쿠팡"; "baemin" -> "배민"; "kakaot" -> "카카오"; else -> "?"
+        }
+        val price = entry.optInt("price", 0)
+        val storeName = entry.optString("storeName", "")
+        val unitPrice = entry.optInt("unitPrice", 0)
+        val reason = entry.optString("reason", "")
+        val verdictKr = getVerdictKr(entry)
+        val dist = entry.optDouble("distanceKm", -1.0)
+        val verdict = entry.optString("verdict", "")
+
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#1A1A2E"))
+            setPadding(dp(20), dp(20), dp(20), dp(24))
+        }
+
+        // 가게명
+        if (storeName.isNotBlank()) {
+            container.addView(TextView(this).apply {
+                text = storeName; textSize = 14f; setTextColor(Color.parseColor("#CCCCCC"))
+                setPadding(0, 0, 0, dp(4))
+            })
+        }
+
+        // 금액 (큰 글씨)
+        container.addView(TextView(this).apply {
+            text = "${fmt(price)}원"; textSize = 28f; setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+        })
+
+        // 단가 + 시각
+        val metaRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(4), 0, dp(12))
+        }
+        metaRow.addView(TextView(this).apply {
+            text = "$platform · ${formatRelativeTime(callTs)}"
+            textSize = 12f; setTextColor(C_SUB)
+        })
+        if (unitPrice > 0) {
+            metaRow.addView(TextView(this).apply {
+                text = " · 단가 ${fmt(unitPrice)}원/km"; textSize = 12f; setTextColor(C_SUB)
+            })
+        }
+        container.addView(metaRow)
+
+        // 구분선
+        container.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#333355"))
+            layoutParams = LinearLayout.LayoutParams(MP, dp(1)).apply { bottomMargin = dp(12) }
+        })
+
+        // 복기 버튼: 잡았어요 / 안잡았어요
+        val reviewRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val existingReview = try {
+            val cursor = CallLogDb.get(this).readableDatabase.rawQuery(
+                "SELECT user_action FROM review_log WHERE call_ts=? AND price=?",
+                arrayOf(callTs.toString(), price.toString()))
+            cursor.use { if (it.moveToFirst()) it.getString(0) else null }
+        } catch (_: Exception) { null }
+
+        val acceptBtn = TextView(this).apply {
+            text = "잡았어요"; textSize = 14f; setTextColor(Color.parseColor("#00F5A0"))
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#1A2E1A"))
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(0, WC, 1f).apply { marginEnd = dp(4) }
+            alpha = if (existingReview == "ACCEPTED") 1f else 0.6f
+        }
+        val rejectBtn = TextView(this).apply {
+            text = "안잡았어요"; textSize = 14f; setTextColor(Color.parseColor("#FF4D6D"))
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#2E1A1A"))
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(0, WC, 1f).apply { marginStart = dp(4) }
+            alpha = if (existingReview == "REJECTED") 1f else 0.6f
+        }
+        reviewRow.addView(acceptBtn)
+        reviewRow.addView(rejectBtn)
+        container.addView(reviewRow)
+
+        // 배민 거리 입력
+        var distInput: android.widget.EditText? = null
+        if (platformCode == "baemin") {
+            distInput = android.widget.EditText(this).apply {
+                hint = "배달 거리 km (선택)"
+                textSize = 13f; setTextColor(Color.WHITE); setHintTextColor(Color.parseColor("#555577"))
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                setBackgroundColor(Color.parseColor("#15152A"))
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                layoutParams = LinearLayout.LayoutParams(MP, WC).apply { topMargin = dp(8) }
+                visibility = if (existingReview == "ACCEPTED") View.VISIBLE else View.GONE
+            }
+            container.addView(distInput)
+        }
+
+        // 피드백 버튼: 👍 / 👎
+        container.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#333355"))
+            layoutParams = LinearLayout.LayoutParams(MP, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(12) }
+        })
+
+        val fb = FeedbackLogger.findByCall(this, callTs, price)
+        val fbRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val upBtn = TextView(this).apply {
+            text = "\uD83D\uDC4D"; textSize = 22f; gravity = Gravity.CENTER
+            setBackgroundColor(if (fb?.feedback == "up") Color.parseColor("#1A3E1A") else Color.parseColor("#222233"))
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+            layoutParams = LinearLayout.LayoutParams(0, WC, 1f).apply { marginEnd = dp(4) }
+        }
+        val downBtn = TextView(this).apply {
+            text = "\uD83D\uDC4E"; textSize = 22f; gravity = Gravity.CENTER
+            setBackgroundColor(if (fb?.feedback == "down") Color.parseColor("#3E1A1A") else Color.parseColor("#222233"))
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+            layoutParams = LinearLayout.LayoutParams(0, WC, 1f).apply { marginStart = dp(4) }
+        }
+        fbRow.addView(upBtn)
+        fbRow.addView(downBtn)
+        container.addView(fbRow)
+
+        // 클릭 핸들러
+        var currentAction = existingReview
+
+        acceptBtn.setOnClickListener {
+            currentAction = "ACCEPTED"
+            val d = distInput?.text?.toString()?.toDoubleOrNull()
+            CallLogDb.get(this).upsertReview(callTs, platformCode, price, verdict, reason, "ACCEPTED", d)
+            acceptBtn.alpha = 1f; rejectBtn.alpha = 0.3f
+            distInput?.visibility = View.VISIBLE
+            updateDotColor(dotView, Color.parseColor("#2ECC71"))
+        }
+        rejectBtn.setOnClickListener {
+            currentAction = "REJECTED"
+            CallLogDb.get(this).upsertReview(callTs, platformCode, price, verdict, reason, "REJECTED", null)
+            rejectBtn.alpha = 1f; acceptBtn.alpha = 0.3f
+            distInput?.visibility = View.GONE
+            updateDotColor(dotView, Color.parseColor("#2ECC71"))
+        }
+
+        upBtn.setOnClickListener {
+            showFeedbackAndSave(true, "\uD83D\uDC4D", platformCode, storeName, price,
+                dist, verdictKr, reason, "${callTs}_${price}")
+            upBtn.setBackgroundColor(Color.parseColor("#1A3E1A"))
+            downBtn.setBackgroundColor(Color.parseColor("#222233"))
+            updateDotColor(dotView, Color.parseColor("#2ECC71"))
+        }
+        downBtn.setOnClickListener {
+            showFeedbackAndSave(false, "\uD83D\uDC4E", platformCode, storeName, price,
+                dist, verdictKr, reason, "${callTs}_${price}")
+            downBtn.setBackgroundColor(Color.parseColor("#3E1A1A"))
+            upBtn.setBackgroundColor(Color.parseColor("#222233"))
+            updateDotColor(dotView, Color.parseColor("#E74C3C"))
+        }
+
+        // 저장 + 닫기 버튼
+        container.addView(TextView(this).apply {
+            text = "닫기"; textSize = 15f; setTextColor(C_SUB); gravity = Gravity.CENTER
+            setPadding(0, dp(16), 0, dp(4))
+            setOnClickListener {
+                // 배민 거리 재저장
+                if (currentAction == "ACCEPTED" && platformCode == "baemin") {
+                    val d = distInput?.text?.toString()?.toDoubleOrNull()
+                    if (d != null) CallLogDb.get(this@MainActivity).updateUserAction(callTs, price, "ACCEPTED", d)
+                }
+                sheet.dismiss()
+            }
+        })
+
+        sheet.setContentView(container)
+        sheet.window?.navigationBarColor = Color.parseColor("#1A1A2E")
+        sheet.show()
     }
 
     private fun getVerdictKr(entry: org.json.JSONObject): String {
