@@ -666,6 +666,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val verdictKr = getVerdictKr(entry)
         val dist = entry.optDouble("distanceKm", -1.0)
         val verdict = entry.optString("verdict", "")
+        val destination = entry.optString("destination", "")
+        val point = entry.optDouble("point", -1.0)
 
         val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(this)
         val container = LinearLayout(this).apply {
@@ -674,35 +676,72 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             setPadding(dp(20), dp(20), dp(20), dp(24))
         }
 
-        // 가게명
-        if (storeName.isNotBlank()) {
-            container.addView(TextView(this).apply {
-                text = storeName; textSize = 14f; setTextColor(Color.parseColor("#CCCCCC"))
-                setPadding(0, 0, 0, dp(4))
-            })
-        }
-
-        // 금액 (큰 글씨)
+        // 플랫폼 + 시각
         container.addView(TextView(this).apply {
-            text = "${fmt(price)}원"; textSize = 28f; setTextColor(Color.WHITE)
-            setTypeface(null, Typeface.BOLD)
+            text = "[$platform] ${formatRelativeTime(callTs)}"
+            textSize = 13f; setTextColor(C_BLUE); setTypeface(null, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(8))
         })
 
-        // 단가 + 시각
-        val metaRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(4), 0, dp(12))
-        }
-        metaRow.addView(TextView(this).apply {
-            text = "$platform · ${formatRelativeTime(callTs)}"
-            textSize = 12f; setTextColor(C_SUB)
-        })
-        if (unitPrice > 0) {
-            metaRow.addView(TextView(this).apply {
-                text = " · 단가 ${fmt(unitPrice)}원/km"; textSize = 12f; setTextColor(C_SUB)
+        // 가게명 (라벨 + 값, 없으면 공란)
+        fun addInfoRow(label: String, value: String) {
+            val row = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(2), 0, dp(2))
+            }
+            row.addView(TextView(this@MainActivity).apply {
+                text = "$label:"; textSize = 13f; setTextColor(C_SUB)
+                layoutParams = LinearLayout.LayoutParams(dp(60), WC)
             })
+            row.addView(TextView(this@MainActivity).apply {
+                text = value; textSize = 13f; setTextColor(Color.WHITE)
+            })
+            container.addView(row)
         }
-        container.addView(metaRow)
+
+        val cleanedStore = if (storeName.isNotBlank()) {
+            val cleaned = StoreNameCleaner.clean(storeName)
+            if (cleaned.isNotEmpty()) cleaned.joinToString(", ") else ""
+        } else ""
+        addInfoRow("가게명", cleanedStore)
+
+        if (destination.isNotBlank() && !destination.contains("검색하기")) {
+            addInfoRow("배달지", destination)
+        }
+
+        // 거리
+        if (platformCode == "baemin" && point > 0) {
+            val pointKm = BaeminParser.convertPointToKm(point)
+            addInfoRow("거리", "${"%.1f".format(pointKm)}km (${"%.1f".format(point)}P)")
+        } else if (dist >= 0) {
+            addInfoRow("거리", "${"%.1f".format(dist)}km")
+        }
+
+        // 금액 + 단가
+        container.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#333355"))
+            layoutParams = LinearLayout.LayoutParams(MP, dp(1)).apply { topMargin = dp(8); bottomMargin = dp(8) }
+        })
+
+        val priceStr = StringBuilder("${fmt(price)}원")
+        if (unitPrice > 0) priceStr.append(" · 단가 ${fmt(unitPrice)}원/km")
+        container.addView(TextView(this).apply {
+            text = priceStr; textSize = 18f; setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(4))
+        })
+
+        // OTW 판정
+        container.addView(TextView(this).apply {
+            text = "OTW: $verdictKr"
+            textSize = 12f
+            setTextColor(when (verdictKr) {
+                "잡으세요" -> Color.parseColor("#00FF88")
+                "넘기세요" -> Color.parseColor("#FF4D6D")
+                else -> Color.parseColor("#4CC9F0")
+            })
+            setPadding(0, 0, 0, dp(8))
+        })
 
         // 구분선
         container.addView(View(this).apply {
@@ -742,11 +781,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         reviewRow.addView(rejectBtn)
         container.addView(reviewRow)
 
-        // 배민 거리 입력
+        // 배민 표시거리 입력
         var distInput: android.widget.EditText? = null
         if (platformCode == "baemin") {
             distInput = android.widget.EditText(this).apply {
-                hint = "배달 거리 km (선택)"
+                hint = "배민 표시거리 km (선택)"
                 textSize = 13f; setTextColor(Color.WHITE); setHintTextColor(Color.parseColor("#555577"))
                 inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
                 setBackgroundColor(Color.parseColor("#15152A"))
@@ -756,6 +795,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }
             container.addView(distInput)
         }
+
+        // GPS 거리 표시 라벨 (잡았어요 후 업데이트됨)
+        val gpsLabel = TextView(this).apply {
+            textSize = 11f; setTextColor(C_SUB)
+            setPadding(0, dp(4), 0, 0)
+            visibility = View.GONE
+        }
+        container.addView(gpsLabel)
 
         // 피드백 버튼: 👍 / 👎
         container.addView(View(this).apply {
@@ -794,12 +841,26 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             acceptBtn.alpha = 1f; rejectBtn.alpha = 0.3f
             distInput?.visibility = View.VISIBLE
             updateDotColor(dotView, Color.parseColor("#2ECC71"))
+            // GPS 거리 백그라운드 계산
+            CoroutineScope(Dispatchers.IO).launch {
+                val gpsDist = ReviewLogger.calculateGpsDistance(this@MainActivity, callTs)
+                if (gpsDist != null) {
+                    ReviewLogger.updateGpsDistance(this@MainActivity, callTs, price, gpsDist)
+                }
+                withContext(Dispatchers.Main) {
+                    if (gpsDist != null) {
+                        gpsLabel.text = "GPS 거리: ${"%.1f".format(gpsDist)}km"
+                        gpsLabel.visibility = View.VISIBLE
+                    }
+                }
+            }
         }
         rejectBtn.setOnClickListener {
             currentAction = "REJECTED"
             CallLogDb.get(this).upsertReview(callTs, platformCode, price, verdict, reason, "REJECTED", null)
             rejectBtn.alpha = 1f; acceptBtn.alpha = 0.3f
             distInput?.visibility = View.GONE
+            gpsLabel.visibility = View.GONE
             updateDotColor(dotView, Color.parseColor("#2ECC71"))
         }
 
@@ -818,12 +879,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             updateDotColor(dotView, Color.parseColor("#E74C3C"))
         }
 
-        // 저장 + 닫기 버튼
+        // 닫기 버튼
         container.addView(TextView(this).apply {
             text = "닫기"; textSize = 15f; setTextColor(C_SUB); gravity = Gravity.CENTER
             setPadding(0, dp(16), 0, dp(4))
             setOnClickListener {
-                // 배민 거리 재저장
                 if (currentAction == "ACCEPTED" && platformCode == "baemin") {
                     val d = distInput?.text?.toString()?.toDoubleOrNull()
                     if (d != null) CallLogDb.get(this@MainActivity).updateUserAction(callTs, price, "ACCEPTED", d)

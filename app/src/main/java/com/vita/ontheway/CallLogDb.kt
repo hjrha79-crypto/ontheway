@@ -8,7 +8,7 @@ import android.util.Log
 import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
 
     private val appCtx: Context = ctx.applicationContext
 
@@ -66,6 +66,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
                 verdict_msg TEXT,
                 user_action TEXT DEFAULT 'UNKNOWN',
                 platform_distance_km REAL,
+                gps_distance_km REAL,
                 reviewed_at INTEGER,
                 created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
             )
@@ -106,6 +107,12 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 5) {
         if (old < 5) {
             createReviewLogTable(db)
             Log.d("CallLogDb", "v4->v5: review_log table created")
+        }
+        if (old < 6) {
+            try {
+                db.execSQL("ALTER TABLE review_log ADD COLUMN gps_distance_km REAL")
+            } catch (_: Exception) {}
+            Log.d("CallLogDb", "v5->v6: review_log gps_distance_km column added")
         }
     }
 

@@ -173,7 +173,7 @@ class ReviewActivity : AppCompatActivity() {
         val infoLine = when {
             entry.storeName.isNotBlank() -> entry.storeName
             entry.destination.isNotBlank() -> entry.destination
-            else -> if (entry.platform == "coupang") "(알림 콜)" else "(정보 없음)"
+            else -> ""
         }
         val extras = mutableListOf<String>()
         if (entry.bundleCount > 1) extras.add("묶음 ${entry.bundleCount}건")
