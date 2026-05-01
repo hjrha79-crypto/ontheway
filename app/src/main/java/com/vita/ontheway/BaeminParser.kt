@@ -87,7 +87,8 @@ object BaeminParser {
             val isBlacklisted = token.isNotBlank() && (
                 STORE_NAME_BLACKLIST.contains(token) ||
                 STORE_NAME_BLACKLIST.contains(token.lowercase()) ||
-                token.startsWith("T2CG")
+                token.startsWith("T2CG") ||
+                Regex("T2CI[A-Z0-9]{4,}").containsMatchIn(token)
             )
             if (isBlacklisted) removed.add(token)
             !isBlacklisted && token.isNotBlank()
@@ -248,5 +249,25 @@ object BaeminParser {
     fun parsePoint(texts: List<String>): Double? {
         val joined = texts.joinToString(" ")
         return POINT_PATTERN.find(joined)?.groupValues?.get(1)?.toDoubleOrNull()
+    }
+
+    /** 고객 요청사항 키워드 */
+    private val CUSTOMER_REQUEST_KEYWORDS = listOf(
+        "문 앞", "초인종", "벨", "놓아", "비밀번호", "놓고", "두고",
+        "전화", "노크", "경비실", "무인택배", "비대면"
+    )
+
+    /**
+     * 배달 진행 중 화면에서 고객 요청사항 파싱.
+     * 키워드 포함 텍스트 노드를 찾아 반환.
+     */
+    fun parseCustomerRequest(texts: List<String>): String? {
+        for (text in texts) {
+            val trimmed = text.trim()
+            if (trimmed.length in 3..100 && CUSTOMER_REQUEST_KEYWORDS.any { trimmed.contains(it) }) {
+                return trimmed
+            }
+        }
+        return null
     }
 }

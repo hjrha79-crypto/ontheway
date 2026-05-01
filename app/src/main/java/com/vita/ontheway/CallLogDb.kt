@@ -8,7 +8,7 @@ import android.util.Log
 import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 7) {
 
     private val appCtx: Context = ctx.applicationContext
 
@@ -45,7 +45,9 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
                 tts_suppressed INTEGER DEFAULT 0,
                 source_type TEXT DEFAULT 'unknown',
                 parsing_method TEXT DEFAULT 'unknown',
-                driver_action TEXT DEFAULT 'unknown'
+                driver_action TEXT DEFAULT 'unknown',
+                session_id TEXT,
+                ai_reason TEXT
             )
         """)
         db.execSQL("CREATE INDEX idx_timestamp ON $TABLE(timestamp)")
@@ -68,7 +70,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
                 platform_distance_km REAL,
                 gps_distance_km REAL,
                 reviewed_at INTEGER,
-                created_at INTEGER DEFAULT (strftime('%s','now') * 1000)
+                created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+                session_id TEXT
             )
         """.trimIndent())
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_review_call_ts ON review_log(call_ts)")
@@ -83,7 +86,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
                 lat REAL NOT NULL,
                 lng REAL NOT NULL,
                 speed REAL,
-                accuracy REAL
+                accuracy REAL,
+                session_id TEXT
             )
         """.trimIndent())
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_location_trace_ts ON location_trace(ts)")
@@ -114,6 +118,13 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
             } catch (_: Exception) {}
             Log.d("CallLogDb", "v5->v6: review_log gps_distance_km column added")
         }
+        if (old < 7) {
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN session_id TEXT") } catch (_: Exception) {}
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN ai_reason TEXT") } catch (_: Exception) {}
+            try { db.execSQL("ALTER TABLE location_trace ADD COLUMN session_id TEXT") } catch (_: Exception) {}
+            try { db.execSQL("ALTER TABLE review_log ADD COLUMN session_id TEXT") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v6->v7: session_id + ai_reason columns added")
+        }
     }
 
     fun insert(
@@ -124,7 +135,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
         ttsSuppressed: Boolean = false,
         sourceType: String = V2Event.SOURCE_UNKNOWN,
         parsingMethod: String = V2Event.PARSING_UNKNOWN,
-        driverAction: String = "unknown"
+        driverAction: String = "unknown",
+        sessionId: String? = null
     ) {
         val cv = ContentValues().apply {
             put("timestamp", System.currentTimeMillis())
@@ -145,6 +157,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
             put("source_type", sourceType)
             put("parsing_method", parsingMethod)
             put("driver_action", driverAction)
+            put("session_id", sessionId)
         }
         val rowId = writableDatabase.insert(TABLE, null, cv)
 
@@ -171,6 +184,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
                 put("source_type", sourceType)
                 put("parsing_method", parsingMethod)
                 put("driver_action", driverAction)
+                put("session_id", sessionId ?: JSONObject.NULL)
             }
             SupabaseSync.uploadCallLog(appCtx, json)
         } catch (_: Exception) {}
@@ -279,6 +293,18 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 6) {
             )
         } catch (e: Exception) {
             Log.w("CallLogDb", "updateStoreNameIfEmpty 실패: ${e.message}")
+        }
+    }
+
+    /** AI 보조 사유 업데이트 */
+    fun updateAiReason(price: Int, platform: String, aiReason: String) {
+        try {
+            writableDatabase.execSQL(
+                "UPDATE $TABLE SET ai_reason=? WHERE id=(SELECT id FROM $TABLE WHERE price=? AND platform=? ORDER BY timestamp DESC LIMIT 1)",
+                arrayOf(aiReason, price.toString(), platform)
+            )
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "updateAiReason 실패: ${e.message}")
         }
     }
 

@@ -6,6 +6,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 object DrivingModeManager {
     private const val PREFS = "advanced_prefs"
@@ -14,6 +15,7 @@ object DrivingModeManager {
     private const val KEY_STARTED_DATE = "driving_started_date"
     private const val KEY_TOTAL_TODAY = "driving_total_today_ms"
     private const val KEY_TOTAL_DATE = "driving_total_today_date"
+    private const val KEY_SESSION_ID = "driving_session_id"
     private const val TAG = "OTW_DRIVING_MODE"
 
     fun getMode(ctx: Context): DrivingMode {
@@ -41,12 +43,14 @@ object DrivingModeManager {
 
         when (mode) {
             DrivingMode.DRIVING -> {
+                val sessionId = UUID.randomUUID().toString()
                 prefs.edit()
                     .putString(KEY_MODE, mode.name)
                     .putLong(KEY_STARTED_AT, now)
                     .putString(KEY_STARTED_DATE, todayStr())
+                    .putString(KEY_SESSION_ID, sessionId)
                     .apply()
-                Log.d(TAG, "DRIVING ON at $now")
+                Log.d(TAG, "DRIVING ON at $now, session=$sessionId")
                 LocationTracker.startTracking(ctx)
             }
             DrivingMode.IDLE -> {
@@ -65,6 +69,7 @@ object DrivingModeManager {
                     .putString(KEY_MODE, mode.name)
                     .remove(KEY_STARTED_AT)
                     .remove(KEY_STARTED_DATE)
+                    .remove(KEY_SESSION_ID)
                     .apply()
                 LocationTracker.stopTracking()
             }
@@ -153,6 +158,11 @@ object DrivingModeManager {
     /** 테스트용: 날짜 문자열 반환 */
     internal fun todayStr() =
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+    fun getSessionId(ctx: Context): String? {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_SESSION_ID, null)
+    }
 
     internal fun todayMidnightMs(): Long {
         val cal = Calendar.getInstance()

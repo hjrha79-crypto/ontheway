@@ -91,6 +91,16 @@ class DeveloperOptionsActivity : AppCompatActivity() {
             FeatureFlags.connectivityTTS
         ) { checked -> FeatureFlags.connectivityTTS = checked; FeatureFlags.save(this) })
 
+        card.addView(devToggle(
+            "배민 거리 자동탭", "배민 ? 버튼 자동 클릭하여 거리 확보",
+            FeatureFlags.baeminDistanceAutoTap
+        ) { checked -> FeatureFlags.baeminDistanceAutoTap = checked; FeatureFlags.save(this) })
+
+        card.addView(devToggle(
+            "AI 보조 v0.1", "애매 구간 Claude Haiku 호출 (MEDIUM만)",
+            FeatureFlags.aiAssistEnabled
+        ) { checked -> FeatureFlags.aiAssistEnabled = checked; FeatureFlags.save(this) })
+
         root.addView(card, lp(MP, WC).apply { setMargins(dp(16), dp(16), dp(16), dp(8)) })
 
         // 개발자 통계 (DevStatsActivity) 진입
@@ -127,7 +137,7 @@ class DeveloperOptionsActivity : AppCompatActivity() {
         })
         container.addView(row)
         container.addView(TextView(this@DeveloperOptionsActivity).apply {
-            text = "$desc (로직 미연결)"
+            text = desc
             textSize = 12f; setTextColor(Color.parseColor("#999999"))
             setPadding(0, dp(2), 0, dp(4))
         })

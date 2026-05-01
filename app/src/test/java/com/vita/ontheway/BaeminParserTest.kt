@@ -94,6 +94,18 @@ class BaeminParserTest {
     }
 
     @Test
+    fun `블랙리스트 - T2CI 주문코드 제거`() {
+        val result = BaeminParser.sanitizeStoreName("T2CI0ABC1234")
+        assertEquals("", result)
+    }
+
+    @Test
+    fun `블랙리스트 - T2CI 혼합 토큰에서 오염만 제거`() {
+        val result = BaeminParser.sanitizeStoreName("맘스터치+T2CIABCD5678")
+        assertEquals("맘스터치", result)
+    }
+
+    @Test
     fun `블랙리스트 - 정상 가게명 유지`() {
         val result = BaeminParser.sanitizeStoreName("빽보이피자 오구샌 광주태전점")
         assertEquals("빽보이피자 오구샌 광주태전점", result)

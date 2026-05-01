@@ -6,12 +6,11 @@ import android.util.Log
 import java.text.NumberFormat
 
 /**
- * 출력 단일 진입점 — 계기판 철학.
+ * 출력 단일 진입점 — TTS 3단 구조.
  *
- * 핵심 원칙:
- * - 판단 금지, 근거만 출력
- * - 숫자 없는 메시지 = 출력 금지
- * - TTS 2초 이내 (20자), 30초 쿨다운
+ * 계산형 (쿠팡 + distanceKm > 0): 추천/애매/비추천 + 이유
+ * 정보형 (배민 or distanceKm == 0): 금액 + 픽업거리
+ * 침묵: 데이터 부족
  */
 object OutputController {
 
@@ -29,37 +28,76 @@ object OutputController {
     /** 판단 금지어 — 이 단어가 포함된 메시지는 출력 차단 */
     val FORBIDDEN_WORDS = listOf(
         "잡으세요", "넘기세요", "괜찮습니다",
-        "추천", "권장", "좋은 콜"
+        "권장", "좋은 콜"
     )
 
+    /** 사유 라이브러리 (랜덤 선택) */
+    private val reasonLibrary = mapOf(
+        "FAR_PICKUP" to listOf("픽업 거리 멂", "픽업 부담 큼"),
+        "LOW_VALUE" to listOf("단가 낮음", "수익 나쁨"),
+        "BUNDLE_BAD" to listOf("묶음 비효율", "건당 낮음"),
+        "BUNDLE_GOOD" to listOf("묶음 효율 좋음"),
+        "GOOD_ROUTE" to listOf("경로 비슷함", "흐름 좋음"),
+        "HIGH_VALUE" to listOf("단가 높음", "수익 좋음")
+    )
+
+    fun pickReason(key: String): String =
+        reasonLibrary[key]?.random() ?: key
+
     /**
-     * 콜 데이터로부터 근거 메시지 생성.
-     * 판단어 없이 숫자 중심 메시지만 반환.
-     * 근거 없으면 null (SILENT).
+     * TTS 3단 구조:
+     * 계산형 (쿠팡 + distanceKm > 0) → 추천/애매/비추천
+     * 정보형 (배민 or distanceKm == 0) → 금액 + 픽업
+     * 침묵 → null
      */
     fun buildMessage(call: DeliveryCall, result: CallFilter.FilterResult): String? {
         val price = call.price
         val dist = call.distance
-        val unitPrice = if (dist != null && dist > 0) (price / dist).toInt() else 0
+        val distKm = dist ?: 0.0
+        val unitPrice = if (distKm > 0) (price / distKm).toInt() else 0
         val isMulti = call.isMulti
         val bundleCount = call.bundleCount.coerceAtLeast(if (isMulti) 2 else 1)
         val perItem = if (isMulti && bundleCount > 1) price / bundleCount else 0
-        val pickupKm = call.pickupDistanceKm
+        val pickupKm = call.pickupDistanceKm ?: 0.0
+        val isCoupang = call.platform == "coupang"
 
-        val msg = when {
-            // 묶음
-            isMulti && perItem > 0 -> "건당 ${nf.format(perItem)}원"
-            // 단가 계산 가능
-            unitPrice > 0 -> "단가 ${nf.format(unitPrice)}원"
-            // 고액 (단가 없지만 금액 표시)
-            price >= 7000 -> "${nf.format(price)}원"
-            // 동선 OK (픽업 가까울 때)
-            pickupKm != null && pickupKm <= 1.5 && dist != null && dist <= 3.0 -> "동선 OK"
-            // 근거 없음
-            else -> return null
+        // ── 계산형 (쿠팡 + distanceKm > 0) ──
+        if (isCoupang && distKm > 0) {
+            val msg = when {
+                // 픽업 거리 과다
+                pickupKm >= 3.0 -> "비추천, ${pickReason("FAR_PICKUP")}"
+                // 묶음
+                isMulti && perItem > 0 && perItem >= 4500 ->
+                    "추천, 건당 ${nf.format(perItem)}원"
+                isMulti && perItem > 0 && perItem < 4500 ->
+                    "비추천, ${pickReason("BUNDLE_BAD")}"
+                // 단가 기반
+                unitPrice >= 1700 -> "추천, ${nf.format(unitPrice)}원/km"
+                unitPrice in 1400..1699 -> "애매, ${nf.format(unitPrice)}원/km"
+                unitPrice < 1400 -> "비추천, ${pickReason("LOW_VALUE")}"
+                // 고액
+                price >= 8000 -> "추천, ${nf.format(price)}원"
+                else -> return null
+            }
+            return validateMessage(msg)
         }
 
-        return validateMessage(msg)
+        // ── 정보형 (배민 or distanceKm == 0) ──
+        if (!isCoupang || distKm == 0.0) {
+            // 묶음
+            if (isMulti && perItem > 0) {
+                return validateMessage("건당 ${nf.format(perItem)}원")
+            }
+            val msg = when {
+                pickupKm > 0 -> "금액 ${nf.format(price)}원, 픽업 ${"%.1f".format(pickupKm)}km"
+                price > 0 -> "금액 ${nf.format(price)}원"
+                else -> return null
+            }
+            return validateMessage(msg)
+        }
+
+        // ── 침묵 ──
+        return null
     }
 
     /**

@@ -503,6 +503,57 @@ class SettingsActivity : AppCompatActivity() {
             TtsPrefs.isVibrationEnabled(this)
         ) { checked -> TtsPrefs.setVibration(this, checked) })
 
+        // ─── v3.26: TTS 프리셋 4단계 ───
+        ttsCard.addView(TextView(this).apply {
+            text = "음성 안내 수준"; textSize = 14f; setTextColor(Color.BLACK)
+            setTypeface(null, Typeface.BOLD)
+            setPadding(dp(16), dp(16), dp(16), dp(4))
+        })
+        val presetRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(12), dp(4), dp(12), dp(8))
+        }
+        val currentPreset = FeatureFlags.ttsPreset
+        TtsPreset.entries.forEach { preset ->
+            val itemLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+            }
+            itemLayout.addView(TextView(this).apply {
+                text = preset.label; textSize = 13f; gravity = Gravity.CENTER
+                val isSelected = preset == currentPreset
+                setTextColor(if (isSelected) Color.WHITE else Color.parseColor("#5B6ABF"))
+                setBackgroundColor(if (isSelected) Color.parseColor("#5B6ABF") else Color.parseColor("#F0F0F0"))
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                setOnClickListener {
+                    FeatureFlags.ttsPreset = preset
+                    FeatureFlags.save(this@SettingsActivity)
+                    recreate()
+                }
+            })
+            itemLayout.addView(TextView(this).apply {
+                text = preset.desc; textSize = 10f; setTextColor(Color.parseColor("#999999"))
+                gravity = Gravity.CENTER
+                setPadding(0, dp(2), 0, 0)
+            })
+            val sampleTexts = mapOf(
+                TtsPreset.LOW to "추천, 1,800원/km",
+                TtsPreset.MEDIUM to "문 앞에 두고 초인종",
+                TtsPreset.HIGH to "1번 가게 먼저",
+                TtsPreset.ULTRA to "전체 안내 모드"
+            )
+            itemLayout.addView(TextView(this).apply {
+                text = "\uD83D\uDD0A"; textSize = 16f; gravity = Gravity.CENTER
+                setPadding(0, dp(4), 0, dp(4))
+                setOnClickListener {
+                    val sample = sampleTexts[preset] ?: preset.label
+                    testTts?.speak(sample, TextToSpeech.QUEUE_FLUSH, null, "preset_${preset.name}")
+                }
+            })
+            presetRow.addView(itemLayout, lp(0, WC, 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
+        }
+        ttsCard.addView(presetRow)
+
         root.addView(ttsCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── v3.2: 다크 모드 ───

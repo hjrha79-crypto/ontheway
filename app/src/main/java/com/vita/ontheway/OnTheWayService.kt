@@ -147,6 +147,10 @@ class OnTheWayService : AccessibilityService() {
     // v3.18: 세션 매니저
     private var sessionManager: SessionManager? = null
 
+    // v3.26: 고객 요청 리마인드 (중복 방지)
+    private var lastCustomerRequest: String? = null
+    private var lastCustomerRequestCallKey: String = ""
+
     // v3.22: 절전 모드 스킵 카운트
     private var powerSaveSkipCount = 0L
 
@@ -616,6 +620,32 @@ class OnTheWayService : AccessibilityService() {
         return null
     }
 
+    /**
+     * v3.26: 배민 물음표 자동 탭 — "?" contentDescription 감지 → ACTION_CLICK
+     * 탭 후 rawText에서 "배달료기준거리 (\d+)m" 파싱하여 distanceKm 반환
+     */
+    private fun tryBaeminDistanceAutoTap(root: AccessibilityNodeInfo): Double? {
+        if (!FeatureFlags.baeminDistanceAutoTap || !FeatureFlags.devMode) return null
+        val qNode = findNodeByContentDescription(root, "?") ?: return null
+        try {
+            qNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            OtwFileLogger.log("BaeminAutoTap", "? 버튼 탭 수행")
+        } catch (e: Exception) {
+            OtwFileLogger.log("BaeminAutoTap", "? 버튼 탭 실패: ${e.message}")
+            return null
+        }
+        return null // 탭 후 다음 이벤트에서 거리 텍스트가 나타남
+    }
+
+    private fun findNodeByContentDescription(node: AccessibilityNodeInfo, desc: String): AccessibilityNodeInfo? {
+        if (node.contentDescription?.toString() == desc) return node
+        for (i in 0 until node.childCount) {
+            val found = node.getChild(i)?.let { findNodeByContentDescription(it, desc) }
+            if (found != null) return found
+        }
+        return null
+    }
+
     private fun extractText(node: AccessibilityNodeInfo, results: MutableList<String>) {
         // 2026-04-25 P0: 자기 패키지 노드는 텍스트 수집 스킵 (자기 참조 방지)
         if (node.packageName?.toString() == "com.vita.ontheway") {
@@ -689,6 +719,19 @@ class OnTheWayService : AccessibilityService() {
 
         // v3.3: 수락 시각 기록 (배달 완료 소요시간 계산용)
         lastAcceptTime = System.currentTimeMillis()
+
+        // v3.26: 고객 요청 리마인드 (MEDIUM 이상 프리셋)
+        if (FeatureFlags.ttsPreset.ordinal >= TtsPreset.MEDIUM.ordinal && lastCustomerRequest != null) {
+            val request = lastCustomerRequest!!
+            val callKey = "${platform}_${price}"
+            if (callKey != lastCustomerRequestCallKey) {
+                lastCustomerRequestCallKey = callKey
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    speakTts(request)
+                    OtwFileLogger.log("CustomerRequest", "리마인드 TTS: \"$request\"")
+                }, 5000)
+            }
+        }
 
         // 수익 트래킹
         EarningsTracker.recordAccept(this, price, platform)
@@ -786,6 +829,17 @@ class OnTheWayService : AccessibilityService() {
         val rawMsg = "[$platformName] rawText: ${texts.joinToString(" | ")}"
         Log.d("DeliveryFilter", rawMsg)
         OtwFileLogger.log("DeliveryFilter", rawMsg)
+
+        // v3.26: 고객 요청사항 파싱 (배민)
+        if (pkg == PKG_BAEMIN) {
+            val customerReq = BaeminParser.parseCustomerRequest(texts)
+            if (customerReq != null) {
+                lastCustomerRequest = customerReq
+                OtwFileLogger.log("CustomerRequest", "감지: \"$customerReq\"")
+            }
+            // v3.26: 배민 물음표 자동 탭 (개발자 모드 전용)
+            tryBaeminDistanceAutoTap(root)
+        }
 
         // v3.6: 배민 대량 중복 감지 — 파싱 전에 최근 3초 이내 같은 플랫폼 이벤트 횟수 체크
         val now0 = System.currentTimeMillis()
@@ -1142,6 +1196,9 @@ class OnTheWayService : AccessibilityService() {
             OtwFileLogger.log("DeliveryFilter", "근거 없음 → SILENT: ${call.price}원")
         }
 
+        // v3.26: AI 보조 (애매 구간만, 개발자 모드)
+        AiAssist.assist(this, enrichedCall)
+
         // OutputController 통합 (TTS + Overlay)
         OutputController.emit(
             ctx = this,
@@ -1170,6 +1227,7 @@ class OnTheWayService : AccessibilityService() {
         }
         val dbUp = if (dbDistance != null && dbDistance > 0)
             (dbPrice / dbDistance).toInt() else 0
+        val dbSessionId = DrivingModeManager.getSessionId(ctx)
         dbExecutor.execute {
             try {
                 CallLogDb.get(ctx).insert(
@@ -1182,7 +1240,8 @@ class OnTheWayService : AccessibilityService() {
                     ttsSuppressed = dbTtsSuppressed,
                     sourceType = dbSourceType,
                     parsingMethod = dbParsingMethod,
-                    driverAction = dbDriverAction
+                    driverAction = dbDriverAction,
+                    sessionId = dbSessionId
                 )
                 // 쿠팡: Accessibility에서 가게명 있으면 NLS 레코드도 업데이트
                 if (dbPlatform == "coupang" && dbStoreName.isNotBlank()) {

@@ -3,6 +3,20 @@ package com.vita.ontheway
 import android.content.Context
 
 /**
+ * TTS 프리셋 4단계:
+ * LOW: 콜 판단 TTS만
+ * MEDIUM: 콜 판단 + 고객 요청 리마인드
+ * HIGH: MEDIUM + 멀티콜 순서
+ * ULTRA: 전체
+ */
+enum class TtsPreset(val label: String, val desc: String) {
+    LOW("최소", "콜 판단만"),
+    MEDIUM("보통", "판단 + 고객 요청"),
+    HIGH("많이", "판단 + 요청 + 순서"),
+    ULTRA("전체", "모든 안내")
+}
+
+/**
  * v3.20: 2계층 FeatureFlags 시스템
  * - Stable: 상수, UI 미노출, 제거 불가
  * - Experimental: 일반 설정 노출 (최대 5개)
@@ -32,11 +46,16 @@ object FeatureFlags {
     // 🟡 Power
     var backgroundCapture = false  // true=운행OFF시에도 수집, false=운행ON시에만 작동(절전)
 
+    // 🟡 TTS 프리셋 (LOW/MEDIUM/HIGH/ULTRA)
+    var ttsPreset: TtsPreset = TtsPreset.LOW
+
     // 🔴 Future (개발자 옵션, 기본 OFF, 그릇만)
     var hourlyWageDisplay = false
     var personalPreset = false
     var regionHeatmap = false
     var connectivityTTS = false
+    var baeminDistanceAutoTap = false  // 배민 물음표 자동 탭 (개발자 모드 전용)
+    var aiAssistEnabled = false  // AI 보조 v0.1 (개발자 모드 전용)
 
     private const val PREF_NAME = "feature_flags"
 
@@ -57,6 +76,11 @@ object FeatureFlags {
         personalPreset = prefs.getBoolean("personalPreset", false)
         regionHeatmap = prefs.getBoolean("regionHeatmap", false)
         connectivityTTS = prefs.getBoolean("connectivityTTS", false)
+        ttsPreset = try {
+            TtsPreset.valueOf(prefs.getString("ttsPreset", TtsPreset.LOW.name) ?: TtsPreset.LOW.name)
+        } catch (_: Exception) { TtsPreset.LOW }
+        baeminDistanceAutoTap = prefs.getBoolean("baeminDistanceAutoTap", false)
+        aiAssistEnabled = prefs.getBoolean("aiAssistEnabled", false)
     }
 
     fun save(context: Context) {
@@ -76,6 +100,9 @@ object FeatureFlags {
             putBoolean("personalPreset", personalPreset)
             putBoolean("regionHeatmap", regionHeatmap)
             putBoolean("connectivityTTS", connectivityTTS)
+            putString("ttsPreset", ttsPreset.name)
+            putBoolean("baeminDistanceAutoTap", baeminDistanceAutoTap)
+            putBoolean("aiAssistEnabled", aiAssistEnabled)
         }.apply()
     }
 }
