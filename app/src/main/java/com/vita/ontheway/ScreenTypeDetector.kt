@@ -46,13 +46,19 @@ object ScreenTypeDetector {
     private val BUNDLE_ACCEPT = Regex("\\d+건\\s*모두\\s*수락")
 
     fun detect(joined: String): ScreenDetection {
-        // 1. IDLE
-        if (IDLE_KEYWORDS.any { joined.contains(it) })
+        // 1. IDLE (단, 배달료 패턴이 있으면 신규 콜 우선)
+        if (IDLE_KEYWORDS.any { joined.contains(it) }) {
+            if (PRICE_PATTERN.containsMatchIn(joined))
+                return ScreenDetection(ScreenType.NEW_CALL, Confidence.MEDIUM)
             return ScreenDetection(ScreenType.IDLE, Confidence.HIGH)
+        }
 
-        // 2. IN_PROGRESS
-        if (PROGRESS_KEYWORDS.any { joined.contains(it) })
+        // 2. IN_PROGRESS (단, 배달료 패턴이 있으면 신규 콜 우선)
+        if (PROGRESS_KEYWORDS.any { joined.contains(it) }) {
+            if (PRICE_PATTERN.containsMatchIn(joined))
+                return ScreenDetection(ScreenType.NEW_CALL, Confidence.MEDIUM)
             return ScreenDetection(ScreenType.IN_PROGRESS, Confidence.HIGH)
+        }
 
         // 3. DELIVERY_RESUME
         if (RESUME_KEYWORDS.any { joined.contains(it) })
