@@ -144,7 +144,9 @@ object LocationTracker {
             else -> "STOPPED"
         }
 
+        val speedKmh = if (speed > 0) speed * 3.6f else 0f
         Log.d(TAG, "${trace.lat},${trace.lng} spd=${"%.1f".format(speed)}m/s [$speedLabel] interval=${targetInterval}ms")
+        OtwFileLogger.log("LocationTrace", "lat=${"%.6f".format(trace.lat)} lng=${"%.6f".format(trace.lng)} speed=${"%.0f".format(speedKmh)}km/h")
 
         // 3. update lastMovingTime
         if (speed >= SPEED_STOPPED) {

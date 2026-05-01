@@ -8,7 +8,7 @@ import android.util.Log
 import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 7) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 8) {
 
     private val appCtx: Context = ctx.applicationContext
 
@@ -87,7 +87,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 7) {
                 lng REAL NOT NULL,
                 speed REAL,
                 accuracy REAL,
-                session_id TEXT
+                session_id TEXT,
+                speed_kmh REAL
             )
         """.trimIndent())
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_location_trace_ts ON location_trace(ts)")
@@ -124,6 +125,10 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 7) {
             try { db.execSQL("ALTER TABLE location_trace ADD COLUMN session_id TEXT") } catch (_: Exception) {}
             try { db.execSQL("ALTER TABLE review_log ADD COLUMN session_id TEXT") } catch (_: Exception) {}
             Log.d("CallLogDb", "v6->v7: session_id + ai_reason columns added")
+        }
+        if (old < 8) {
+            try { db.execSQL("ALTER TABLE location_trace ADD COLUMN speed_kmh REAL") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v7->v8: location_trace speed_kmh column added")
         }
     }
 
@@ -243,6 +248,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 7) {
     }
 
     fun insertLocationTrace(trace: LocationTrace): Long {
+        val speedKmh = if (trace.speed > 0) trace.speed * 3.6f else 0.0f
         val cv = ContentValues().apply {
             put("mobility_event_id", trace.mobilityEventId)
             put("ts", trace.ts)
@@ -250,6 +256,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 7) {
             put("lng", trace.lng)
             put("speed", trace.speed)
             put("accuracy", trace.accuracy)
+            put("speed_kmh", speedKmh)
         }
         return writableDatabase.insert("location_trace", null, cv)
     }
