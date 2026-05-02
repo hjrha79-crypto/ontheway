@@ -621,26 +621,85 @@ class OnTheWayService : AccessibilityService() {
     }
 
     /**
-     * v3.26: 배민 물음표 자동 탭 — "?" contentDescription 감지 → ACTION_CLICK
-     * 탭 후 rawText에서 "배달료기준거리 (\d+)m" 파싱하여 distanceKm 반환
+     * v3.26: 배민 물음표 자동 탭 — "?" 버튼 감지 → ACTION_CLICK
+     * 탭 후 다음 이벤트에서 "배달료기준거리 (\d+)m" 텍스트가 나타남
      */
     private fun tryBaeminDistanceAutoTap(root: AccessibilityNodeInfo): Double? {
         if (!FeatureFlags.baeminDistanceAutoTap || !FeatureFlags.devMode) return null
-        val qNode = findNodeByContentDescription(root, "?") ?: return null
-        try {
-            qNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            OtwFileLogger.log("BaeminAutoTap", "? 버튼 탭 수행")
-        } catch (e: Exception) {
-            OtwFileLogger.log("BaeminAutoTap", "? 버튼 탭 실패: ${e.message}")
+
+        val qNode = findQuestionMarkNode(root)
+        if (qNode == null) {
+            OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 시도: found=false")
             return null
         }
-        return null // 탭 후 다음 이벤트에서 거리 텍스트가 나타남
+
+        val desc = qNode.contentDescription?.toString() ?: ""
+        val text = qNode.text?.toString() ?: ""
+        val cls = qNode.className?.toString() ?: ""
+        OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 시도: found=true desc=\"$desc\" text=\"$text\" class=$cls")
+
+        try {
+            val success = qNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 클릭 결과: ${if (success) "success" else "fail"}")
+        } catch (e: Exception) {
+            OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 클릭 결과: fail (${e.message})")
+            return null
+        }
+        return null
+    }
+
+    /**
+     * 물음표 버튼 탐색 (다단계 fallback)
+     * 1) contentDescription == "?" (기존)
+     * 2) contentDescription contains "?" or "물음표" or "배달료 안내"
+     * 3) text == "?"
+     * 4) ImageButton 중 "배달료" 노드 근처에 위치한 것
+     */
+    private fun findQuestionMarkNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        // 1단계: 정확 매칭
+        findNodeByContentDescription(node, "?")?.let { return it }
+        // 2단계: 부분 매칭 (contentDescription에 ?, 물음표, 배달료 안내 포함)
+        findNodeByDescContains(node, listOf("?", "물음표", "배달료 안내"))?.let { return it }
+        // 3단계: text == "?"
+        findNodeByExactText(node, "?")?.let { return it }
+        // 4단계: ImageButton 중 clickable한 것
+        findClickableImageButton(node)?.let { return it }
+        return null
     }
 
     private fun findNodeByContentDescription(node: AccessibilityNodeInfo, desc: String): AccessibilityNodeInfo? {
         if (node.contentDescription?.toString() == desc) return node
         for (i in 0 until node.childCount) {
             val found = node.getChild(i)?.let { findNodeByContentDescription(it, desc) }
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findNodeByDescContains(node: AccessibilityNodeInfo, keywords: List<String>): AccessibilityNodeInfo? {
+        val desc = node.contentDescription?.toString()
+        if (desc != null && keywords.any { desc.contains(it) }) return node
+        for (i in 0 until node.childCount) {
+            val found = node.getChild(i)?.let { findNodeByDescContains(it, keywords) }
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findNodeByExactText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
+        if (node.text?.toString()?.trim() == text) return node
+        for (i in 0 until node.childCount) {
+            val found = node.getChild(i)?.let { findNodeByExactText(it, text) }
+            if (found != null) return found
+        }
+        return null
+    }
+
+    private fun findClickableImageButton(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val cls = node.className?.toString() ?: ""
+        if (cls == "android.widget.ImageButton" && node.isClickable) return node
+        for (i in 0 until node.childCount) {
+            val found = node.getChild(i)?.let { findClickableImageButton(it) }
             if (found != null) return found
         }
         return null
