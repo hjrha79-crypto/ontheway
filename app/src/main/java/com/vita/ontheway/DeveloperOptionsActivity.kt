@@ -97,6 +97,11 @@ class DeveloperOptionsActivity : AppCompatActivity() {
             FeatureFlags.baeminDistanceAutoTap
         ) { checked -> FeatureFlags.baeminDistanceAutoTap = checked; FeatureFlags.save(this) })
 
+        card.addView(devToggle(
+            "근접 TTS", "픽업/배달지 GPS 근접 시 음성 안내",
+            FeatureFlags.proximityTTS
+        ) { checked -> FeatureFlags.proximityTTS = checked; FeatureFlags.save(this) })
+
         root.addView(card, lp(MP, WC).apply { setMargins(dp(16), dp(16), dp(16), dp(8)) })
 
         // ─── AI API 키 설정 ───

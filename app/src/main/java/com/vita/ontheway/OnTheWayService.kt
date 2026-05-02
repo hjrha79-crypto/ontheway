@@ -733,6 +733,9 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
+        // GPS 근접 TTS 타겟 설정
+        try { setProximityTarget(call, platform) } catch (_: Exception) {}
+
         // 수익 트래킹
         EarningsTracker.recordAccept(this, price, platform)
 
@@ -1339,6 +1342,7 @@ class OnTheWayService : AccessibilityService() {
 
     /** v3.3: 배달 완료 감지 시 처리 */
     private fun onDeliveryComplete() {
+        try { ProximityDetector.clearTarget() } catch (_: Exception) {}
         if (!AdvancedPrefs.isDeliveryCompleteEnabled(this)) return
         val earnings = EarningsTracker.getToday(this)
         val fmt = java.text.NumberFormat.getNumberInstance()
@@ -1487,6 +1491,9 @@ class OnTheWayService : AccessibilityService() {
         // Supabase 미전송 데이터 자동 sync
         try { SupabaseSync.syncPending(this) } catch (_: Exception) {}
 
+        // GPS 근접 TTS 리스너 설정
+        try { setupProximityListener() } catch (_: Exception) {}
+
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
     }
 
@@ -1511,6 +1518,7 @@ class OnTheWayService : AccessibilityService() {
             currentSpeed = loc.speed
             gpsActive = true
             Log.d("OTW_GPS", "위치: $currentLat, $currentLng, 속도: ${currentSpeed}m/s")
+            try { ProximityDetector.onLocationUpdate(loc.latitude, loc.longitude) } catch (_: Exception) {}
         }
         override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
         override fun onProviderEnabled(provider: String) {}
@@ -1617,7 +1625,74 @@ class OnTheWayService : AccessibilityService() {
         }
     }
 
+    // ── GPS 근접 TTS ──
+
+    private fun setupProximityListener() {
+        ProximityDetector.listener = { event, target ->
+            when (event) {
+                ProximityDetector.ProximityEvent.PICKUP_NEAR -> {
+                    if (FeatureFlags.ttsPreset.ordinal >= TtsPreset.HIGH.ordinal) {
+                        speakTts("픽업 도착")
+                        OtwFileLogger.log("ProximityTTS", "PICKUP_NEAR TTS: 픽업 도착 (${target.storeName})")
+                    }
+                }
+                ProximityDetector.ProximityEvent.DELIVERY_NEAR -> {
+                    if (FeatureFlags.ttsPreset.ordinal >= TtsPreset.MEDIUM.ordinal) {
+                        val msg = if (!target.customerRequest.isNullOrBlank()) {
+                            target.customerRequest
+                        } else {
+                            "배달 도착"
+                        }
+                        speakTts(msg)
+                        OtwFileLogger.log("ProximityTTS", "DELIVERY_NEAR TTS: \"$msg\" (${target.storeName})")
+
+                        // 멀티콜 + 첫 배달지 근접 → "다음 [두번째가게명]"
+                        if (FeatureFlags.ttsPreset.ordinal >= TtsPreset.HIGH.ordinal &&
+                            !target.nextStoreName.isNullOrBlank()) {
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                speakTts("다음 ${target.nextStoreName}")
+                                OtwFileLogger.log("ProximityTTS", "멀티콜 다음: ${target.nextStoreName}")
+                            }, 2000)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun setProximityTarget(call: DeliveryCall, platform: String) {
+        val callKey = "${platform}_${call.price}_${System.currentTimeMillis()}"
+
+        // 주소 → 좌표 변환 (LocationTable 룩업)
+        val pickupCoord = LocationTable.findCoord(call.storeName)
+        val deliveryCoord = LocationTable.findCoord(call.destination)
+
+        if (pickupCoord == null && deliveryCoord == null) {
+            OtwFileLogger.log("ProximityTTS", "좌표 변환 실패 (pickup=${call.storeName}, delivery=${call.destination})")
+            return
+        }
+
+        // 멀티콜 두번째 가게명 추출
+        val nextStore = if (call.isMulti && call.storeName.contains("+")) {
+            call.storeName.split("+").getOrNull(1)?.trim()
+        } else null
+
+        val target = ProximityDetector.Target(
+            callKey = callKey,
+            pickupLat = pickupCoord?.lat,
+            pickupLng = pickupCoord?.lng,
+            deliveryLat = deliveryCoord?.lat,
+            deliveryLng = deliveryCoord?.lng,
+            storeName = call.storeName,
+            customerRequest = lastCustomerRequest,
+            nextStoreName = nextStore
+        )
+        ProximityDetector.setTarget(target)
+    }
+
     override fun onDestroy() {
+        try { ProximityDetector.clearTarget() } catch (_: Exception) {}
+        ProximityDetector.listener = null
         try { tts?.shutdown() } catch (e: Exception) {}
         tts = null
         ttsReady = false

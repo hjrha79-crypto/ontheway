@@ -56,6 +56,7 @@ object FeatureFlags {
     var connectivityTTS = false
     var baeminDistanceAutoTap = false  // 배민 물음표 자동 탭 (개발자 모드 전용)
     var aiAssistEnabled = false  // AI 보조 v0.1 (개발자 모드 전용)
+    var proximityTTS = true  // GPS 근접 TTS (픽업/배달지 접근 시 안내)
 
     private const val PREF_NAME = "feature_flags"
 
@@ -81,6 +82,7 @@ object FeatureFlags {
         } catch (_: Exception) { TtsPreset.LOW }
         baeminDistanceAutoTap = prefs.getBoolean("baeminDistanceAutoTap", false)
         aiAssistEnabled = prefs.getBoolean("aiAssistEnabled", false)
+        proximityTTS = prefs.getBoolean("proximityTTS", true)
     }
 
     fun save(context: Context) {
@@ -103,6 +105,7 @@ object FeatureFlags {
             putString("ttsPreset", ttsPreset.name)
             putBoolean("baeminDistanceAutoTap", baeminDistanceAutoTap)
             putBoolean("aiAssistEnabled", aiAssistEnabled)
+            putBoolean("proximityTTS", proximityTTS)
         }.apply()
     }
 }
