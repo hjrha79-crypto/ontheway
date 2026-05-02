@@ -625,6 +625,7 @@ class OnTheWayService : AccessibilityService() {
      * 탭 후 다음 이벤트에서 "배달료기준거리 (\d+)m" 텍스트가 나타남
      */
     private fun tryBaeminDistanceAutoTap(root: AccessibilityNodeInfo): Double? {
+        OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 함수 진입: flag=${FeatureFlags.baeminDistanceAutoTap}, devMode=${FeatureFlags.devMode}")
         if (!FeatureFlags.baeminDistanceAutoTap || !FeatureFlags.devMode) return null
 
         val qNode = findQuestionMarkNode(root)
