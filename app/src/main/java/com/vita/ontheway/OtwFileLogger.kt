@@ -59,9 +59,16 @@ object OtwFileLogger {
 
     private fun rotate(file: File) {
         try {
-            val rotated = File(file.parent, file.name + ".1")
-            if (rotated.exists()) rotated.delete()
-            file.renameTo(rotated)
+            val parent = file.parent ?: return
+            val name = file.name
+            // 4단 rotate: .3 삭제 → .2→.3 → .1→.2 → current→.1
+            val f3 = File(parent, "$name.3")
+            val f2 = File(parent, "$name.2")
+            val f1 = File(parent, "$name.1")
+            if (f3.exists()) f3.delete()
+            if (f2.exists()) f2.renameTo(f3)
+            if (f1.exists()) f1.renameTo(f2)
+            file.renameTo(f1)
         } catch (_: Exception) {}
     }
 

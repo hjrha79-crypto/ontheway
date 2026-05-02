@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class BaeminParserTest {
@@ -209,5 +210,53 @@ class BaeminParserTest {
         assertNotNull("정상 콜이 DROP되면 안됨", result)
         assertTrue(result!!.isNotEmpty())
         assertEquals(3500, result[0].price)
+    }
+
+    // ── isBlacklistedPattern 테스트 ──
+
+    @Test
+    fun `블랙리스트패턴 - ai-mode-notification-item-0 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("ai-mode-notification-item-0"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - notification-item-3 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("notification-item-3"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - button-base 차단 (기존 정확 일치)`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("button-base"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - touchable-image-container 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("touchable-image-container"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - BBQ 통과`() {
+        assertFalse(BaeminParser.isBlacklistedPattern("BBQ"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - 맘스터치 BEEF 통과`() {
+        assertFalse(BaeminParser.isBlacklistedPattern("맘스터치 BEEF"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - GS25 통과`() {
+        assertFalse(BaeminParser.isBlacklistedPattern("GS25"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - 빈문자열 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern(""))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - sanitize에서 ai-mode 제거`() {
+        val result = BaeminParser.sanitizeStoreName("맘스터치+ai-mode-notification-item-0")
+        assertEquals("맘스터치", result)
     }
 }

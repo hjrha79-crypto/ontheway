@@ -85,7 +85,7 @@ class OnTheWayService : AccessibilityService() {
         )
 
         // 수락 관련 상수
-        val ACCEPT_BUTTON_TEXTS = listOf("배차수락", "배차 수락", "주문 수락", "주문수락", "수락하기", "모두 수락")
+        val ACCEPT_BUTTON_TEXTS = listOf("수락", "배차수락", "배차 수락", "주문 수락", "주문수락", "수락하기", "모두 수락")
 
         const val ACCEPT_TIMEOUT_MS = 30_000L
         const val AUTO_ACCEPT_COOLDOWN_MS = 60_000L

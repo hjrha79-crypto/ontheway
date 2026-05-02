@@ -62,6 +62,24 @@ object BaeminParser {
         "지도앱으로 검색하기"
     )
 
+    /** 영문 소문자+숫자+하이픈만으로 구성된 패턴 (accessibility view ID) */
+    private val VIEW_ID_PATTERN = Regex("^[a-z][a-z0-9\\-]*$")
+
+    /** 가게명 블랙리스트 판정 (정확 일치 + 패턴) */
+    fun isBlacklistedPattern(name: String): Boolean {
+        if (name.isBlank()) return true
+        if (STORE_NAME_BLACKLIST.contains(name)) return true
+        if (STORE_NAME_BLACKLIST.contains(name.lowercase())) return true
+        if (name.startsWith("T2CG")) return true
+        if (Regex("T2CI[A-Z0-9]{4,}").containsMatchIn(name)) return true
+        // accessibility view ID 패턴 (영소문자+숫자+하이픈만)
+        if (VIEW_ID_PATTERN.matches(name)) return true
+        if (name.contains("-item-")) return true
+        if (name.startsWith("notification-")) return true
+        if (name.startsWith("ai-")) return true
+        return false
+    }
+
     /**
      * texts 리스트에서 "배달료기준거리 (X,XXXm)" 패턴 찾아 km로 반환.
      * 없으면 null.
@@ -84,14 +102,9 @@ object BaeminParser {
         val tokens = raw.split("+", ",").map { it.trim() }
         val removed = mutableListOf<String>()
         val clean = tokens.filter { token ->
-            val isBlacklisted = token.isNotBlank() && (
-                STORE_NAME_BLACKLIST.contains(token) ||
-                STORE_NAME_BLACKLIST.contains(token.lowercase()) ||
-                token.startsWith("T2CG") ||
-                Regex("T2CI[A-Z0-9]{4,}").containsMatchIn(token)
-            )
+            val isBlacklisted = isBlacklistedPattern(token)
             if (isBlacklisted) removed.add(token)
-            !isBlacklisted && token.isNotBlank()
+            !isBlacklisted
         }
         if (removed.isNotEmpty()) {
             OtwFileLogger.log("BaeminParser", "가게명 필터: \"$raw\" → \"${clean.joinToString("+")}\" (제거: ${removed.joinToString(", ")})")
@@ -221,7 +234,7 @@ object BaeminParser {
                 ?: results.size
 
             // 다중 픽업 판정: 서로 다른 가게명이 2개 이상 (블랙리스트 제외)
-            val cleanStoreNames = storeNames.filter { !STORE_NAME_BLACKLIST.contains(it.lowercase()) }
+            val cleanStoreNames = storeNames.filter { !isBlacklistedPattern(it) }
             val isMultiPickup = cleanStoreNames.size >= 2
 
             Log.d("BaeminParser", "묶음배달 감지: ${bundleCount}건 합산 ${totalPrice}원, 다중픽업=$isMultiPickup")
