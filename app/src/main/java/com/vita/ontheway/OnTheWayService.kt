@@ -118,7 +118,7 @@ class OnTheWayService : AccessibilityService() {
 
     // v3.0: 마지막 판정 정보 (수락 감지용 + 오버레이 피드백)
     var lastDeliveryCall: DeliveryCall? = null
-    var lastDeliveryVerdict: String = ""  // "잡으세요", "괜찮습니다", "넘기세요"
+    var lastDeliveryVerdict: String = ""  // "추천", "보통", "비추천"
     var lastDeliveryPlatform: String = ""
     var lastDeliveryReason: String? = null
     var lastDeliverySessionId: String? = null
@@ -840,7 +840,7 @@ class OnTheWayService : AccessibilityService() {
     /** v3.0: 자동 수락 (잡으세요 판정만) */
     private fun tryAutoAccept() {
         if (!AdvancedPrefs.isAutoAcceptEnabled(this)) return
-        if (lastDeliveryVerdict != "잡으세요") return
+        if (lastDeliveryVerdict != "추천") return
 
         val now = System.currentTimeMillis()
         if (now - lastAutoAcceptTime < AUTO_ACCEPT_COOLDOWN_MS) {
@@ -1215,7 +1215,7 @@ class OnTheWayService : AccessibilityService() {
         // 내부 verdict (데이터/JudgmentMatch용 — 사용자에게는 노출 X)
         if (result.verdict == CallFilter.Verdict.REJECT) {
             lastDeliveryCall = call
-            lastDeliveryVerdict = "넘기세요"
+            lastDeliveryVerdict = "비추천"
             lastDeliveryPlatform = platformName
         } else {
             val grabThreshold = TtsPrefs.getGrabThreshold(this)
@@ -1230,7 +1230,7 @@ class OnTheWayService : AccessibilityService() {
             }
             lastDeliveryCall = call
             lastDeliveryPlatform = platformName
-            lastDeliveryVerdict = if (isTopAccept) "잡으세요" else "괜찮습니다"
+            lastDeliveryVerdict = if (isTopAccept) "추천" else "보통"
         }
 
         // ── TTS 3단계 판정 (중복 방지) — TTS만 스킵, 오버레이/DB/로그는 항상 실행 ──
@@ -1255,7 +1255,7 @@ class OnTheWayService : AccessibilityService() {
             CallFilter.updateRejectStreak(result.verdict, this)
             consecutiveRejectCount = CallFilter.getConsecutiveRejectCount()
 
-            if (result.verdict != CallFilter.Verdict.REJECT && lastDeliveryVerdict != "넘기세요") {
+            if (result.verdict != CallFilter.Verdict.REJECT && lastDeliveryVerdict != "비추천") {
                 tryAutoAccept()
             }
         } else if (!shouldSpeak) {
@@ -1290,8 +1290,8 @@ class OnTheWayService : AccessibilityService() {
         val dbSourceType = V2Event.mapSourceType(call.platform)
         val dbParsingMethod = call.parsingMethod
         val dbDriverAction = when (lastDeliveryVerdict) {
-            "잡으세요", "괜찮습니다" -> "simulated_accept"
-            "넘기세요" -> "simulated_reject"
+            "추천", "보통" -> "simulated_accept"
+            "비추천" -> "simulated_reject"
             else -> "unknown"
         }
         val dbUp = if (dbDistance != null && dbDistance > 0)
@@ -1422,9 +1422,9 @@ class OnTheWayService : AccessibilityService() {
         if (!AdvancedPrefs.isCallSoundEnabled(this)) return
         try {
             val resId = when (verdict) {
-                "잡으세요" -> resources.getIdentifier("sound_grab", "raw", packageName)
-                "괜찮습니다" -> resources.getIdentifier("sound_ok", "raw", packageName)
-                "넘기세요" -> resources.getIdentifier("sound_skip", "raw", packageName)
+                "추천" -> resources.getIdentifier("sound_grab", "raw", packageName)
+                "보통" -> resources.getIdentifier("sound_ok", "raw", packageName)
+                "비추천" -> resources.getIdentifier("sound_skip", "raw", packageName)
                 else -> 0
             }
             if (resId != 0) {
@@ -1643,7 +1643,8 @@ class OnTheWayService : AccessibilityService() {
         val count = if (earnings.acceptedCount > 0) earnings.acceptedCount else detail.total
         val revenue = earnings.totalRevenue
         val hourly = earnings.hourlyRate
-        val hourlyStr = if (hourly > 0) "${fmt.format(hourly)}원/h" else "0원/h"
+        val hourlyEmoji = when { hourly >= 20000 -> "🟢"; hourly >= 18000 -> "🟡"; hourly > 0 -> "🔴"; else -> "" }
+        val hourlyStr = if (hourly > 0) "$hourlyEmoji ${fmt.format(hourly)}원/h" else "0원/h"
         val text = customText ?: "OnTheWay 작동 중 | 오늘 ${count}건 | 매출 ${fmt.format(revenue)}원 | 시급 $hourlyStr"
 
         val intent = Intent(this, MainActivity::class.java).apply {
@@ -1672,11 +1673,11 @@ class OnTheWayService : AccessibilityService() {
                 getSystemService(VIBRATOR_SERVICE) as Vibrator
             }
             when (verdict) {
-                "잡으세요" -> {
+                "추천" -> {
                     val pattern = longArrayOf(0, 500, 200, 500, 200, 500)
                     vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
                 }
-                "괜찮습니다" -> {
+                "보통" -> {
                     vibrator.vibrate(VibrationEffect.createOneShot(300, VibrationEffect.DEFAULT_AMPLITUDE))
                 }
             }

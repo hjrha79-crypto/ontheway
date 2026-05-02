@@ -90,8 +90,8 @@ object TtsMessageBuilder {
 
     private fun actionLabel(result: CallFilter.FilterResult): String {
         return when (result.verdict) {
-            CallFilter.Verdict.ACCEPT -> "잡으세요"
-            CallFilter.Verdict.REJECT -> "넘기세요"
+            CallFilter.Verdict.ACCEPT -> "추천"
+            CallFilter.Verdict.REJECT -> "비추천"
         }
     }
 }

@@ -181,22 +181,22 @@ class SettingsActivity : AppCompatActivity() {
             textSize = 12f; setTextColor(Color.parseColor("#888888"))
             setPadding(dp(16), 0, dp(16), dp(8))
         })
-        val grabBar = filterSeekBar(filterCard, "잡으세요 기준", TtsPrefs.getGrabThreshold(this), 7000, 20000, 1000, "원")
+        val grabBar = filterSeekBar(filterCard, "추천 기준", TtsPrefs.getGrabThreshold(this), 7000, 20000, 1000, "원")
         filterCard.addView(TextView(this).apply {
-            text = "이 금액 이상이면 무조건 '잡으세요' TTS"
+            text = "이 금액 이상이면 무조건 '추천' TTS"
             textSize = 12f; setTextColor(Color.parseColor("#888888"))
             setPadding(dp(16), 0, dp(16), dp(8))
         })
         val multiMinBar = filterSeekBar(filterCard, "묶음 2건 최소", CallFilter.getMultiMinPrice(this), 3000, 8000, 500, "원")
 
-        // "괜찮습니다" 음성 ON/OFF 토글
+        // "보통" 음성 ON/OFF 토글
         val okVoiceRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(4))
         }
         okVoiceRow.addView(TextView(this).apply {
-            text = "\"괜찮습니다\" 음성 안내"
+            text = "\"보통\" 음성 안내"
             textSize = 14f; setTextColor(Color.BLACK)
         }, lp(0, WC, 1f))
         val okToggle = Switch(this).apply {
@@ -429,14 +429,14 @@ class SettingsActivity : AppCompatActivity() {
         val ttsCard = card()
 
         ttsCard.addView(advancedToggle(
-            "넘기세요만 안내",
+            "비추천만 안내",
             "ON이면 ACCEPT 콜은 음성 없이 로그만 기록",
             TtsPrefs.isRejectOnlyEnabled(this)
         ) { checked -> TtsPrefs.setRejectOnly(this, checked) })
 
         ttsCard.addView(advancedToggle(
-            "잡으세요만 안내",
-            "ON이면 잡으세요 판정만 음성 출력",
+            "추천만 안내",
+            "ON이면 추천 판정만 음성 출력",
             TtsPrefs.isGrabOnlyEnabled(this)
         ) { checked -> TtsPrefs.setGrabOnly(this, checked) })
 
@@ -499,7 +499,7 @@ class SettingsActivity : AppCompatActivity() {
         // v3.2: 진동 알림
         ttsCard.addView(advancedToggle(
             "진동 알림",
-            "잡으세요: 강한 진동, 괜찮습니다: 보통 진동, 넘기세요: 없음",
+            "추천: 강한 진동, 보통: 보통 진동, 비추천: 없음",
             TtsPrefs.isVibrationEnabled(this)
         ) { checked -> TtsPrefs.setVibration(this, checked) })
 
@@ -736,8 +736,8 @@ class SettingsActivity : AppCompatActivity() {
 
         // 3. 자동 수락
         advCard.addView(advancedToggle(
-            "자동 수락 (잡으세요만)",
-            "잡으세요 판정된 콜만 자동으로 수락합니다 (60초 쿨다운)",
+            "자동 수락 (추천만)",
+            "추천 판정된 콜만 자동으로 수락합니다 (60초 쿨다운)",
             AdvancedPrefs.isAutoAcceptEnabled(this)
         ) { checked -> AdvancedPrefs.setAutoAccept(this, checked) })
 

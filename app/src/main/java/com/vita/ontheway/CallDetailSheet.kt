@@ -124,10 +124,10 @@ object CallDetailSheet {
             addView(TextView(context).apply {
                 text = when {
                     detail.isUrgent -> "⚡ 급송"
-                    detail.aiReason.contains("잡으세요") -> "● 잡으세요"
+                    detail.aiReason.contains("추천") -> "● 추천"
                     detail.aiReason.contains("좋습니다") -> "● 좋습니다"
-                    detail.aiReason.contains("괜찮습니다") -> "● 괜찮습니다"
-                    detail.aiReason.contains("넘기세요") -> "⚠ 넘기세요"
+                    detail.aiReason.contains("보통") -> "● 보통"
+                    detail.aiReason.contains("비추천") || detail.aiReason.contains("넘기세요") -> "● 비추천"
                     detail.rank == 1 -> "● 1위 추천"
                     else -> "${detail.rank}순위"
                 }

@@ -47,7 +47,7 @@ data class JudgmentMatchEvent(
 
     private fun buildSummary(): String {
         val judgmentKr = when (onthewayJudgment) {
-            "JOB" -> "잡으세요"; "OK" -> "괜찮습니다"; "PASS" -> "넘기세요"; else -> onthewayJudgment
+            "JOB" -> "추천"; "OK" -> "보통"; "PASS" -> "비추천"; else -> onthewayJudgment
         }
         val actionKr = when (userAction) {
             "ACCEPTED" -> "수락"; "TIMEOUT" -> "미수락"; else -> userAction
@@ -68,9 +68,9 @@ data class JudgmentMatchEvent(
         }
 
         fun verdictToJudgment(verdict: String): String = when (verdict) {
-            "잡으세요" -> "JOB"
-            "괜찮습니다" -> "OK"
-            "넘기세요" -> "PASS"
+            "추천", "잡으세요" -> "JOB"
+            "보통", "괜찮습니다" -> "OK"
+            "비추천", "넘기세요" -> "PASS"
             else -> "UNKNOWN"
         }
     }

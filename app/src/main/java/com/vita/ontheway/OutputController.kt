@@ -28,6 +28,7 @@ object OutputController {
     /** 판단 금지어 — 이 단어가 포함된 메시지는 출력 차단 */
     val FORBIDDEN_WORDS = listOf(
         "잡으세요", "넘기세요", "괜찮습니다",
+        "추천", "비추천", "보통",
         "권장", "좋은 콜"
     )
 

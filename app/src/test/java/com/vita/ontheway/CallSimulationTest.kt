@@ -768,7 +768,7 @@ class CallSimulationTest {
         val call = DeliveryCall(price = 3069, distance = 1.5, isMulti = false, platform = "coupang")
         val result = CallFilter.judge(call, ctx)
         assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
-        assertTrue("잡으세요 사유", result.reason.contains("잡으세요"))
+        assertTrue("추천 사유", result.reason.contains("추천"))
         println("57 PASS: 3069원/1.5km → ${result.verdict} (${result.reason})")
     }
 
@@ -975,7 +975,7 @@ class CallSimulationTest {
         val call = DeliveryCall(price = 3000, distance = 1.0, isMulti = false, platform = "coupang")
         val result = CallFilter.judge(call, ctx)
         assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
-        assertTrue("잡으세요 사유", result.reason.contains("잡으세요"))
+        assertTrue("추천 사유", result.reason.contains("추천"))
         println("75 PASS: 쿠팡 3000원/1.0km → ${result.verdict} (${result.reason})")
     }
 

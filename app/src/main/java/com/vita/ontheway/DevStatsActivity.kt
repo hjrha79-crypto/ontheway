@@ -429,8 +429,8 @@ class DevStatsActivity : AppCompatActivity() {
             listOf(
                 "일치 (MATCH)" to "${matchCnt}건",
                 "불일치 (MISMATCH)" to "${mismatchCnt}건",
-                "  잡으세요→미수락" to "${jobMismatch}건",
-                "  넘기세요→수락" to "${passMismatch}건"
+                "  추천→미수락" to "${jobMismatch}건",
+                "  비추천→수락" to "${passMismatch}건"
             ).forEach { (key, value) ->
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL

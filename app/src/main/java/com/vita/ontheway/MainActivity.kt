@@ -407,7 +407,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         val detail = FilterLog.getTodayDetail(this)
         if (detail.total > 0) {
-            filterCountText.text = "오늘 ${detail.total}건 (넘기세요 ${detail.reject} · 괜찮습니다/잡으세요 ${detail.accept})\n${SessionStats.getSummary(this)}"
+            filterCountText.text = "오늘 ${detail.total}건 (비추천 ${detail.reject} · 보통/추천 ${detail.accept})\n${SessionStats.getSummary(this)}"
         } else {
             filterCountText.text = SessionStats.getSummary(this)
         }
@@ -476,7 +476,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(16), dp(2), dp(16), dp(6))
         }
-        listOf("전체", "잡으세요", "괜찮습니다", "넘기세요").forEach { label ->
+        listOf("전체", "추천", "보통", "비추천").forEach { label ->
             verdRow.addView(TextView(this).apply {
                 text = label; textSize = 11f; gravity = Gravity.CENTER
                 val sel = label == dashFilterVerdict
@@ -547,9 +547,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val storeName = entry.optString("storeName", "")
         val verdictKr = getVerdictKr(entry)
         val verdictColor = when (verdictKr) {
-            "잡으세요" -> Color.parseColor("#00FF88")
-            "괜찮습니다" -> Color.parseColor("#4CC9F0")
-            "넘기세요" -> Color.parseColor("#FF4D6D")
+            "추천" -> Color.parseColor("#00FF88")
+            "보통" -> Color.parseColor("#4CC9F0")
+            "비추천" -> Color.parseColor("#FF4D6D")
             else -> C_SUB
         }
 
@@ -617,11 +617,19 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 text = verdictKr; textSize = 11f; setTextColor(verdictColor)
                 setTypeface(null, Typeface.BOLD)
             }, lp(WC, WC).apply { marginEnd = dp(8) })
-            val unitPrice = entry.optInt("unitPrice", 0)
-            if (unitPrice > 0) {
+            val shortReason = extractShortReason(reason, entry.optString("verdict", ""))
+            if (shortReason.isNotBlank()) {
                 subRow.addView(TextView(this).apply {
-                    text = "단가 ${fmt(unitPrice)}원/km"; textSize = 10f; setTextColor(C_SUB)
-                }, lp(WC, WC))
+                    text = shortReason; textSize = 10f; setTextColor(C_SUB)
+                    maxLines = 1
+                }, lp(0, WC, 1f))
+            } else {
+                val unitPrice = entry.optInt("unitPrice", 0)
+                if (unitPrice > 0) {
+                    subRow.addView(TextView(this).apply {
+                        text = "단가 ${fmt(unitPrice)}원/km"; textSize = 10f; setTextColor(C_SUB)
+                    }, lp(WC, WC))
+                }
             }
             card.addView(subRow)
         }
@@ -736,8 +744,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             text = "OTW: $verdictKr"
             textSize = 12f
             setTextColor(when (verdictKr) {
-                "잡으세요" -> Color.parseColor("#00FF88")
-                "넘기세요" -> Color.parseColor("#FF4D6D")
+                "추천" -> Color.parseColor("#00FF88")
+                "비추천" -> Color.parseColor("#FF4D6D")
                 else -> Color.parseColor("#4CC9F0")
             })
             setPadding(0, 0, 0, dp(8))
@@ -899,7 +907,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private fun getVerdictKr(entry: org.json.JSONObject): String {
         val verdict = entry.optString("verdict", "")
-        if (verdict == "REJECT") return "넘기세요"
+        if (verdict == "REJECT") return "비추천"
         if (verdict == "ACCEPTED") return "수락됨"
         val price = entry.optInt("price", 0)
         val unitPrice = entry.optInt("unitPrice", 0)
@@ -908,7 +916,25 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val isGrab = price >= 10000 ||
             (price >= 7000 && ((dist in 0.0..3.0) || (pt in 0.0..15.0))) ||
             (unitPrice >= 2500 && dist in 0.0..3.0)
-        return if (isGrab) "잡으세요" else "괜찮습니다"
+        return if (isGrab) "추천" else "보통"
+    }
+
+    private fun extractShortReason(reason: String, verdict: String): String {
+        if (reason.isBlank()) return ""
+        return when {
+            reason.contains("묶음 효율") -> "묶음 효율"
+            reason.contains("고단가 근거리") -> "고단가 근거리"
+            reason.contains("단거리 고단가") -> "단거리 고단가"
+            reason.contains("최소기준") || reason.contains("최소 기준") -> "최소 기준 미달"
+            reason.contains("기준 미달") -> {
+                Regex("""단가\s*([\d,]+)원/km""").find(reason)?.let { "단가 ${it.groupValues[1]}원/km 미달" }
+                    ?: "기준 미달"
+            }
+            reason.contains("묶음 최소") -> "묶음 최소 미달"
+            reason.contains("블랙리스트") -> "블랙리스트"
+            reason.contains("구간 기준") -> "구간 기준 미달"
+            else -> ""
+        }
     }
 
     /** v3.15: 콜 상세 다이얼로그 — 판정 컬러 + 섹션 구조 + 사유 간결화 */
@@ -984,13 +1010,13 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val verdictKr: String
         val verdictColor: Int
         if (verdict == "REJECT") {
-            verdictKr = "넘기세요"
+            verdictKr = "비추천"
             verdictColor = Color.parseColor("#E53935")
-        } else if (reason.contains("잡으세요")) {
-            verdictKr = "잡으세요"
+        } else if (reason.contains("추천:") || reason.contains("잡으세요")) {
+            verdictKr = "추천"
             verdictColor = Color.parseColor("#5B6ABF")
         } else {
-            verdictKr = "괜찮습니다"
+            verdictKr = "보통"
             verdictColor = Color.parseColor("#4CAF50")
         }
 
@@ -1266,9 +1292,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 if (match != null) "묶음 기준 ${match.groupValues[1]}원 미달" else raw
             }
             // --- ACCEPT: 잡으세요 (한글 설명 추출) ---
-            verdict != "REJECT" && raw.contains("잡으세요") -> {
-                val match = Regex("""잡으세요:\s*([가-힣]+\s*[가-힣]+)""").find(raw)
-                if (match != null) "잡으세요 · ${match.groupValues[1].trim()}" else "잡으세요"
+            verdict != "REJECT" && (raw.contains("추천:") || raw.contains("잡으세요")) -> {
+                val match = Regex("""(?:추천|잡으세요):\s*([가-힣]+\s*[가-힣]+)""").find(raw)
+                if (match != null) "추천 · ${match.groupValues[1].trim()}" else "추천"
             }
             // --- ACCEPT: 쿠팡/단건 단가+거리 기반 ---
             verdict != "REJECT" && raw.contains("단가") && raw.contains("≥") && raw.contains("거리") -> {
@@ -1340,6 +1366,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    private fun getHourlyRateColor(rate: Int): Int {
+        return when {
+            rate <= 0 -> C_SUB
+            rate >= 20000 -> Color.parseColor("#00FF88")
+            rate >= 18000 -> Color.parseColor("#FFD700")
+            rate >= 16000 -> Color.parseColor("#FFA500")
+            else -> Color.parseColor("#FF4D6D")
+        }
+    }
+
     private fun updateHourlyRateDisplay() {
         val recent = EarningsTracker.getRecentHourlyRate(this)
         val cumulative = EarningsTracker.getCumulativeHourlyRate(this)
@@ -1347,6 +1383,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // 메인: 체감 시급만 표시
         hourlyRateCard.visibility = View.VISIBLE
         recentHourlyRate.text = if (recent >= 0) "${fmt(recent)}원/h" else "—원/h"
+        if (recent > 0) recentHourlyRate.setTextColor(getHourlyRateColor(recent))
         // 누적/SIM 값은 계산만 (통계 화면에서 사용)
         cumulativeHourlyRate.text = if (cumulative >= 0) "${fmt(cumulative)}원/h" else "—원/h"
 

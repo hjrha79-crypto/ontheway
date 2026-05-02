@@ -174,7 +174,7 @@ object CallFilter {
                     "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달 ($bundleTag$multiPickupTag)")
             }
 
-            // v3.11: 묶음 효율 판정 (건당 3,000원+ + 건당 거리 3km 이하 → 잡으세요)
+            // v3.11: 묶음 효율 판정 (건당 3,000원+ + 건당 거리 3km 이하 → 추천)
             val bundleDist = if (hasDist) call.distance!!
                 else if (call.point != null && call.point > 0) BaeminParser.convertPointToKm(call.point)
                 else null
@@ -182,7 +182,7 @@ object CallFilter {
                 val distPerItem = bundleDist / bundleCount
                 if (perPrice >= 3000 && distPerItem <= 3.0) {
                     return FilterResult(Verdict.ACCEPT,
-                        "잡으세요: 묶음 효율 건당 ${perPriceStr}원 ≥ 3,000원 + 건당 ${"%.1f".format(distPerItem)}km ≤ 3km ($bundleTag$multiPickupTag)")
+                        "추천: 묶음 효율 건당 ${perPriceStr}원 ≥ 3,000원 + 건당 ${"%.1f".format(distPerItem)}km ≤ 3km ($bundleTag$multiPickupTag)")
                 }
             }
 
@@ -248,11 +248,11 @@ object CallFilter {
         // ACCEPT 사유
         return if (hasDist && unitPrice >= 2500 && call.distance!! <= 3.0) {
             FilterResult(Verdict.ACCEPT,
-                "잡으세요: 고단가 근거리 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                "추천: 고단가 근거리 ${fmt.format(unitPrice)}원/km ≥ 2,500원 + 거리 ${"%.1f".format(call.distance)}km ≤ 3km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         } else if (hasDist && unitPrice >= 2000 && call.distance!! <= 2.0) {
             // v3.11: 단거리 고단가 확대 (2,000원/km + 2km 이하)
             FilterResult(Verdict.ACCEPT,
-                "잡으세요: 단거리 고단가 ${fmt.format(unitPrice)}원/km ≥ 2,000원 + 거리 ${"%.1f".format(call.distance)}km ≤ 2km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                "추천: 단거리 고단가 ${fmt.format(unitPrice)}원/km ≥ 2,000원 + 거리 ${"%.1f".format(call.distance)}km ≤ 2km$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         } else if (hasDist) {
             FilterResult(Verdict.ACCEPT,
                 "금액 ${fmt.format(call.price)}원, 거리 ${"%.1f".format(call.distance)}km, 단가 ${fmt.format(unitPrice)}원/km ≥ ${fmt.format(minUnitPrice)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
