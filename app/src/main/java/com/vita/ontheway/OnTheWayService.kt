@@ -807,7 +807,13 @@ class OnTheWayService : AccessibilityService() {
         val joined = texts.joinToString(" ")
         if (pkg == PKG_BAEMIN) {
             // v3.19 Layer 1: 화면 타입 식별
-            val screen = ScreenTypeDetector.detect(joined)
+            var screen = ScreenTypeDetector.detect(joined)
+            // UNKNOWN이지만 배달료 패턴이 있으면 NEW_CALL로 오버라이드
+            if (screen.type == ScreenTypeDetector.ScreenType.UNKNOWN &&
+                Regex("배달료\\s*[\\d,]+\\s*원").containsMatchIn(joined)) {
+                OtwFileLogger.log("ScreenFilter", "[ScreenFilter] UNKNOWN → NEW_CALL 오버라이드 (배달료 패턴 감지)")
+                screen = ScreenTypeDetector.ScreenDetection(ScreenTypeDetector.ScreenType.NEW_CALL, ScreenTypeDetector.Confidence.LOW)
+            }
             if (screen.type != ScreenTypeDetector.ScreenType.NEW_CALL &&
                 screen.type != ScreenTypeDetector.ScreenType.BUNDLE_SESSION) {
                 Log.d("ScreenFilter", "[$platformName] skip: ${screen.type} (${screen.confidence})")

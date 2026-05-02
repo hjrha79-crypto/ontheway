@@ -47,4 +47,11 @@ class ScreenTypeDetectorTest {
         val result = ScreenTypeDetector.detect("아무 관련 없는 텍스트")
         assertEquals(ScreenTypeDetector.ScreenType.UNKNOWN, result.type)
     }
+
+    @Test
+    fun detect_unknownWithDeliveryFee_becomesNewCall() {
+        // 키워드 없이 배달료 패턴만 있으면 NEW_CALL (step 6)
+        val result = ScreenTypeDetector.detect("알 수 없는 화면 배달료 5,200원")
+        assertEquals(ScreenTypeDetector.ScreenType.NEW_CALL, result.type)
+    }
 }
