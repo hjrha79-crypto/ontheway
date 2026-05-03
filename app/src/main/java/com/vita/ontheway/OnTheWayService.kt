@@ -913,9 +913,10 @@ class OnTheWayService : AccessibilityService() {
             if (joined.isBlank() || Regex("(NAVER|YouTube|Chrome|카카오톡|Samsung|배달 현황|출근하기)").containsMatchIn(joined)) {
                 return
             }
-            // 쿠팡 픽업 진행 화면 감지 → 가게명 사후 추출
+            // 쿠팡 픽업 진행 화면 감지 → 수락 확정 + 가게명 사후 추출
             if (joined.contains("매장 도착") || joined.contains("매장 픽업")) {
                 val call = lastDeliveryCall
+                // 가게명 사후 추출
                 if (call != null && call.platform == "coupang" && call.storeName.isBlank()) {
                     val storeName = CoupangParser.extractStoreFromProgress(texts)
                     if (storeName.isNotBlank()) {
@@ -923,6 +924,13 @@ class OnTheWayService : AccessibilityService() {
                         FilterLog.updateLastStoreName(this, storeName)
                         OtwFileLogger.log("CoupangParser", "사후 추출: store='$storeName'")
                     }
+                }
+                // 수락 확정 → 시급 누적 (픽업 화면 = 수락 완료 증거)
+                val acceptPrice = call?.price ?: FilterLog.getRecent(this, 1)
+                    .firstOrNull()?.optInt("price", 0) ?: 0
+                if (acceptPrice > 0) {
+                    EarningsTracker.recordAccept(this, acceptPrice, "coupang")
+                    OtwFileLogger.log("EarningsTracker", "픽업화면 수락: ${acceptPrice}원 coupang")
                 }
                 return  // 픽업 진행 화면은 콜 화면이 아니므로 return
             }

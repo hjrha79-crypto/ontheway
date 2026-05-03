@@ -19,9 +19,21 @@ object EarningsTracker {
         val goalProgress: Float    // 0.0 ~ 1.0+
     )
 
+    // 중복 방지: 마지막 기록 시각+금액
+    private var lastRecordedTs: Long = 0
+    private var lastRecordedPrice: Int = 0
+
     /** 수락 기록 */
     fun recordAccept(ctx: Context, price: Int, platform: String) {
         if (!AdvancedPrefs.isEarningsTrackingEnabled(ctx)) return
+        // 10초 이내 동일 금액 = 중복 스킵
+        val now = System.currentTimeMillis()
+        if (price == lastRecordedPrice && now - lastRecordedTs < 10_000) {
+            OtwFileLogger.log(TAG, "중복 스킵: ${price}원 $platform (${now - lastRecordedTs}ms)")
+            return
+        }
+        lastRecordedTs = now
+        lastRecordedPrice = price
 
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val today = todayStr()
@@ -49,6 +61,7 @@ object EarningsTracker {
         // FilterLog에도 수락 기록 추가
         FilterLog.recordAccepted(ctx, price, platform)
         Log.d(TAG, "수락 기록: ${price}원 ($platform), 오늘 누적 ${getToday(ctx).totalRevenue}원")
+        OtwFileLogger.log(TAG, "수락 기록: ${price}원 ($platform), 오늘 누적 ${getToday(ctx).totalRevenue}원")
 
         // 위젯 업데이트
         try { OnTheWayWidget.updateAll(ctx) } catch (e: Exception) { /* 위젯 없으면 무시 */ }
@@ -67,9 +80,10 @@ object EarningsTracker {
         val firstAccept = prefs.getLong("first_accept", 0)
         val lastAccept = prefs.getLong("last_accept", 0)
 
-        // 시급: 첫 수락 ~ 마지막 수락 시간
-        val hourlyRate = if (count >= 2 && lastAccept > firstAccept) {
-            val hours = (lastAccept - firstAccept) / 3600000.0
+        // 시급: 첫 수락 ~ 현재 시간 (1건이라도 표시)
+        val hourlyRate = if (count >= 1 && firstAccept > 0) {
+            val now = System.currentTimeMillis()
+            val hours = (now - firstAccept) / 3600000.0
             if (hours >= 0.1) (total / hours).toInt() else 0
         } else 0
 
