@@ -64,7 +64,7 @@ object OutputController {
 
         // ── 묶음 ──
         if (isMulti) {
-            return validateMessage("$platform, ${price}원, ${bundleCount}건묶음, $verdict")
+            return validateMessage("$platform, ${price}원, ${bundleCount}개 묶음, $verdict")
         }
 
         // ── 단일 (거리 있음 → 단가 표시) ──
