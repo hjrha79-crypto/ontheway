@@ -89,6 +89,7 @@ class OnTheWayService : AccessibilityService() {
 
         const val ACCEPT_TIMEOUT_MS = 30_000L
         const val AUTO_ACCEPT_COOLDOWN_MS = 60_000L
+        const val ROAD_DISTANCE_FACTOR = 1.3  // 직선 → 도로 거리 보정 계수
         const val NOTIF_CHANNEL_ID = "otw_service"
         const val NOTIF_ID = 1001
 
@@ -992,9 +993,13 @@ class OnTheWayService : AccessibilityService() {
                         var enrichedBundle = bundleCall
                         var pickupDistKm: Double? = null
                         if (gpsActive && currentLat != 0.0) {
-                            val storeAddr = bundleCall.storeName.split("+").firstOrNull() ?: ""
-                            if (storeAddr.isNotEmpty()) {
-                                pickupDistKm = LocationTable.distanceTo(currentLat, currentLng, storeAddr)
+                            // 주소(destination) 우선, 가게명은 동 매칭 부정확하므로 fallback만
+                            val addr = bundleCall.destination.ifEmpty {
+                                bundleCall.storeName.split("+").firstOrNull() ?: ""
+                            }
+                            if (addr.isNotEmpty()) {
+                                val straight = LocationTable.distanceTo(currentLat, currentLng, addr)
+                                pickupDistKm = if (straight != null) straight * ROAD_DISTANCE_FACTOR else null
                                 if (pickupDistKm != null) {
                                     enrichedBundle = enrichedBundle.copy(pickupDistanceKm = pickupDistKm)
                                 }
@@ -1062,8 +1067,10 @@ class OnTheWayService : AccessibilityService() {
 
             var pickupDistKm: Double? = null
             if (gpsActive && currentLat != 0.0) {
-                val storeAddr = call.storeName.ifEmpty { call.destination }
-                pickupDistKm = LocationTable.distanceTo(currentLat, currentLng, storeAddr)
+                // 주소(destination) 우선, 가게명은 동 매칭 부정확하므로 fallback만
+                val addr = call.destination.ifEmpty { call.storeName }
+                val straight = LocationTable.distanceTo(currentLat, currentLng, addr)
+                pickupDistKm = if (straight != null) straight * ROAD_DISTANCE_FACTOR else null
                 if (pickupDistKm != null) {
                     enrichedCall = enrichedCall.copy(pickupDistanceKm = pickupDistKm)
                 }
