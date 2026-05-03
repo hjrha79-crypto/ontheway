@@ -912,6 +912,19 @@ class OnTheWayService : AccessibilityService() {
             if (joined.isBlank() || Regex("(NAVER|YouTube|Chrome|카카오톡|Samsung|배달 현황|출근하기)").containsMatchIn(joined)) {
                 return
             }
+            // 쿠팡 픽업 진행 화면 감지 → 가게명 사후 추출
+            if (joined.contains("매장 도착") || joined.contains("매장 픽업")) {
+                val call = lastDeliveryCall
+                if (call != null && call.platform == "coupang" && call.storeName.isBlank()) {
+                    val storeName = CoupangParser.extractStoreFromProgress(texts)
+                    if (storeName.isNotBlank()) {
+                        lastDeliveryCall = call.copy(storeName = storeName)
+                        FilterLog.updateLastStoreName(this, storeName)
+                        OtwFileLogger.log("CoupangParser", "사후 추출: store='$storeName'")
+                    }
+                }
+                return  // 픽업 진행 화면은 콜 화면이 아니므로 return
+            }
         }
 
         val rawMsg = "[$platformName] rawText: ${texts.joinToString(" | ")}"

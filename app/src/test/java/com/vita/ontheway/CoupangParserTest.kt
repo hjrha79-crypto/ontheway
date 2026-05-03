@@ -63,4 +63,26 @@ class CoupangParserTest {
         assertTrue(result.isNotEmpty())
         assertEquals("거절식당", result[0].storeName)
     }
+
+    // ── 픽업 진행 화면 가게명 사후 추출 ──
+
+    @Test
+    fun `사후추출 - 픽업 화면에서 가게명 추출`() {
+        val texts = listOf("배달목록", "신규 주문", "픽업", "2HVF53",
+            "파리바게뜨 광주태전힐스테이트점", "경기 광주시 태전동 702-34 1층",
+            "매장찾기 팁", "매장 픽업", "매장 도착")
+        assertEquals("파리바게뜨 광주태전힐스테이트점", CoupangParser.extractStoreFromProgress(texts))
+    }
+
+    @Test
+    fun `사후추출 - 픽업 키워드 없으면 빈 문자열`() {
+        val texts = listOf("배달목록", "신규 주문", "매장 도착")
+        assertEquals("", CoupangParser.extractStoreFromProgress(texts))
+    }
+
+    @Test
+    fun `사후추출 - 주문코드 스킵하고 가게명 추출`() {
+        val texts = listOf("픽업", "ABC123", "모현각", "경기 광주시 오포읍")
+        assertEquals("모현각", CoupangParser.extractStoreFromProgress(texts))
+    }
 }

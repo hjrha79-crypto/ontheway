@@ -137,4 +137,30 @@ object CoupangParser {
 
         return results
     }
+
+    /**
+     * 쿠팡 픽업 진행 화면에서 가게명 추출.
+     * 화면 구조: "픽업" → 주문코드(6자 영숫자) → 가게명 → 주소
+     */
+    fun extractStoreFromProgress(texts: List<String>): String {
+        val pickupIdx = texts.indexOfFirst { it.trim() == "픽업" }
+        if (pickupIdx < 0) return ""
+        // "픽업" 이후 텍스트에서 가게명 후보 탐색
+        for (i in (pickupIdx + 1) until texts.size) {
+            val t = texts[i].trim()
+            if (t.isEmpty()) continue
+            // 주문코드 스킵 (6자 영숫자)
+            if (t.matches(Regex("^[A-Z0-9]{4,8}$"))) continue
+            // UI 텍스트 스킵
+            if (t in setOf("매장 도착", "매장 픽업", "배정 취소하기", "복사", "매장찾기 팁",
+                           "배달목록", "신규 주문", "NAVER")) continue
+            // 주소 패턴 스킵
+            if (t.matches(Regex("^(경기|서울|부산|대구|인천|광주|대전|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주).*"))) continue
+            // 가게명 후보: 2~30자 한글 포함
+            if (t.length in 2..30 && Regex("[가-힣]").containsMatchIn(t)) {
+                return t
+            }
+        }
+        return ""
+    }
 }

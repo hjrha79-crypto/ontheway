@@ -208,6 +208,23 @@ object FilterLog {
         }
     }
 
+    /** 최근 콜의 storeName 업데이트 (사후 추출) */
+    fun updateLastStoreName(ctx: Context, storeName: String) {
+        try {
+            val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val arr = JSONArray(prefs.getString(KEY_ENTRIES, "[]"))
+            if (arr.length() > 0) {
+                val last = arr.getJSONObject(arr.length() - 1)
+                if (last.optString("storeName", "").isBlank()) {
+                    last.put("storeName", storeName)
+                    prefs.edit().putString(KEY_ENTRIES, arr.toString()).apply()
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("FilterLog", "updateLastStoreName 실패: ${e.message}")
+        }
+    }
+
     /** 최근 N건 반환 (최신순) */
     fun getRecent(ctx: Context, count: Int = 20): List<JSONObject> {
         val entries = getAll(ctx)
