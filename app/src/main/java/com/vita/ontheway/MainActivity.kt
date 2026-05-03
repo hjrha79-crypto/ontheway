@@ -1414,7 +1414,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val card = recentHourlyCard as? androidx.cardview.widget.CardView
         if (isDriving) {
             card?.setCardBackgroundColor(C_WHITE)
-            recentHourlyRate.setTextColor(C_BLUE)
+            // 시급 색상은 getHourlyRateColor에서 설정한 값 유지
             hourlyRateOffText?.visibility = View.GONE
         } else {
             card?.setCardBackgroundColor(Color.parseColor("#0D0D15"))
