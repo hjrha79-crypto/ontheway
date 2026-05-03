@@ -337,4 +337,33 @@ class BaeminParserTest {
     fun `블랙리스트패턴 - 정상 가게명 보존`() {
         assertFalse(BaeminParser.isBlacklistedPattern("KFC 광주태전점"))
     }
+
+    // ── 배민 UI 라벨 BLACKLIST 테스트 ──
+
+    @Test
+    fun `블랙리스트패턴 - 배민배달 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("배민배달"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - 조리완료 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("조리완료"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - 픽업지 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("픽업지"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - sanitize 멀티콜 UI 라벨 제거`() {
+        val result = BaeminParser.sanitizeStoreName("도심속어항+배민배달+조리완료+픽업지+배고픈덮밥이 태전점")
+        assertEquals("도심속어항+배고픈덮밥이 태전점", result)
+    }
+
+    @Test
+    fun `블랙리스트패턴 - 배민배달의민족 가게명 보존 (정확매칭)`() {
+        // "배민배달"은 차단이지만 "배민배달의 민족 가게"는 다른 문자열
+        assertFalse(BaeminParser.isBlacklistedPattern("배민배달의 민족 가게"))
+    }
 }
