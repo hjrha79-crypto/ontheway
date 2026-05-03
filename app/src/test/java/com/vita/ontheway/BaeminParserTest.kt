@@ -212,6 +212,37 @@ class BaeminParserTest {
         assertEquals(3500, result[0].price)
     }
 
+    // ── 신규 콜 + 이전내역 키워드 혼입 테스트 (v3.24) ──
+
+    @Test
+    fun `신규콜가드 - 수락버튼 + 픽업완료 동시 포함 시 파싱 정상`() {
+        val texts = listOf("신규배차_수락버튼", "31초", "배달료 5,000원", "픽업지", "맘스터치", "픽업 완료 되었습니다")
+        val result = BaeminParser.parse(texts)
+        assertNotNull("신규 콜 증거 있으면 DROP되면 안됨", result)
+        assertTrue(result!!.isNotEmpty())
+    }
+
+    @Test
+    fun `신규콜가드 - 순수 이전내역 화면은 여전히 DROP`() {
+        val texts = listOf("배달리스트", "픽업 완료 되었습니다", "배달료 7,000원", "픽업지", "테스트가게")
+        assertNull(BaeminParser.parse(texts))
+    }
+
+    @Test
+    fun `신규콜가드 - 수락버튼만 있고 픽업완료 없으면 정상 파싱`() {
+        val texts = listOf("신규배차_수락버튼", "31초", "배달료 3,500원", "픽업지", "맘스터치")
+        val result = BaeminParser.parse(texts)
+        assertNotNull("정상 신규 콜이 DROP되면 안됨", result)
+        assertTrue(result!!.isNotEmpty())
+    }
+
+    @Test
+    fun `신규콜가드 - 카운터만 있어도 DROP 우회`() {
+        val texts = listOf("31초", "배달료 4,000원", "픽업지", "테스트가게", "픽업 완료 되었습니다")
+        val result = BaeminParser.parse(texts)
+        assertNotNull("카운터로 신규 콜 증거 있으면 DROP_HISTORY_SCREEN 되면 안됨", result)
+    }
+
     // ── isBlacklistedPattern 테스트 ──
 
     @Test

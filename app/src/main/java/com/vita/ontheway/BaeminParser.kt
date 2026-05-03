@@ -116,10 +116,19 @@ object BaeminParser {
         val results = mutableListOf<DeliveryCall>()
         val joined = texts.joinToString(" ")
 
-        // 이전내역 화면 감지 → DROP
+        // 이전내역 화면 감지 → DROP (신규 콜 증거 있으면 우회)
+        val hasNewCallEvidence =
+            joined.contains("신규배차_수락버튼") ||
+            joined.contains("배차수락") ||
+            Regex("\\d+초(?!\\S)").containsMatchIn(joined)
+
         if (HISTORY_SCREEN_KEYWORDS.any { joined.contains(it) }) {
-            OtwFileLogger.log("BaeminParser", "DROP_HISTORY_SCREEN")
-            return null
+            if (hasNewCallEvidence) {
+                OtwFileLogger.log("BaeminParser", "HISTORY_KEYWORD_BUT_NEW_CALL: keyword detected but proceeding")
+            } else {
+                OtwFileLogger.log("BaeminParser", "DROP_HISTORY_SCREEN")
+                return null
+            }
         }
 
         // v3.17: 가게명 추출 — "픽업지" 다음 토큰 우선, 기존 패턴 매칭 보조
