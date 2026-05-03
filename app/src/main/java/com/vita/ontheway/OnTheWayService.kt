@@ -925,11 +925,12 @@ class OnTheWayService : AccessibilityService() {
                         OtwFileLogger.log("CoupangParser", "사후 추출: store='$storeName'")
                     }
                 }
-                // 수락 확정 → 시급 누적 (픽업 화면 = 수락 완료 증거)
+                // 수락 확정 → 시급 누적 + 판정 매칭 (픽업 화면 = 수락 완료 증거)
                 val acceptPrice = call?.price ?: FilterLog.getRecent(this, 1)
                     .firstOrNull()?.optInt("price", 0) ?: 0
                 if (acceptPrice > 0) {
                     EarningsTracker.recordAccept(this, acceptPrice, "coupang")
+                    try { JudgmentMatchLogger.onAcceptDetected(this) } catch (_: Exception) {}
                     OtwFileLogger.log("EarningsTracker", "픽업화면 수락: ${acceptPrice}원 coupang")
                 }
                 return  // 픽업 진행 화면은 콜 화면이 아니므로 return

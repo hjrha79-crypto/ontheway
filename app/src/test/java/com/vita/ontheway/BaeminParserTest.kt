@@ -366,4 +366,18 @@ class BaeminParserTest {
         // "배민배달"은 차단이지만 "배민배달의 민족 가게"는 다른 문자열
         assertFalse(BaeminParser.isBlacklistedPattern("배민배달의 민족 가게"))
     }
+
+    // ── 시스템 메시지 BLACKLIST ──
+
+    @Test
+    fun `블랙리스트패턴 - 중복된 요청입니다 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("중복된 요청입니다"))
+        assertTrue(BaeminParser.isBlacklistedPattern("중복된 요청입니다."))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - sanitize 기상+중복요청 제거`() {
+        val result = BaeminParser.sanitizeStoreName("프랭크버거 경기광주태전점+기상+이삭토스트 광주샬롬점+중복된 요청입니다.")
+        assertEquals("프랭크버거 경기광주태전점+이삭토스트 광주샬롬점", result)
+    }
 }
