@@ -64,7 +64,7 @@ object OutputController {
 
         // ── 묶음 ──
         if (isMulti) {
-            return validateMessage("$platform ${price}원 ${bundleCount}건묶음 $verdict")
+            return validateMessage("$platform, ${price}원, ${bundleCount}건묶음, $verdict")
         }
 
         // ── 단일 (거리 있음 → 단가 표시) ──
@@ -73,11 +73,11 @@ object OutputController {
                 unitPrice >= 2000 && distKm <= 1.5 -> "단거리 고단가"
                 else -> "단가 ${unitPrice}원"
             }
-            return validateMessage("$platform ${price}원 $reason $verdict")
+            return validateMessage("$platform, ${price}원, $reason, $verdict")
         }
 
         // ── 단일 (거리 없음 → 금액만) ──
-        return validateMessage("$platform ${price}원 $verdict")
+        return validateMessage("$platform, ${price}원, $verdict")
     }
 
     /** verdict 3단계 판정 (TTS용) */
