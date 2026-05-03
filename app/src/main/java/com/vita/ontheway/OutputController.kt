@@ -16,7 +16,7 @@ object OutputController {
 
     private const val TAG = "OutputController"
     private const val TTS_COOLDOWN_MS = 5_000L
-    private const val TTS_MAX_LENGTH = 20
+    private const val TTS_MAX_LENGTH = 30
     private const val OVERLAY_COOLDOWN_MS = 2000L
 
     private var lastTtsTime = 0L
@@ -45,12 +45,10 @@ object OutputController {
         reasonLibrary[key]?.random() ?: key
 
     /**
-     * TTS v2.1: verdict 먼저 + 이유 1~2단어 (6단어 이내)
-     *
-     * 쿠팡 단일: "추천 단거리 고단가" / "비추천 단가 낮음" / "애매 [이유]"
-     * 쿠팡 멀티: "[verdict] 멀티 [건수]건"
-     * 배민 단일: "[verdict] 배민 [금액]" / 비추천 시 "+단가 낮음"
-     * 배민 묶음: "[verdict] 묶음 [건수]건"
+     * TTS v3.0: [플랫폼] [금액] [이유] [verdict]
+     * - verdict 맨 뒤 (한국어 자연 어순)
+     * - 플랫폼/금액 항상 명시
+     * - 보통도 verdict 명시
      */
     fun buildMessage(call: DeliveryCall, result: CallFilter.FilterResult): String? {
         val price = call.price
@@ -59,38 +57,27 @@ object OutputController {
         val unitPrice = if (distKm > 0) (price / distKm).toInt() else 0
         val isMulti = call.isMulti
         val bundleCount = call.bundleCount.coerceAtLeast(if (isMulti) 2 else 1)
-        val isCoupang = call.platform == "coupang"
-        val isReject = result.verdict == CallFilter.Verdict.REJECT
-
-        // verdict 한글 (3단계)
+        val platform = if (call.platform == "coupang") "쿠팡" else "배민"
         val verdict = extractVerdict(call, result)
 
-        // ── 묶음/멀티 (플랫폼 무관) ──
+        if (price <= 0) return null
+
+        // ── 묶음 ──
         if (isMulti) {
-            return validateMessage("$verdict 묶음 ${bundleCount}건")
+            return validateMessage("$platform ${price}원 ${bundleCount}건묶음 $verdict")
         }
 
-        // ── 쿠팡 단일 ──
-        if (isCoupang) {
+        // ── 단일 (거리 있음 → 단가 표시) ──
+        if (distKm > 0) {
             val reason = when {
-                distKm > 0 && unitPrice >= 1700 -> "단거리 고단가"
-                distKm > 0 && unitPrice < 1400 -> "단가 낮음"
-                distKm > 0 -> "단가 ${nf.format(unitPrice)}"
-                price >= 8000 -> "고액"
-                isReject -> "단가 낮음"
-                else -> "${nf.format(price)}원"
+                unitPrice >= 2000 && distKm <= 1.5 -> "단거리 고단가"
+                else -> "단가 ${unitPrice}원"
             }
-            return validateMessage("$verdict $reason")
+            return validateMessage("$platform ${price}원 $reason $verdict")
         }
 
-        // ── 배민 단일 ──
-        val priceStr = nf.format(price)
-        val msg = if (isReject) {
-            "$verdict 배민 $priceStr 단가 낮음"
-        } else {
-            "$verdict 배민 $priceStr"
-        }
-        return validateMessage(msg)
+        // ── 단일 (거리 없음 → 금액만) ──
+        return validateMessage("$platform ${price}원 $verdict")
     }
 
     /** verdict 3단계 판정 (TTS용) */
@@ -101,7 +88,7 @@ object OutputController {
         return when {
             call.price >= 8000 -> "추천"
             dist > 0 && unitPrice >= 1700 -> "추천"
-            dist > 0 && unitPrice in 1400..1699 -> "애매"
+            dist > 0 && unitPrice in 1400..1699 -> "보통"
             else -> "보통"
         }
     }
@@ -168,7 +155,7 @@ object OutputController {
                     OtwFileLogger.log(TAG, "TTS 길이 초과 → SILENT: \"$ttsText\" (${ttsText.length}자)")
                 }
             } else {
-                OtwFileLogger.log(TAG, "TTS 30초 쿨다운 → 스킵: \"$ttsText\"")
+                OtwFileLogger.log(TAG, "TTS 쿨다운 → 스킵: \"$ttsText\"")
             }
         }
 
