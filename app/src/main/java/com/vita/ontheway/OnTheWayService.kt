@@ -260,7 +260,7 @@ class OnTheWayService : AccessibilityService() {
             }
             if (ACCEPT_BUTTON_TEXTS.any { clickedText.contains(it) }) {
                 onAcceptDetected()
-                // v3.20: AcceptDetectionLogger
+                // AcceptDetectionLogger (로그 기록)
                 if (FeatureFlags.acceptLoggerEnabled) {
                     try {
                         AcceptDetectionLogger.log(
@@ -269,24 +269,12 @@ class OnTheWayService : AccessibilityService() {
                         )
                     } catch (_: Exception) {}
                 }
-                // FIX-19: lastDeliveryCall null이면 최근 FilterLog에서 금액 추출하여 시급 누적
+                // lastDeliveryCall null이면 FilterLog에서 금액 추출
                 if (lastDeliveryCall == null) {
-                    try {
-                        val recent = FilterLog.getRecent(this, 1)
-                        if (recent.isNotEmpty()) {
-                            val entry = recent[0]
-                            val ts = entry.optLong("ts", 0)
-                            // 60초 이내 판정된 콜만 매칭
-                            if (System.currentTimeMillis() - ts < 60_000) {
-                                val price = entry.optInt("price", 0)
-                                val platform = entry.optString("platform", "unknown")
-                                if (price > 0) {
-                                    EarningsTracker.recordAccept(this, price, platform)
-                                    OtwFileLogger.log("EarningsTracker", "FIX-19 fallback: ${price}원 $platform (lastDeliveryCall=null)")
-                                }
-                            }
-                        }
-                    } catch (_: Exception) {}
+                    val fallback = AcceptCoordinator.getRecentPrice(this)
+                    if (fallback != null) {
+                        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.FALLBACK, fallback.first, fallback.second)
+                    }
                 }
             }
         }
@@ -899,15 +887,12 @@ class OnTheWayService : AccessibilityService() {
             }
             if (screen.type != ScreenTypeDetector.ScreenType.NEW_CALL &&
                 screen.type != ScreenTypeDetector.ScreenType.BUNDLE_SESSION) {
-                // 배민 배달 진행 화면 = 수락 확정 → 시급 누적
+                // 배민 배달 진행 화면 = 수락 확정
                 if (screen.type == ScreenTypeDetector.ScreenType.IN_PROGRESS) {
-                    val call = lastDeliveryCall
-                    val acceptPrice = call?.price ?: FilterLog.getRecent(this, 1)
-                        .firstOrNull()?.optInt("price", 0) ?: 0
+                    val acceptPrice = lastDeliveryCall?.price
+                        ?: AcceptCoordinator.getRecentPrice(this)?.first ?: 0
                     if (acceptPrice > 0) {
-                        EarningsTracker.recordAccept(this, acceptPrice, "baemin")
-                        try { JudgmentMatchLogger.onAcceptDetected(this) } catch (_: Exception) {}
-                        OtwFileLogger.log("EarningsTracker", "배민 진행화면 수락: ${acceptPrice}원")
+                        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS, acceptPrice, "baemin")
                     }
                 }
                 Log.d("ScreenFilter", "[$platformName] skip: ${screen.type} (${screen.confidence})")
@@ -936,13 +921,11 @@ class OnTheWayService : AccessibilityService() {
                         OtwFileLogger.log("CoupangParser", "사후 추출: store='$storeName'")
                     }
                 }
-                // 수락 확정 → 시급 누적 + 판정 매칭 (픽업 화면 = 수락 완료 증거)
-                val acceptPrice = call?.price ?: FilterLog.getRecent(this, 1)
-                    .firstOrNull()?.optInt("price", 0) ?: 0
+                // 수락 확정 (픽업 화면 = 수락 완료 증거)
+                val acceptPrice = call?.price
+                    ?: AcceptCoordinator.getRecentPrice(this)?.first ?: 0
                 if (acceptPrice > 0) {
-                    EarningsTracker.recordAccept(this, acceptPrice, "coupang")
-                    try { JudgmentMatchLogger.onAcceptDetected(this) } catch (_: Exception) {}
-                    OtwFileLogger.log("EarningsTracker", "픽업화면 수락: ${acceptPrice}원 coupang")
+                    AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.COUPANG_PICKUP, acceptPrice, "coupang")
                 }
                 return  // 픽업 진행 화면은 콜 화면이 아니므로 return
             }
