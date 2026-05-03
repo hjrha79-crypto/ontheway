@@ -45,10 +45,12 @@ object OutputController {
         reasonLibrary[key]?.random() ?: key
 
     /**
-     * TTS 3단 구조:
-     * 계산형 (쿠팡 + distanceKm > 0) → 추천/애매/비추천
-     * 정보형 (배민 or distanceKm == 0) → 금액 + 픽업
-     * 침묵 → null
+     * TTS v2.1: verdict 먼저 + 이유 1~2단어 (6단어 이내)
+     *
+     * 쿠팡 단일: "추천 단거리 고단가" / "비추천 단가 낮음" / "애매 [이유]"
+     * 쿠팡 멀티: "[verdict] 멀티 [건수]건"
+     * 배민 단일: "[verdict] 배민 [금액]" / 비추천 시 "+단가 낮음"
+     * 배민 묶음: "[verdict] 묶음 [건수]건"
      */
     fun buildMessage(call: DeliveryCall, result: CallFilter.FilterResult): String? {
         val price = call.price
@@ -57,47 +59,51 @@ object OutputController {
         val unitPrice = if (distKm > 0) (price / distKm).toInt() else 0
         val isMulti = call.isMulti
         val bundleCount = call.bundleCount.coerceAtLeast(if (isMulti) 2 else 1)
-        val perItem = if (isMulti && bundleCount > 1) price / bundleCount else 0
-        val pickupKm = call.pickupDistanceKm ?: 0.0
         val isCoupang = call.platform == "coupang"
+        val isReject = result.verdict == CallFilter.Verdict.REJECT
 
-        // ── 계산형 (쿠팡 + distanceKm > 0) ──
-        if (isCoupang && distKm > 0) {
-            val msg = when {
-                // 픽업 거리 과다
-                pickupKm >= 3.0 -> "비추천, ${pickReason("FAR_PICKUP")}"
-                // 묶음
-                isMulti && perItem > 0 && perItem >= 4500 ->
-                    "추천, 건당 ${nf.format(perItem)}원"
-                isMulti && perItem > 0 && perItem < 4500 ->
-                    "비추천, ${pickReason("BUNDLE_BAD")}"
-                // 단가 기반
-                unitPrice >= 1700 -> "추천, 단가 ${nf.format(unitPrice)}원"
-                unitPrice in 1400..1699 -> "애매, 단가 ${nf.format(unitPrice)}원"
-                unitPrice < 1400 -> "비추천, ${pickReason("LOW_VALUE")}"
-                // 고액
-                price >= 8000 -> "추천, ${nf.format(price)}원"
-                else -> return null
-            }
-            return validateMessage(msg)
+        // verdict 한글 (3단계)
+        val verdict = extractVerdict(call, result)
+
+        // ── 묶음/멀티 (플랫폼 무관) ──
+        if (isMulti) {
+            return validateMessage("$verdict 묶음 ${bundleCount}건")
         }
 
-        // ── 정보형 (배민 or distanceKm == 0) ──
-        if (!isCoupang || distKm == 0.0) {
-            // 묶음
-            if (isMulti && perItem > 0) {
-                return validateMessage("건당 ${nf.format(perItem)}원")
+        // ── 쿠팡 단일 ──
+        if (isCoupang) {
+            val reason = when {
+                distKm > 0 && unitPrice >= 1700 -> "단거리 고단가"
+                distKm > 0 && unitPrice < 1400 -> "단가 낮음"
+                distKm > 0 -> "단가 ${nf.format(unitPrice)}"
+                price >= 8000 -> "고액"
+                isReject -> "단가 낮음"
+                else -> "${nf.format(price)}원"
             }
-            val msg = when {
-                pickupKm > 0 -> "${nf.format(price)}원, 픽업 ${"%.1f".format(pickupKm)}킬로"
-                price > 0 -> "${nf.format(price)}원"
-                else -> return null
-            }
-            return validateMessage(msg)
+            return validateMessage("$verdict $reason")
         }
 
-        // ── 침묵 ──
-        return null
+        // ── 배민 단일 ──
+        val priceStr = nf.format(price)
+        val msg = if (isReject) {
+            "$verdict 배민 $priceStr 단가 낮음"
+        } else {
+            "$verdict 배민 $priceStr"
+        }
+        return validateMessage(msg)
+    }
+
+    /** verdict 3단계 판정 (TTS용) */
+    private fun extractVerdict(call: DeliveryCall, result: CallFilter.FilterResult): String {
+        if (result.verdict == CallFilter.Verdict.REJECT) return "비추천"
+        val dist = call.distance ?: 0.0
+        val unitPrice = if (dist > 0) (call.price / dist).toInt() else 0
+        return when {
+            call.price >= 8000 -> "추천"
+            dist > 0 && unitPrice >= 1700 -> "추천"
+            dist > 0 && unitPrice in 1400..1699 -> "애매"
+            else -> "보통"
+        }
     }
 
     /**
