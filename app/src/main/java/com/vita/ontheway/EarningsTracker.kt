@@ -102,11 +102,18 @@ object EarningsTracker {
         val now = System.currentTimeMillis()
         val oneHourAgo = now - 3600_000L
         val accepts = getTodayAccepts(ctx).filter { it.first >= oneHourAgo }
-        if (accepts.isEmpty()) return -1
+        if (accepts.isEmpty()) {
+            // FilterLog에 ACCEPTED 없으면 SharedPrefs 기반 fallback
+            val today = getToday(ctx)
+            return if (today.hourlyRate > 0) today.hourlyRate else -1
+        }
 
         val totalRevenue = accepts.sumOf { it.second }
         val activeSeconds = calcActiveSeconds(accepts, oneHourAgo, now)
-        if (activeSeconds < 600) return -1  // 10분 미만 → 노이즈
+        if (activeSeconds < 600) {
+            val today = getToday(ctx)
+            return if (today.hourlyRate > 0) today.hourlyRate else -1
+        }
 
         return Math.round(totalRevenue * 3600.0 / activeSeconds).toInt()
     }
@@ -118,12 +125,18 @@ object EarningsTracker {
     fun getCumulativeHourlyRate(ctx: Context): Int {
         val now = System.currentTimeMillis()
         val accepts = getTodayAccepts(ctx)
-        if (accepts.isEmpty()) return -1
+        if (accepts.isEmpty()) {
+            val today = getToday(ctx)
+            return if (today.hourlyRate > 0) today.hourlyRate else -1
+        }
 
         val firstTime = accepts.first().first
         val totalRevenue = accepts.sumOf { it.second }
         val activeSeconds = calcActiveSeconds(accepts, firstTime, now)
-        if (activeSeconds < 600) return -1  // 10분 미만 → 노이즈
+        if (activeSeconds < 600) {
+            val today = getToday(ctx)
+            return if (today.hourlyRate > 0) today.hourlyRate else -1
+        }
 
         return Math.round(totalRevenue * 3600.0 / activeSeconds).toInt()
     }
