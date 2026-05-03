@@ -899,6 +899,17 @@ class OnTheWayService : AccessibilityService() {
             }
             if (screen.type != ScreenTypeDetector.ScreenType.NEW_CALL &&
                 screen.type != ScreenTypeDetector.ScreenType.BUNDLE_SESSION) {
+                // 배민 배달 진행 화면 = 수락 확정 → 시급 누적
+                if (screen.type == ScreenTypeDetector.ScreenType.IN_PROGRESS) {
+                    val call = lastDeliveryCall
+                    val acceptPrice = call?.price ?: FilterLog.getRecent(this, 1)
+                        .firstOrNull()?.optInt("price", 0) ?: 0
+                    if (acceptPrice > 0) {
+                        EarningsTracker.recordAccept(this, acceptPrice, "baemin")
+                        try { JudgmentMatchLogger.onAcceptDetected(this) } catch (_: Exception) {}
+                        OtwFileLogger.log("EarningsTracker", "배민 진행화면 수락: ${acceptPrice}원")
+                    }
+                }
                 Log.d("ScreenFilter", "[$platformName] skip: ${screen.type} (${screen.confidence})")
                 DropReason.recordDrop(DropReason.DROP_SCREEN_FILTER, "${screen.type} (${screen.confidence})", pkg)
                 if (FeatureFlags.screenFilterLogging) {

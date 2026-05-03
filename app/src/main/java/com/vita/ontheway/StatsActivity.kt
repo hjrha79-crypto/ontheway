@@ -277,12 +277,16 @@ class StatsActivity : AppCompatActivity() {
                 val timeout = matchEntries.count { it.optString("result") == "TIMEOUT" }
                 val matchTotal = matched + mismatched
                 val matchRate = if (matchTotal > 0) matched * 100 / matchTotal else 0
+                val detected = matched + mismatched
+                val totalJm = matched + mismatched + timeout
+                val detectRate = if (totalJm > 0) detected * 100 / totalJm else 0
                 contentLayout.addView(makeCard("판정 일치율", listOf(
                     "일치" to "${matched}건",
                     "불일치" to "${mismatched}건",
                     "무응답(타임아웃)" to "${timeout}건",
-                    "일치율" to "${matchRate}%"
-                ), highlight = "${matchRate}%"))
+                    "감지율" to "${detectRate}% (${detected}/${totalJm}건)",
+                    "일치율" to if (detected > 0) "${matchRate}%" else "—"
+                ), highlight = if (detected > 0) "${matchRate}%" else "감지 ${detectRate}%"))
             }
         } catch (_: Exception) {}
     }
