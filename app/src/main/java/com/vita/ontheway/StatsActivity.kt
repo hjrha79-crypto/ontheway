@@ -252,6 +252,39 @@ class StatsActivity : AppCompatActivity() {
             }
             contentLayout.addView(makeSimpleCard("넘긴 콜 중 아쉬운 TOP 3", regretItems))
         }
+
+        // 가게별 빈도 Top 10
+        val storeFreq = entries
+            .map { it.optString("storeName", "").trim() }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }.eachCount()
+            .entries.sortedByDescending { it.value }.take(10)
+        if (storeFreq.isNotEmpty()) {
+            val storeItems = storeFreq.mapIndexed { i, (name, count) ->
+                "#${i + 1} $name — ${count}건"
+            }
+            contentLayout.addView(makeSimpleCard("자주 뜨는 가게 Top 10", storeItems))
+        }
+
+        // 판정 일치율 (judgment_match 기반)
+        try {
+            val matchFile = java.io.File(filesDir, "judgment_match.jsonl")
+            if (matchFile.exists()) {
+                val lines = matchFile.readLines().filter { it.isNotBlank() }
+                val matchEntries = lines.mapNotNull { try { org.json.JSONObject(it) } catch (_: Exception) { null } }
+                val matched = matchEntries.count { it.optString("result") == "MATCH" }
+                val mismatched = matchEntries.count { it.optString("result").contains("MISMATCH") }
+                val timeout = matchEntries.count { it.optString("result") == "TIMEOUT" }
+                val matchTotal = matched + mismatched
+                val matchRate = if (matchTotal > 0) matched * 100 / matchTotal else 0
+                contentLayout.addView(makeCard("판정 일치율", listOf(
+                    "일치" to "${matched}건",
+                    "불일치" to "${mismatched}건",
+                    "무응답(타임아웃)" to "${timeout}건",
+                    "일치율" to "${matchRate}%"
+                ), highlight = "${matchRate}%"))
+            }
+        } catch (_: Exception) {}
     }
 
     private fun makeCard(title: String, items: List<Pair<String, String>>, highlight: String): LinearLayout {

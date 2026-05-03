@@ -984,6 +984,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     sessionId = feedbackSessionId,
                     feedback = fb,
                     reasons = matrix.toReasonsList(),
+                    driverAction = if (fb == "up") "accepted" else "rejected",
                     pickupRating = matrix.pickupRating,
                     deliveryRating = matrix.deliveryRating,
                     priceRating = matrix.priceRating,
