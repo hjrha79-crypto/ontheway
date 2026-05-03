@@ -575,6 +575,15 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         headerRow.addView(TextView(this).apply {
             text = platform; textSize = 11f; setTextColor(C_BLUE)
             setTypeface(null, Typeface.BOLD)
+        }, lp(WC, WC).apply { marginEnd = dp(4) })
+
+        // 단일/멀티 태그
+        val isMulti = entry.optBoolean("multi", false)
+        headerRow.addView(TextView(this).apply {
+            text = if (isMulti) "멀티" else "단일"
+            textSize = 9f
+            setTextColor(if (isMulti) Color.parseColor("#00FF88") else Color.parseColor("#4CC9F0"))
+            setTypeface(null, Typeface.BOLD)
         }, lp(WC, WC).apply { marginEnd = dp(6) })
 
         if (storeName.isNotBlank()) {
@@ -583,7 +592,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 maxLines = 1
             }, lp(0, WC, 1f).apply { marginEnd = dp(6) })
         } else {
-            headerRow.addView(View(this), lp(0, 0, 1f))
+            headerRow.addView(TextView(this).apply {
+                text = "[가게명 없음]"; textSize = 10f; setTextColor(Color.parseColor("#888888"))
+                maxLines = 1
+            }, lp(0, WC, 1f).apply { marginEnd = dp(6) })
         }
 
         headerRow.addView(TextView(this).apply {

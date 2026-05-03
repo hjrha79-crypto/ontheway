@@ -100,8 +100,9 @@ object CoupangParser {
                     storeName = storeName,
                     parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
                 ))
-                Log.d("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti")
-                OtwFileLogger.log("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti")
+                Log.d("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti, store='${storeName.ifEmpty { "(없음)" }}'")
+                OtwFileLogger.log("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti, store='${storeName.ifEmpty { "(없음)" }}'")
+
             }
         }
 
