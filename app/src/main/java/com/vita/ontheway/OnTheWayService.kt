@@ -275,8 +275,8 @@ class OnTheWayService : AccessibilityService() {
                         if (recent.isNotEmpty()) {
                             val entry = recent[0]
                             val ts = entry.optLong("ts", 0)
-                            // 30초 이내 판정된 콜만 매칭
-                            if (System.currentTimeMillis() - ts < 30_000) {
+                            // 60초 이내 판정된 콜만 매칭
+                            if (System.currentTimeMillis() - ts < 60_000) {
                                 val price = entry.optInt("price", 0)
                                 val platform = entry.optString("platform", "unknown")
                                 if (price > 0) {
@@ -1589,17 +1589,33 @@ class OnTheWayService : AccessibilityService() {
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
     }
 
-    // v3.22: StatusAlertEngine 1분 주기 루프
+    // v3.22: StatusAlertEngine 1분 주기 루프 + 자동 OFF 체크
     private var statusAlertRunnable: Runnable? = null
+    private val AUTO_OFF_IDLE_MS = 30 * 60 * 1000L  // 30분 무콜
+
     private fun startStatusAlertLoop() {
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         statusAlertRunnable = object : Runnable {
             override fun run() {
                 try { StatusAlertEngine.checkAndAlert(this@OnTheWayService) } catch (_: Exception) {}
+                try { checkAutoOff() } catch (_: Exception) {}
                 handler.postDelayed(this, 60_000)
             }
         }
         handler.postDelayed(statusAlertRunnable!!, 60_000)
+    }
+
+    /** 30분 무콜 + 화면 OFF → 운행 자동 OFF */
+    private fun checkAutoOff() {
+        if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING) return
+        val now = System.currentTimeMillis()
+        val idle = now - lastCallDetectedTime
+        if (idle < AUTO_OFF_IDLE_MS) return
+        // 화면 ON이면 수동 사용 중일 수 있으므로 유지
+        val pm = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+        if (pm?.isInteractive == true) return
+        DrivingModeManager.setMode(this, DrivingMode.IDLE)
+        OtwFileLogger.log("DrivingMode", "자동 OFF: ${idle / 60000}분 무콜 + 화면 OFF")
     }
 
     private var locationManager: LocationManager? = null
