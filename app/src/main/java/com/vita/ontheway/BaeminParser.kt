@@ -263,6 +263,12 @@ object BaeminParser {
             ))
         }
 
+        // 결과 로그
+        if (results.isNotEmpty()) {
+            val r = results[0]
+            OtwFileLogger.log("BaeminParser", "result: store='${r.storeName.ifEmpty { "(없음)" }}', price=${r.price}, distance=${r.distance}km, multi=${r.isMulti}, callCount=${results.size}")
+        }
+
         // 단건도 포인트 포함
         return results
     }
