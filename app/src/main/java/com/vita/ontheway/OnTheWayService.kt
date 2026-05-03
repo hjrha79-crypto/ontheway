@@ -505,6 +505,7 @@ class OnTheWayService : AccessibilityService() {
         // ── 추천 (카카오T는 CallRecommender로만 처리) ──
         val now = System.currentTimeMillis()
         lastCallDetectedTime = now
+        lastAccessibilityCallTime = now
 
         // ── 추천 ────────────────────────────────
         val direction = if (currentDest.isNotEmpty()) currentDest else currentDir
@@ -1011,6 +1012,7 @@ class OnTheWayService : AccessibilityService() {
                         val result = CallFilter.judge(enrichedBundle, this)
                         val pendingCall = PendingCall(bundleCall, enrichedBundle, result, bundleCall.point, pickupDistKm)
                         lastCallDetectedTime = System.currentTimeMillis()
+                        lastAccessibilityCallTime = System.currentTimeMillis()
                         processDeliveryCall(pendingCall, System.currentTimeMillis())
                     }
                 } else {
@@ -1155,6 +1157,7 @@ class OnTheWayService : AccessibilityService() {
                     val result = CallFilter.judge(bundleCall, this)
                     val pendingCall = PendingCall(bundleCall, bundleCall, result, bundleCall.point, null)
                     lastCallDetectedTime = System.currentTimeMillis()
+                    lastAccessibilityCallTime = System.currentTimeMillis()
                     processDeliveryCall(pendingCall, System.currentTimeMillis())
                 }
             }
@@ -1240,6 +1243,7 @@ class OnTheWayService : AccessibilityService() {
             sessionState = callSessionEvt?.state?.name)
         // 마지막 감지 시각 기록 (상태 표시용)
         lastCallDetectedTime = now
+        lastAccessibilityCallTime = now
 
         // 단가 계산
         val effectiveDist = enrichedCall.distance
@@ -1615,17 +1619,19 @@ class OnTheWayService : AccessibilityService() {
         handler.postDelayed(statusAlertRunnable!!, 60_000)
     }
 
-    /** 30분 무콜 + 화면 OFF → 운행 자동 OFF */
+    // 마지막 accessibility 경로 콜 감지 (NLS 제외, 자동 OFF 판정용)
+    private var lastAccessibilityCallTime: Long = System.currentTimeMillis()
+
+    /** 30분 무콜(accessibility) + 화면 OFF → 운행 자동 OFF */
     private fun checkAutoOff() {
         if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING) return
         val now = System.currentTimeMillis()
-        val idle = now - lastCallDetectedTime
-        if (idle < AUTO_OFF_IDLE_MS) return
-        // 화면 ON이면 수동 사용 중일 수 있으므로 유지
-        val pm = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
-        if (pm?.isInteractive == true) return
-        DrivingModeManager.setMode(this, DrivingMode.IDLE)
-        OtwFileLogger.log("DrivingMode", "자동 OFF: ${idle / 60000}분 무콜 + 화면 OFF")
+        val idle = now - lastAccessibilityCallTime
+        val screenOn = (getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager)?.isInteractive == true
+        if (idle >= AUTO_OFF_IDLE_MS && !screenOn) {
+            DrivingModeManager.setMode(this, DrivingMode.IDLE)
+            OtwFileLogger.log("DrivingMode", "자동 OFF: ${idle / 60000}분 무콜 + 화면 OFF")
+        }
     }
 
     private var locationManager: LocationManager? = null
