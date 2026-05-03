@@ -268,6 +268,25 @@ class OnTheWayService : AccessibilityService() {
                         )
                     } catch (_: Exception) {}
                 }
+                // FIX-19: lastDeliveryCall null이면 최근 FilterLog에서 금액 추출하여 시급 누적
+                if (lastDeliveryCall == null) {
+                    try {
+                        val recent = FilterLog.getRecent(this, 1)
+                        if (recent.isNotEmpty()) {
+                            val entry = recent[0]
+                            val ts = entry.optLong("ts", 0)
+                            // 30초 이내 판정된 콜만 매칭
+                            if (System.currentTimeMillis() - ts < 30_000) {
+                                val price = entry.optInt("price", 0)
+                                val platform = entry.optString("platform", "unknown")
+                                if (price > 0) {
+                                    EarningsTracker.recordAccept(this, price, platform)
+                                    OtwFileLogger.log("EarningsTracker", "FIX-19 fallback: ${price}원 $platform (lastDeliveryCall=null)")
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
             }
         }
 
