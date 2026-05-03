@@ -43,9 +43,20 @@ object CoupangParser {
         "7천원", "7천 원"
     )
 
-    // 가게명 오염 블랙리스트: UI 텍스트가 가게명으로 오인되는 패턴
+    // 가게명 오염 블랙리스트: UI 텍스트가 가게명으로 오인되는 패턴 (정확 일치)
     private val STORE_NAME_BLACKLIST = setOf(
-        "추천거절", "추천배차", "자동배차", "오류"
+        // 기존
+        "추천거절", "추천배차", "자동배차", "오류",
+        // 콜 화면 UI 버튼
+        "거절", "주문 수락", "주문수락",
+        // 할증/지원금 태그
+        "거리할증 포함", "거리할증", "지원금 포함", "거리할증 · 지원금 포함",
+        // 미션 영역
+        "조건에 맞거나 진행중인 미션이 없습니다", "미션",
+        // 메뉴/네비게이션
+        "메뉴", "확인", "닫기",
+        // 단일/멀티 태그
+        "단일", "멀티"
     )
 
     // 콜 화면 필수 버튼 텍스트: 이 중 하나는 있어야 진짜 콜
@@ -75,12 +86,13 @@ object CoupangParser {
         val storeName = texts.firstOrNull { t ->
             val trimmed = t.trim()
             trimmed.length in 2..30 &&
+            !trimmed.contains("\n") &&
             !PRICE_PATTERN.containsMatchIn(trimmed) &&
             !DISTANCE_PATTERN.containsMatchIn(trimmed) &&
             !MULTI_PATTERN.containsMatchIn(trimmed) &&
             !trimmed.contains("km") && !trimmed.contains("원") &&
             STORE_PATTERN.matches(trimmed) &&
-            STORE_NAME_BLACKLIST.none { bl -> trimmed.contains(bl) }
+            !STORE_NAME_BLACKLIST.contains(trimmed)
         }?.trim() ?: ""
 
         val priceMatch = PRICE_PATTERN.find(joined)
