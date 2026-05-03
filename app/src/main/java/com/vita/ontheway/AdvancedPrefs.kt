@@ -19,7 +19,7 @@ object AdvancedPrefs {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     // 수익 트래킹
-    fun isEarningsTrackingEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_EARNINGS_TRACKING, false)
+    fun isEarningsTrackingEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_EARNINGS_TRACKING, true)
     fun setEarningsTracking(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean(KEY_EARNINGS_TRACKING, v).apply()
 
     // 네비 자동실행
