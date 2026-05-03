@@ -921,6 +921,51 @@ class SettingsActivity : AppCompatActivity() {
             GoalManager.isGoalAlertEnabled(this)
         ) { checked -> GoalManager.setGoalAlert(this, checked) })
 
+        // 카카오 API 키 입력
+        val kakaoKeyRow = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        kakaoKeyRow.addView(TextView(this).apply {
+            text = "카카오 지오코딩 API 키"
+            textSize = 13f; setTextColor(Color.parseColor("#333333"))
+            setTypeface(null, Typeface.BOLD)
+        })
+        kakaoKeyRow.addView(TextView(this).apply {
+            text = "정확한 거리 계산용 (미입력 시 동 중심점 사용)"
+            textSize = 11f; setTextColor(Color.parseColor("#888888"))
+            setPadding(0, dp(2), 0, dp(6))
+        })
+        val kakaoPrefs = getSharedPreferences("advanced_prefs", MODE_PRIVATE)
+        val currentKey = kakaoPrefs.getString("kakao_api_key", "") ?: ""
+        val kakaoInput = android.widget.EditText(this).apply {
+            hint = "REST API 키 입력"
+            setText(currentKey)
+            textSize = 13f; setSingleLine(true)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setBackgroundColor(Color.parseColor("#F5F5F5"))
+        }
+        kakaoKeyRow.addView(kakaoInput)
+        val kakaoStatus = TextView(this).apply {
+            text = if (currentKey.isNotBlank()) "활성화됨 (캐시 ${KakaoGeocoder.getCacheSize(this@SettingsActivity)}건)" else "비활성화"
+            textSize = 11f; setTextColor(if (currentKey.isNotBlank()) Color.parseColor("#2EAA5E") else Color.parseColor("#888888"))
+            setPadding(0, dp(4), 0, 0)
+        }
+        kakaoKeyRow.addView(kakaoStatus)
+        kakaoKeyRow.addView(TextView(this).apply {
+            text = "저장"; textSize = 13f; setTextColor(Color.parseColor("#5B6ABF"))
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, dp(8), 0, 0)
+            setOnClickListener {
+                val key = kakaoInput.text.toString().trim()
+                kakaoPrefs.edit().putString("kakao_api_key", key).apply()
+                kakaoStatus.text = if (key.isNotBlank()) "저장됨 — 다음 콜부터 적용" else "비활성화"
+                kakaoStatus.setTextColor(if (key.isNotBlank()) Color.parseColor("#2EAA5E") else Color.parseColor("#888888"))
+                android.widget.Toast.makeText(this@SettingsActivity, if (key.isNotBlank()) "카카오 API 키 저장됨" else "API 키 삭제됨", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        })
+        advCard.addView(kakaoKeyRow)
+
         root.addView(advCard, lp(MP, WC).apply { setMargins(dp(16), 0, dp(16), dp(8)) })
 
         // ─── v3.22 Sprint 5: GPS 상태 ───

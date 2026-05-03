@@ -1018,7 +1018,7 @@ class OnTheWayService : AccessibilityService() {
                                 bundleCall.storeName.split("+").firstOrNull() ?: ""
                             }
                             if (addr.isNotEmpty()) {
-                                val straight = LocationTable.distanceTo(currentLat, currentLng, addr)
+                                val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
                                 pickupDistKm = if (straight != null) straight * ROAD_DISTANCE_FACTOR else null
                                 if (pickupDistKm != null) {
                                     enrichedBundle = enrichedBundle.copy(pickupDistanceKm = pickupDistKm)
@@ -1089,7 +1089,7 @@ class OnTheWayService : AccessibilityService() {
             if (gpsActive && currentLat != 0.0) {
                 // 주소(destination) 우선, 가게명은 동 매칭 부정확하므로 fallback만
                 val addr = call.destination.ifEmpty { call.storeName }
-                val straight = LocationTable.distanceTo(currentLat, currentLng, addr)
+                val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
                 pickupDistKm = if (straight != null) straight * ROAD_DISTANCE_FACTOR else null
                 if (pickupDistKm != null) {
                     enrichedCall = enrichedCall.copy(pickupDistanceKm = pickupDistKm)
@@ -1800,8 +1800,8 @@ class OnTheWayService : AccessibilityService() {
         val callKey = "${platform}_${call.price}_${System.currentTimeMillis()}"
 
         // 주소 → 좌표 변환 (LocationTable 룩업)
-        val pickupCoord = LocationTable.findCoord(call.storeName)
-        val deliveryCoord = LocationTable.findCoord(call.destination)
+        val pickupCoord = KakaoGeocoder.findCoord(this, call.storeName)
+        val deliveryCoord = KakaoGeocoder.findCoord(this, call.destination)
 
         if (pickupCoord == null && deliveryCoord == null) {
             OtwFileLogger.log("ProximityTTS", "좌표 변환 실패 (pickup=${call.storeName}, delivery=${call.destination})")

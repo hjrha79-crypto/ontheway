@@ -90,20 +90,49 @@ object KakaoGeocoder {
         }
     }
 
+    private val bgExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "KakaoGeo-BG").apply { isDaemon = true }
+    }
+
     /**
-     * LocationTable 통합 거리 계산.
-     * KakaoGeocoder 활성화 시 API 우선, 실패 시 LocationTable fallback.
+     * LocationTable 통합 거리 계산 (메인 스레드 안전).
+     * 캐시 hit → 정확 좌표. 캐시 miss → LocationTable fallback + 백그라운드 API 사전 로딩.
      */
     fun distanceTo(ctx: Context, currentLat: Double, currentLng: Double, address: String): Double? {
-        // 1. KakaoGeocoder 시도
+        if (address.isBlank()) return null
         if (isEnabled(ctx)) {
-            val coord = geocode(ctx, address)
-            if (coord != null) {
-                return LocationTable.haversineKm(currentLat, currentLng, coord.lat, coord.lng)
+            // 캐시 hit → 정확 좌표 즉시 반환
+            val cached = getFromCache(ctx, address)
+            if (cached != null) {
+                return LocationTable.haversineKm(currentLat, currentLng, cached.lat, cached.lng)
+            }
+            // 캐시 miss → 백그라운드에서 API 호출 (다음 요청 시 캐시 hit)
+            val appCtx = ctx.applicationContext
+            bgExecutor.execute {
+                try { geocode(appCtx, address) } catch (_: Exception) {}
             }
         }
-        // 2. Fallback: LocationTable
+        // Fallback: LocationTable (동 중심점)
         return LocationTable.distanceTo(currentLat, currentLng, address)
+    }
+
+    /**
+     * findCoord 통합 (CallFilter 방향 판별용).
+     * 캐시 hit → 정확 좌표. miss → LocationTable fallback.
+     */
+    fun findCoord(ctx: Context, address: String): LocationTable.AreaCoord? {
+        if (address.isBlank()) return null
+        if (isEnabled(ctx)) {
+            val cached = getFromCache(ctx, address)
+            if (cached != null) {
+                return LocationTable.AreaCoord(address, cached.lat, cached.lng)
+            }
+            val appCtx = ctx.applicationContext
+            bgExecutor.execute {
+                try { geocode(appCtx, address) } catch (_: Exception) {}
+            }
+        }
+        return LocationTable.findCoord(address)
     }
 
     // ── 캐시 관리 ──

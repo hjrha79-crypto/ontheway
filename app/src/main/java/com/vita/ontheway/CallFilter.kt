@@ -64,12 +64,12 @@ object CallFilter {
         // v3.4: 자동 방향 판별
         var autoDirectionTag = ""
         if (AdvancedPrefs.isGpsEnabled(ctx) && OnTheWayService.currentLat != 0.0 && call.destination.isNotEmpty()) {
-            val destCoord = LocationTable.findCoord(call.destination)
+            val destCoord = KakaoGeocoder.findCoord(ctx, call.destination)
             if (destCoord != null) {
                 val dir = LocationTable.getDirection(OnTheWayService.currentLat, OnTheWayService.currentLng, destCoord.lat, destCoord.lng)
                 val homeDir = AdvancedPrefs.getHomeDirection(ctx)
                 if (homeDir.isNotEmpty()) {
-                    val homeCoord = LocationTable.findCoord(homeDir)
+                    val homeCoord = KakaoGeocoder.findCoord(ctx, homeDir)
                     if (homeCoord != null) {
                         val homeDirStr = LocationTable.getDirection(OnTheWayService.currentLat, OnTheWayService.currentLng, homeCoord.lat, homeCoord.lng)
                         if (dir == homeDirStr) {
