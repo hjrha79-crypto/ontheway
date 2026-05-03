@@ -220,8 +220,88 @@ class DeveloperOptionsActivity : AppCompatActivity() {
             }
         }, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) })
 
+        // ─── 시뮬레이션 (운행 검증) ───
+        val simCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.WHITE)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        simCard.addView(TextView(this).apply {
+            text = "운행 시뮬레이션"; textSize = 15f
+            setTextColor(Color.BLACK); setTypeface(null, Typeface.BOLD)
+            setPadding(0, 0, 0, dp(8))
+        })
+
+        fun simBtn(label: String, onClick: () -> Unit) {
+            simCard.addView(TextView(this@DeveloperOptionsActivity).apply {
+                text = label; textSize = 13f
+                setTextColor(Color.parseColor("#5B6ABF"))
+                setTypeface(null, Typeface.BOLD)
+                setPadding(0, dp(10), 0, dp(10))
+                setOnClickListener { onClick() }
+            })
+        }
+
+        val resultTv = TextView(this).apply {
+            textSize = 11f; setTextColor(Color.parseColor("#333333"))
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        simBtn("쿠팡 추천 (3600원/2km)") {
+            val call = DeliveryCall(price = 3600, distance = 2.0, isMulti = false, platform = "coupang")
+            val result = CallFilter.judge(call, this)
+            val tts = OutputController.buildMessage(call, result)
+            AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.COUPANG_PICKUP, 3600, "coupang")
+            OnTheWayService.instance?.speakTtsPublic(tts ?: "TTS 없음")
+            resultTv.text = "TTS: \"$tts\"\nverdict: ${result.verdict}\n${dumpEarnings()}"
+        }
+
+        simBtn("쿠팡 비추천 (2600원/2km)") {
+            val call = DeliveryCall(price = 2600, distance = 2.0, isMulti = false, platform = "coupang")
+            val result = CallFilter.judge(call, this)
+            val tts = OutputController.buildMessage(call, result)
+            OnTheWayService.instance?.speakTtsPublic(tts ?: "TTS 없음")
+            resultTv.text = "TTS: \"$tts\"\nverdict: ${result.verdict}"
+        }
+
+        simBtn("배민 보통 (5790원, 거리없음)") {
+            val call = DeliveryCall(price = 5790, distance = null, isMulti = false, platform = "baemin")
+            val result = CallFilter.judge(call, this)
+            val tts = OutputController.buildMessage(call, result)
+            OnTheWayService.instance?.speakTtsPublic(tts ?: "TTS 없음")
+            resultTv.text = "TTS: \"$tts\"\nverdict: ${result.verdict}"
+        }
+
+        simBtn("묶음 (6890원/2건)") {
+            val call = DeliveryCall(price = 6890, distance = 3.0, isMulti = true, platform = "baemin", bundleCount = 2)
+            val result = CallFilter.judge(call, this)
+            val tts = OutputController.buildMessage(call, result)
+            OnTheWayService.instance?.speakTtsPublic(tts ?: "TTS 없음")
+            resultTv.text = "TTS: \"$tts\"\nverdict: ${result.verdict}"
+        }
+
+        simBtn("가짜 수락 (3600원 쿠팡)") {
+            AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.COUPANG_PICKUP, 3600, "coupang")
+            resultTv.text = "수락 기록됨\n${dumpEarnings()}"
+        }
+
+        simBtn("시급 상태 확인") {
+            resultTv.text = dumpEarnings()
+        }
+
+        simCard.addView(resultTv)
+        root.addView(simCard, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) })
+
         scrollView.addView(root)
         setContentView(scrollView)
+    }
+
+    private fun dumpEarnings(): String {
+        val e = EarningsTracker.getToday(this)
+        val recent = EarningsTracker.getRecentHourlyRate(this)
+        val cumul = EarningsTracker.getCumulativeHourlyRate(this)
+        return "count=${e.acceptedCount}, total=${e.totalRevenue}원\n" +
+            "hourly=${e.hourlyRate}원/h, recent=${recent}원/h, cumul=${cumul}원/h"
     }
 
     private fun devToggle(title: String, desc: String, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout {
