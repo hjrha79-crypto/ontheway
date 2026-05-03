@@ -261,13 +261,13 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `22 배민 포인트구간 경계 16P 4000원 REJECT 단가미달`() {
+    fun `22 배민 포인트구간 경계 16P 4000원 ACCEPT 단가통과`() {
         val texts = listOf("맘스터치", "배달료 4,000원", "16.0P")
         val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
-        // v3.21: 16P→2.4km, 단가 1667원/km < 2000 → REJECT 단가 미달
+        // 16P→2.4km, 단가 1667원/km >= 1400 → ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("22 PASS: ${result.reason}")
     }
 
@@ -308,13 +308,13 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `26 배민 포인트 16P 구간 3500원 REJECT 단가미달`() {
+    fun `26 배민 포인트 16P 구간 3500원 ACCEPT 단가통과`() {
         val texts = listOf("맘스터치", "배달료 3,500원", "16.0P")
         val calls = BaeminParser.parse(texts)!!
         assertTrue("파싱 실패", calls.isNotEmpty())
-        // v3.21: 16P→2.4km, 단가 1458원/km < 2000 → REJECT 단가 미달
+        // 16P→2.4km, 단가 1458원/km >= 1400 → ACCEPT
         val result = CallFilter.judge(calls[0], ctx)
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("26 PASS: ${result.reason}")
     }
 
@@ -645,12 +645,12 @@ class CallSimulationTest {
     }
 
     @Test
-    fun `49 슬라이더2500 price2700 REJECT 단가미달`() {
+    fun `49 슬라이더2500 price2700 ACCEPT 단가통과`() {
         val sliderCtx = ctxWithSlider(2500)
         val call = DeliveryCall(price = 2700, distance = null, isMulti = false, platform = "baemin", point = 10.0)
         val result = CallFilter.judge(call, sliderCtx)
-        // v3.21: 10P→1.5km, 단가 1800원/km < 2000 → REJECT 단가 미달
-        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        // 10P→1.5km, 단가 1800원/km >= 1400 → ACCEPT
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
         println("49 PASS: slider=2500, price=2700 → ${result.verdict} (${result.reason})")
     }
 

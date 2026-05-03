@@ -175,6 +175,11 @@ class SettingsActivity : AppCompatActivity() {
 
         val minPriceBar = filterSeekBar(filterCard, "최소 배달료", CallFilter.getMinPrice(this), 1000, 5000, 500, "원")
         val minUnitBar = filterSeekBar(filterCard, "최소 단가", CallFilter.getMinUnitPrice(this), 1000, 3000, 100, "원/km")
+        filterCard.addView(TextView(this).apply {
+            text = "권장: 1,200~1,400원/km (피드백 분석 기반)"
+            textSize = 11f; setTextColor(Color.parseColor("#5B6ABF"))
+            setPadding(dp(16), 0, dp(16), dp(8))
+        })
         val highPriceBar = filterSeekBar(filterCard, "고액 자동 통과", TtsPrefs.getHighPriceThreshold(this), 5000, 15000, 1000, "원")
         filterCard.addView(TextView(this).apply {
             text = "이 금액 이상이면 단가 무관 자동 ACCEPT"
