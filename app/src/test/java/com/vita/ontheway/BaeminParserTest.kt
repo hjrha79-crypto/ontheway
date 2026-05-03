@@ -324,4 +324,17 @@ class BaeminParserTest {
         val result = BaeminParser.sanitizeStoreName("롯데리아+경기도 광주시 장지동 686-2")
         assertEquals("롯데리아", result)
     }
+
+    // ── FIX-18: 배달 옵션 UI 텍스트 차단 ──
+
+    @Test
+    fun `블랙리스트패턴 - sanitize에서 배달옵션 제거`() {
+        val result = BaeminParser.sanitizeStoreName("동대문엽기떡볶이 광주한아람점+Bottom Sheet+전달 사진 촬영+문 앞에 두고 초인종")
+        assertEquals("동대문엽기떡볶이 광주한아람점", result)
+    }
+
+    @Test
+    fun `블랙리스트패턴 - 정상 가게명 보존`() {
+        assertFalse(BaeminParser.isBlacklistedPattern("KFC 광주태전점"))
+    }
 }
