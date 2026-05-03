@@ -59,11 +59,18 @@ object BaeminParser {
         "배차수락",
         "이전내역",
         "픽업 완료 되었습니다",
-        "지도앱으로 검색하기"
+        "지도앱으로 검색하기",
+        "프로모션", "기상", "NAVER"
     )
 
     /** 영문 소문자+숫자+하이픈만으로 구성된 패턴 (accessibility view ID) */
     private val VIEW_ID_PATTERN = Regex("^[a-z][a-z0-9\\-]*$")
+
+    // 대문자+숫자 8글자 이상 토큰 (T2CK0000RGQM 등)
+    private val TOKEN_PATTERN = Regex("^[A-Z0-9]{8,}$")
+
+    // 주소 시작 패턴 (좌표/주소가 가게명으로 혼입 방지)
+    private val ADDRESS_PREFIX = Regex("^(경기도?|서울특별시|서울시|부산|대구|인천|광주광역시|대전|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)")
 
     /** 가게명 블랙리스트 판정 (정확 일치 + 패턴) */
     fun isBlacklistedPattern(name: String): Boolean {
@@ -71,7 +78,12 @@ object BaeminParser {
         if (STORE_NAME_BLACKLIST.contains(name)) return true
         if (STORE_NAME_BLACKLIST.contains(name.lowercase())) return true
         if (name.startsWith("T2CG")) return true
+        if (name.startsWith("T2CK")) return true
         if (Regex("T2CI[A-Z0-9]{4,}").containsMatchIn(name)) return true
+        // 대문자+숫자 8글자 이상 토큰
+        if (TOKEN_PATTERN.matches(name)) return true
+        // 주소/좌표 패턴
+        if (ADDRESS_PREFIX.containsMatchIn(name)) return true
         // accessibility view ID 패턴 (영소문자+숫자+하이픈만)
         if (VIEW_ID_PATTERN.matches(name)) return true
         if (name.contains("-item-")) return true

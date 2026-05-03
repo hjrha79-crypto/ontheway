@@ -290,4 +290,38 @@ class BaeminParserTest {
         val result = BaeminParser.sanitizeStoreName("맘스터치+ai-mode-notification-item-0")
         assertEquals("맘스터치", result)
     }
+
+    // ── FIX-15: 토큰/좌표 차단 테스트 ──
+
+    @Test
+    fun `블랙리스트패턴 - T2CK 토큰 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("T2CK0000RGQM"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - 대문자숫자 8글자이상 토큰 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("ABCD1234EF"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - 주소패턴 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("경기도 광주시 장지동 686-2"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - GS25 4글자 통과 (false positive 방지)`() {
+        assertFalse(BaeminParser.isBlacklistedPattern("GS25"))
+    }
+
+    @Test
+    fun `블랙리스트패턴 - sanitize에서 T2CK 토큰 제거`() {
+        val result = BaeminParser.sanitizeStoreName("커피인류 광주고산점+T2CK0000RGQM+롯데리아 광주태전점")
+        assertEquals("커피인류 광주고산점+롯데리아 광주태전점", result)
+    }
+
+    @Test
+    fun `블랙리스트패턴 - sanitize에서 좌표 제거`() {
+        val result = BaeminParser.sanitizeStoreName("롯데리아+경기도 광주시 장지동 686-2")
+        assertEquals("롯데리아", result)
+    }
 }
