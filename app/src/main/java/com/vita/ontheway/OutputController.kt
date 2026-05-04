@@ -76,7 +76,11 @@ object OutputController {
             return validateMessage("$platform, ${price}원, $reason, $verdict")
         }
 
-        // ── 단일 (거리 없음 → 금액만) ──
+        // ── 단일 (거리 없음 → 픽업 거리 있으면 활용) ──
+        val pickupKm = call.pickupDistanceKm ?: 0.0
+        if (pickupKm > 0) {
+            return validateMessage("$platform, ${price}원, 픽업 ${"%.1f".format(pickupKm)}km, $verdict")
+        }
         return validateMessage("$platform, ${price}원, $verdict")
     }
 
@@ -85,10 +89,14 @@ object OutputController {
         if (result.verdict == CallFilter.Verdict.REJECT) return "비추천"
         val dist = call.distance ?: 0.0
         val unitPrice = if (dist > 0) (call.price / dist).toInt() else 0
+        val pickupKm = call.pickupDistanceKm ?: 0.0
         return when {
             call.price >= 8000 -> "추천"
             dist > 0 && unitPrice >= 1700 -> "추천"
             dist > 0 && unitPrice in 1400..1699 -> "보통"
+            // 거리 없음 + 픽업 거리로 보조 판정
+            dist == 0.0 && pickupKm > 0 && pickupKm <= 0.5 && call.price >= 3000 -> "추천"
+            dist == 0.0 && pickupKm >= 1.5 -> "비추천"
             else -> "보통"
         }
     }
