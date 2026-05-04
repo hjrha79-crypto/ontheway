@@ -1706,9 +1706,10 @@ class OnTheWayService : AccessibilityService() {
         val earnings = EarningsTracker.getToday(this)
         val count = if (earnings.acceptedCount > 0) earnings.acceptedCount else detail.total
         val revenue = earnings.totalRevenue
-        val hourly = earnings.hourlyRate
+        val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
+        val hourly = if (isDriving) earnings.hourlyRate else 0
         val hourlyEmoji = when { hourly >= 20000 -> "🟢"; hourly >= 18000 -> "🟡"; hourly > 0 -> "🔴"; else -> "" }
-        val hourlyStr = if (hourly > 0) "$hourlyEmoji ${fmt.format(hourly)}원/h" else "0원/h"
+        val hourlyStr = if (isDriving && hourly > 0) "$hourlyEmoji ${fmt.format(hourly)}원/h" else "—원/h"
         val text = customText ?: "OnTheWay 작동 중 | 오늘 ${count}건 | 매출 ${fmt.format(revenue)}원 | 시급 $hourlyStr"
 
         val intent = Intent(this, MainActivity::class.java).apply {

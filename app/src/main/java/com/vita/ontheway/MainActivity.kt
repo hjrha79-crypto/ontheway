@@ -1390,11 +1390,22 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun updateHourlyRateDisplay() {
+        hourlyRateCard.visibility = View.VISIBLE
+
+        // 운행 OFF = 시급 미표시
+        if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING) {
+            recentHourlyRate.text = "—원/h"
+            cumulativeHourlyRate.text = "—원/h"
+            simRecentHourlyRate.text = "—원/h"
+            simCumulativeHourlyRate.text = "—원/h"
+            updateHourlyCardDrivingState()
+            return
+        }
+
         val recent = EarningsTracker.getRecentHourlyRate(this)
         val cumulative = EarningsTracker.getCumulativeHourlyRate(this)
 
         // 메인: 체감 시급만 표시
-        hourlyRateCard.visibility = View.VISIBLE
         recentHourlyRate.text = if (recent >= 0) "${fmt(recent)}원/h" else "—원/h"
         if (recent > 0) recentHourlyRate.setTextColor(getHourlyRateColor(recent))
         // 누적/SIM 값은 계산만 (통계 화면에서 사용)
