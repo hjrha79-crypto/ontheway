@@ -20,6 +20,10 @@ object FilterLog {
     // v3.8: 허용 플랫폼 화이트리스트
     private val ALLOWED_PLATFORMS = setOf("coupang", "baemin", "kakaot")
 
+    // 중복 방지 (같은 platform+price 10초 이내 = 스킵)
+    private var lastRecordKey: String = ""
+    private var lastRecordTs: Long = 0
+
     fun record(ctx: Context, call: DeliveryCall, result: CallFilter.FilterResult, baeminPoint: Double? = null, eventId: String? = null, sessionState: String? = null) {
         // GUARD 1: 플랫폼 화이트리스트
         if (call.platform !in ALLOWED_PLATFORMS) {
@@ -32,6 +36,15 @@ object FilterLog {
             Log.d("FilterLog", "BLOCKED: invalid price ${call.price}")
             return
         }
+
+        // GUARD 3: 중복 방지 (같은 platform+price 10초 이내)
+        val now = System.currentTimeMillis()
+        val key = "${call.platform}_${call.price}"
+        if (key == lastRecordKey && now - lastRecordTs < 10_000) {
+            return
+        }
+        lastRecordKey = key
+        lastRecordTs = now
 
         // 메인 스레드에서 데이터 스냅샷 캡처
         val unitPrice = if (call.distance != null && call.distance > 0)
