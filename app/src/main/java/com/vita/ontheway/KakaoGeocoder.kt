@@ -100,20 +100,26 @@ object KakaoGeocoder {
      */
     fun distanceTo(ctx: Context, currentLat: Double, currentLng: Double, address: String): Double? {
         if (address.isBlank()) return null
-        if (isEnabled(ctx)) {
+        val enabled = isEnabled(ctx)
+        if (enabled) {
             // 캐시 hit → 정확 좌표 즉시 반환
             val cached = getFromCache(ctx, address)
             if (cached != null) {
-                return LocationTable.haversineKm(currentLat, currentLng, cached.lat, cached.lng)
+                val dist = LocationTable.haversineKm(currentLat, currentLng, cached.lat, cached.lng)
+                OtwFileLogger.log(TAG, "캐시 hit: \"$address\" → ${"%.2f".format(dist)}km")
+                return dist
             }
             // 캐시 miss → 백그라운드에서 API 호출 (다음 요청 시 캐시 hit)
+            OtwFileLogger.log(TAG, "캐시 miss → 백그라운드 API 예약: \"$address\"")
             val appCtx = ctx.applicationContext
             bgExecutor.execute {
                 try { geocode(appCtx, address) } catch (_: Exception) {}
             }
         }
         // Fallback: LocationTable (동 중심점)
-        return LocationTable.distanceTo(currentLat, currentLng, address)
+        val fallback = LocationTable.distanceTo(currentLat, currentLng, address)
+        OtwFileLogger.log(TAG, "fallback: \"$address\" → ${if (fallback != null) "${"%.2f".format(fallback)}km" else "null"} (enabled=$enabled)")
+        return fallback
     }
 
     /**
@@ -122,7 +128,8 @@ object KakaoGeocoder {
      */
     fun findCoord(ctx: Context, address: String): LocationTable.AreaCoord? {
         if (address.isBlank()) return null
-        if (isEnabled(ctx)) {
+        val enabled = isEnabled(ctx)
+        if (enabled) {
             val cached = getFromCache(ctx, address)
             if (cached != null) {
                 return LocationTable.AreaCoord(address, cached.lat, cached.lng)
