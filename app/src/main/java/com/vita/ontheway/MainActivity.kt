@@ -2107,6 +2107,34 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         updateHourlyRateDisplay()
         updateAppCheckDisplay()
         updateDrivingModeUi()
+
+        // 첫 실행 온보딩
+        if (!AdvancedPrefs.isOnboardingShown(this)) {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("OnTheWay 권한 안내")
+                .setMessage(
+                    "이 앱은 다음만 읽습니다:\n" +
+                    "• 배민커넥트 / 쿠팡이츠 알림\n" +
+                    "• 픽업/배달 정보 (금액, 거리)\n\n" +
+                    "이 앱은 접근하지 않습니다:\n" +
+                    "• 카카오톡, 메시지, 사진\n" +
+                    "• 연락처, 통화 기록\n\n" +
+                    "작동 시점:\n" +
+                    "• 운행 모드 ON 시에만\n" +
+                    "• 운행 OFF = 모든 분석 중지\n\n" +
+                    "데이터 처리:\n" +
+                    "• 가게명, 주소 = 폰 안에서만\n" +
+                    "• 서버 전송 = 익명 통계만\n\n" +
+                    "권한 끄는 방법:\n" +
+                    "• 안드로이드 설정 → 앱 → OnTheWay → 권한\n" +
+                    "• 언제든 끄면 즉시 분석 중지"
+                )
+                .setPositiveButton("동의하고 시작") { _, _ ->
+                    AdvancedPrefs.setOnboardingShown(this)
+                }
+                .setCancelable(false)
+                .show()
+        }
     }
 
     private fun updateDrivingModeUi() {

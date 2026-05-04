@@ -64,6 +64,10 @@ object AdvancedPrefs {
     fun isGpsEnabled(ctx: Context): Boolean = DrivingModeManager.getMode(ctx) == DrivingMode.DRIVING
     fun setGpsEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("gps_enabled", v).apply()
 
+    // 첫 실행 온보딩
+    fun isOnboardingShown(ctx: Context) = prefs(ctx).getBoolean("onboarding_shown", false)
+    fun setOnboardingShown(ctx: Context) = prefs(ctx).edit().putBoolean("onboarding_shown", true).apply()
+
     // v3.3: 콜 알림음 (기본 OFF)
     fun isCallSoundEnabled(ctx: Context) = prefs(ctx).getBoolean("call_sound", false)
     fun setCallSound(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("call_sound", v).apply()
