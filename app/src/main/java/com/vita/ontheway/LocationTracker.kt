@@ -133,6 +133,11 @@ object LocationTracker {
             }
         }
 
+        // GridManager: 100m grid 방문 기록 (정확도 100m 이내만)
+        if (trace.accuracy <= 100f) {
+            try { GridManager.recordVisit(ctx, trace.lat, trace.lng) } catch (_: Exception) {}
+        }
+
         // 2. speed tier
         val targetInterval = when {
             speed >= SPEED_SLOW -> INTERVAL_DRIVING
