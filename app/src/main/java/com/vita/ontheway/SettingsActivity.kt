@@ -1228,6 +1228,41 @@ class SettingsActivity : AppCompatActivity() {
             }
         }, lp(MP, WC))
 
+        // ─── 권한 및 개인정보 안내 ───
+        val privacyCard = card()
+        privacyCard.addView(TextView(this).apply {
+            text = "권한 및 개인정보 안내"
+            textSize = 14f; setTextColor(Color.parseColor("#5B6ABF"))
+            setTypeface(null, Typeface.BOLD)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setOnClickListener {
+                androidx.appcompat.app.AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("OnTheWay 권한 안내")
+                    .setMessage(
+                        "이 앱은 다음만 읽습니다:\n" +
+                        "• 배민커넥트 / 쿠팡이츠 알림\n" +
+                        "• 픽업/배달 정보 (금액, 거리)\n\n" +
+                        "이 앱은 접근하지 않습니다:\n" +
+                        "• 카카오톡, 메시지, 사진\n" +
+                        "• 연락처, 통화 기록\n" +
+                        "• 개인 메시지\n\n" +
+                        "작동 시점:\n" +
+                        "• 운행 모드 ON 시에만\n" +
+                        "• 운행 OFF = 모든 분석 중지\n" +
+                        "• 24시간 추적 X\n\n" +
+                        "데이터 처리:\n" +
+                        "• 가게명, 주소 = 폰 안에서만\n" +
+                        "• 서버 전송 = 익명 통계만\n\n" +
+                        "GPS:\n" +
+                        "• 운행 ON 시에만 활성화\n" +
+                        "• 운행 OFF = GPS 자동 종료"
+                    )
+                    .setPositiveButton("확인", null)
+                    .show()
+            }
+        })
+        root.addView(privacyCard, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(16)) })
+
         scrollView.addView(root)
         setContentView(scrollView)
 
