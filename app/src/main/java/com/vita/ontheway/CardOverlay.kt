@@ -47,6 +47,18 @@ object CardOverlay {
     private var fadeAnimator: ObjectAnimator? = null
     private var currentText: String? = null
 
+    // 마지막 콜 정보 (피드백 다이얼로그용)
+    private var lastCallPlatform: String = ""
+    private var lastCallPrice: Int = 0
+    private var lastCallTs: Long = 0
+
+    /** 콜 정보 기록 (OutputController.emit 시 호출) */
+    fun setLastCall(platform: String, price: Int) {
+        lastCallPlatform = platform
+        lastCallPrice = price
+        lastCallTs = System.currentTimeMillis()
+    }
+
     fun colorForUnitPrice(pricePerKm: Int?): Int {
         if (pricePerKm == null) return COLOR_WHITE
         return when {
@@ -130,6 +142,24 @@ object CardOverlay {
             val padV = (12 * density).toInt()
             setPadding(pad, padV, pad, padV)
             visibility = View.INVISIBLE
+            setOnClickListener {
+                // 카드 클릭 → OnTheWay 앱으로 이동 + 피드백
+                dismissRunnable?.let { r -> handler.removeCallbacks(r) }
+                fadeOut()
+                if (lastCallPrice > 0) {
+                    try {
+                        val intent = android.content.Intent(ctx, MainActivity::class.java).apply {
+                            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            putExtra("open_feedback", true)
+                            putExtra("fb_platform", lastCallPlatform)
+                            putExtra("fb_price", lastCallPrice)
+                            putExtra("fb_ts", lastCallTs)
+                        }
+                        ctx.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
         }
 
         val cardWidth = (screenWidth * 0.65).toInt()
@@ -141,7 +171,7 @@ object CardOverlay {
             else
                 @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {

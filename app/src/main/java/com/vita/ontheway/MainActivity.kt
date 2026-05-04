@@ -2067,8 +2067,37 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (::micBtn.isInitialized) { micBtn.setBackgroundResource(R.drawable.mic_bg); micBtn.text = "\uD83C\uDFA4" }
     }
 
+    override fun onNewIntent(intent: android.content.Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
+        // 오버레이 클릭 → 피드백 다이얼로그
+        if (intent?.getBooleanExtra("open_feedback", false) == true) {
+            intent.removeExtra("open_feedback")
+            val fbPlatform = intent.getStringExtra("fb_platform") ?: ""
+            val fbPrice = intent.getIntExtra("fb_price", 0)
+            val fbTs = intent.getLongExtra("fb_ts", 0)
+            if (fbPrice > 0) {
+                try {
+                    val sessionId = "s_${fbTs}_${fbPrice}"
+                    BidirectionalFeedbackDialog.show(this, "thumbs_down",
+                        platform = fbPlatform) { matrix ->
+                        FeedbackLogger.log(this, platform = fbPlatform, store = "",
+                            price = fbPrice, distanceKm = 0.0,
+                            verdict = "", reason = "", sessionId = sessionId,
+                            feedback = "down", reasons = matrix.toReasonsList(),
+                            driverAction = "rejected",
+                            pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
+                            priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
+                            entryPoint = matrix.entryPoint, memo = matrix.memo)
+                        Toast.makeText(this, "피드백 저장됨", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (_: Exception) {}
+            }
+        }
         // 설정에서 변경된 값 반영
         fontScale = FontSizeManager.getScale(this)
         todayGoalAmt = EarningManager.getGoal(this)

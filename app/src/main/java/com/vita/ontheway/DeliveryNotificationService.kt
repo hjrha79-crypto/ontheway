@@ -256,6 +256,7 @@ class DeliveryNotificationService : NotificationListenerService() {
             val outputMode = OutputController.determineMode(call)
             Log.d("DeliveryNoti", "근거 출력: ${call.price}원 → \"${evidenceMsg ?: "SILENT"}\"")
 
+            CardOverlay.setLastCall(call.platform, call.price)
             OutputController.emit(
                 ctx = this,
                 ttsText = evidenceMsg,

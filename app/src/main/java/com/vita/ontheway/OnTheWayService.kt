@@ -1314,6 +1314,9 @@ class OnTheWayService : AccessibilityService() {
         // v3.26: AI 보조 (애매 구간만, 개발자 모드)
         AiAssist.assist(this, enrichedCall)
 
+        // 오버레이 카드 클릭 피드백용 콜 정보 저장
+        CardOverlay.setLastCall(call.platform, call.price)
+
         // OutputController 통합 (TTS + Overlay)
         OutputController.emit(
             ctx = this,
