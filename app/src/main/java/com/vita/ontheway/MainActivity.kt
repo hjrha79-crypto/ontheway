@@ -2127,7 +2127,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     "• 서버 전송 = 익명 통계만\n\n" +
                     "권한 끄는 방법:\n" +
                     "• 안드로이드 설정 → 앱 → OnTheWay → 권한\n" +
-                    "• 언제든 끄면 즉시 분석 중지"
+                    "• 언제든 끄면 즉시 분석 중지\n\n" +
+                    "데이터 보존:\n" +
+                    "• 가게명/주소 = 폰 안에서만\n" +
+                    "• 서버 = 익명 통계만\n" +
+                    "• 앱 삭제 시 모든 데이터 제거"
                 )
                 .setPositiveButton("동의하고 시작") { _, _ ->
                     AdvancedPrefs.setOnboardingShown(this)
