@@ -84,19 +84,18 @@ object OutputController {
         return validateMessage("$platform, ${price}원, $verdict")
     }
 
-    /** verdict 3단계 판정 (TTS용) */
+    /** verdict 3단계 판정 (TTS용, 정보형 표현) */
     private fun extractVerdict(call: DeliveryCall, result: CallFilter.FilterResult): String {
-        if (result.verdict == CallFilter.Verdict.REJECT) return "비추천"
+        if (result.verdict == CallFilter.Verdict.REJECT) return "주의"
         val dist = call.distance ?: 0.0
         val unitPrice = if (dist > 0) (call.price / dist).toInt() else 0
         val pickupKm = call.pickupDistanceKm ?: 0.0
         return when {
-            call.price >= 8000 -> "추천"
-            dist > 0 && unitPrice >= 1700 -> "추천"
+            call.price >= 8000 -> "우세"
+            dist > 0 && unitPrice >= 1700 -> "우세"
             dist > 0 && unitPrice in 1400..1699 -> "보통"
-            // 거리 없음 + 픽업 거리로 보조 판정 (동 중심점 정확도 고려)
-            dist == 0.0 && pickupKm > 0 && pickupKm <= 1.0 && call.price >= 3000 -> "추천"
-            dist == 0.0 && pickupKm >= 5.0 -> "비추천"
+            dist == 0.0 && pickupKm > 0 && pickupKm <= 1.0 && call.price >= 3000 -> "우세"
+            dist == 0.0 && pickupKm >= 5.0 -> "주의"
             else -> "보통"
         }
     }
