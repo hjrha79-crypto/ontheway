@@ -60,8 +60,8 @@ object AdvancedPrefs {
     fun isBatterySaverEnabled(ctx: Context) = prefs(ctx).getBoolean("battery_saver", true)
     fun setBatterySaver(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("battery_saver", v).apply()
 
-    // v3.4: GPS 위치 사용 (기본 OFF)
-    fun isGpsEnabled(ctx: Context) = prefs(ctx).getBoolean("gps_enabled", false)
+    // v3.4: GPS 위치 사용 — 운행 모드와 동기화 (Wave 0-A)
+    fun isGpsEnabled(ctx: Context): Boolean = DrivingModeManager.getMode(ctx) == DrivingMode.DRIVING
     fun setGpsEnabled(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("gps_enabled", v).apply()
 
     // v3.3: 콜 알림음 (기본 OFF)

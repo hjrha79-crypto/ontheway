@@ -806,11 +806,21 @@ class SettingsActivity : AppCompatActivity() {
         })
 
         // v3.4: GPS 위치 사용
-        advCard.addView(advancedToggle(
-            "GPS 위치 사용",
-            "현재위치→픽업거리 계산, 자동 방향 판별, 예상 도착 시간",
-            AdvancedPrefs.isGpsEnabled(this)
-        ) { checked -> AdvancedPrefs.setGpsEnabled(this, checked) })
+        advCard.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            addView(TextView(this@SettingsActivity).apply {
+                text = "GPS 위치 사용"
+                textSize = 14f; setTextColor(Color.parseColor("#333333"))
+                setTypeface(null, Typeface.BOLD)
+            })
+            addView(TextView(this@SettingsActivity).apply {
+                val isDriving = DrivingModeManager.getMode(this@SettingsActivity) == DrivingMode.DRIVING
+                text = if (isDriving) "운행 모드와 함께 작동 중 (ON)" else "운행 모드와 함께 작동 (OFF)"
+                textSize = 12f; setTextColor(if (isDriving) Color.parseColor("#2EAA5E") else Color.parseColor("#888888"))
+                setPadding(0, dp(2), 0, 0)
+            })
+        })
 
         // v3.3: 피크 자동 조절
         advCard.addView(advancedToggle(

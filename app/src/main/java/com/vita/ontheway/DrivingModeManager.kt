@@ -51,7 +51,9 @@ object DrivingModeManager {
                     .putString(KEY_SESSION_ID, sessionId)
                     .apply()
                 Log.d(TAG, "DRIVING ON at $now, session=$sessionId")
+                AdvancedPrefs.setGpsEnabled(ctx, true)
                 LocationTracker.startTracking(ctx)
+                OtwFileLogger.log(TAG, "운행 ON: GPS 활성화")
             }
             DrivingMode.IDLE -> {
                 val startedAt = prefs.getLong(KEY_STARTED_AT, 0L)
@@ -72,6 +74,8 @@ object DrivingModeManager {
                     .remove(KEY_SESSION_ID)
                     .apply()
                 LocationTracker.stopTracking()
+                AdvancedPrefs.setGpsEnabled(ctx, false)
+                OtwFileLogger.log(TAG, "운행 OFF: GPS 비활성화")
             }
         }
     }
