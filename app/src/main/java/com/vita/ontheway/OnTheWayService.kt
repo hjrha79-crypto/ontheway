@@ -1004,11 +1004,7 @@ class OnTheWayService : AccessibilityService() {
                             }
                             if (addr.isNotEmpty()) {
                                 val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
-                                pickupDistKm = if (straight != null) straight * ROAD_DISTANCE_FACTOR else null
-                                if (pickupDistKm != null && pickupDistKm > 20.0) {
-                                    OtwFileLogger.log("DistanceFilter", "번들 비정상 거리: ${pickupDistKm}km → null")
-                                    pickupDistKm = null
-                                }
+                                pickupDistKm = validatePickupDistance(straight)
                                 if (pickupDistKm != null) {
                                     enrichedBundle = enrichedBundle.copy(pickupDistanceKm = pickupDistKm)
                                 }
@@ -1080,12 +1076,7 @@ class OnTheWayService : AccessibilityService() {
                 DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
                 val addr = call.destination.ifEmpty { call.storeName }
                 val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
-                pickupDistKm = if (straight != null) straight * ROAD_DISTANCE_FACTOR else null
-                // 비정상 거리 필터 (20km 초과 = 신뢰 불가)
-                if (pickupDistKm != null && pickupDistKm > 20.0) {
-                    OtwFileLogger.log("DistanceFilter", "비정상 거리 필터: ${pickupDistKm}km > 20km → null")
-                    pickupDistKm = null
-                }
+                pickupDistKm = validatePickupDistance(straight)
                 if (pickupDistKm != null) {
                     enrichedCall = enrichedCall.copy(pickupDistanceKm = pickupDistKm)
                 }
@@ -1434,6 +1425,17 @@ class OnTheWayService : AccessibilityService() {
         } else {
             if (gpsActive) stopGps()
         }
+    }
+
+    /** 픽업 거리 검증: 직선거리 → 도로 보정 → 범위 필터 (0.05~10km) */
+    private fun validatePickupDistance(straightKm: Double?): Double? {
+        if (straightKm == null) return null
+        val road = straightKm * ROAD_DISTANCE_FACTOR
+        if (road < 0.05 || road > 10.0) {
+            OtwFileLogger.log("DistanceFilter", "비정상 거리: ${"%.2f".format(road)}km (직선 ${"%.2f".format(straightKm)}km) → null")
+            return null
+        }
+        return road
     }
 
     /** v3.1: TTS 설정 반영 (속도, 볼륨 부스트) */
