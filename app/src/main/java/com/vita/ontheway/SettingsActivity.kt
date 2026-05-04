@@ -1255,7 +1255,12 @@ class SettingsActivity : AppCompatActivity() {
                         "• 서버 전송 = 익명 통계만\n\n" +
                         "GPS:\n" +
                         "• 운행 ON 시에만 활성화\n" +
-                        "• 운행 OFF = GPS 자동 종료"
+                        "• 운행 OFF = GPS 자동 종료\n\n" +
+                        "권한 끄는 방법:\n" +
+                        "• 안드로이드 설정 → 앱 → OnTheWay → 권한\n" +
+                        "• 접근성/위치/알림 각각 OFF 가능\n" +
+                        "• 앱 삭제 시 모든 데이터 제거\n" +
+                        "• 언제든 권한을 끄면 즉시 모든 분석 중지"
                     )
                     .setPositiveButton("확인", null)
                     .show()
