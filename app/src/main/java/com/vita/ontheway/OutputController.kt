@@ -94,9 +94,9 @@ object OutputController {
             call.price >= 8000 -> "추천"
             dist > 0 && unitPrice >= 1700 -> "추천"
             dist > 0 && unitPrice in 1400..1699 -> "보통"
-            // 거리 없음 + 픽업 거리로 보조 판정
-            dist == 0.0 && pickupKm > 0 && pickupKm <= 0.5 && call.price >= 3000 -> "추천"
-            dist == 0.0 && pickupKm >= 1.5 -> "비추천"
+            // 거리 없음 + 픽업 거리로 보조 판정 (동 중심점 정확도 고려)
+            dist == 0.0 && pickupKm > 0 && pickupKm <= 1.0 && call.price >= 3000 -> "추천"
+            dist == 0.0 && pickupKm >= 5.0 -> "비추천"
             else -> "보통"
         }
     }

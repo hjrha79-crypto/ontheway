@@ -997,14 +997,18 @@ class OnTheWayService : AccessibilityService() {
                     if (bundleCall != null) {
                         var enrichedBundle = bundleCall
                         var pickupDistKm: Double? = null
-                        if (gpsActive && currentLat != 0.0) {
-                            // 주소(destination) 우선, 가게명은 동 매칭 부정확하므로 fallback만
+                        if (gpsActive && currentLat != 0.0 &&
+                            DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
                             val addr = bundleCall.destination.ifEmpty {
                                 bundleCall.storeName.split("+").firstOrNull() ?: ""
                             }
                             if (addr.isNotEmpty()) {
                                 val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
                                 pickupDistKm = if (straight != null) straight * ROAD_DISTANCE_FACTOR else null
+                                if (pickupDistKm != null && pickupDistKm > 20.0) {
+                                    OtwFileLogger.log("DistanceFilter", "번들 비정상 거리: ${pickupDistKm}km → null")
+                                    pickupDistKm = null
+                                }
                                 if (pickupDistKm != null) {
                                     enrichedBundle = enrichedBundle.copy(pickupDistanceKm = pickupDistKm)
                                 }
@@ -1072,11 +1076,16 @@ class OnTheWayService : AccessibilityService() {
             var enrichedCall = call  // 포인트 환산거리 주입 폐기 (v3.6)
 
             var pickupDistKm: Double? = null
-            if (gpsActive && currentLat != 0.0) {
-                // 주소(destination) 우선, 가게명은 동 매칭 부정확하므로 fallback만
+            if (gpsActive && currentLat != 0.0 &&
+                DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
                 val addr = call.destination.ifEmpty { call.storeName }
                 val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
                 pickupDistKm = if (straight != null) straight * ROAD_DISTANCE_FACTOR else null
+                // 비정상 거리 필터 (20km 초과 = 신뢰 불가)
+                if (pickupDistKm != null && pickupDistKm > 20.0) {
+                    OtwFileLogger.log("DistanceFilter", "비정상 거리 필터: ${pickupDistKm}km > 20km → null")
+                    pickupDistKm = null
+                }
                 if (pickupDistKm != null) {
                     enrichedCall = enrichedCall.copy(pickupDistanceKm = pickupDistKm)
                 }
