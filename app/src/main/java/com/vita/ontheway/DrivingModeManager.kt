@@ -53,6 +53,7 @@ object DrivingModeManager {
                 Log.d(TAG, "DRIVING ON at $now, session=$sessionId")
                 AdvancedPrefs.setGpsEnabled(ctx, true)
                 LocationTracker.startTracking(ctx)
+                try { OnTheWayService.instance?.syncGpsWithDrivingMode() } catch (_: Exception) {}
                 OtwFileLogger.log(TAG, "운행 ON: GPS 활성화")
             }
             DrivingMode.IDLE -> {
@@ -75,6 +76,7 @@ object DrivingModeManager {
                     .apply()
                 LocationTracker.stopTracking()
                 AdvancedPrefs.setGpsEnabled(ctx, false)
+                try { OnTheWayService.instance?.syncGpsWithDrivingMode() } catch (_: Exception) {}
                 OtwFileLogger.log(TAG, "운행 OFF: GPS 비활성화")
             }
         }

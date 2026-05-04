@@ -90,6 +90,7 @@ object LocationTracker {
             listener = newListener
             isTracking = true
             Log.d(TAG, "GPS tracking started (${currentInterval}ms interval)")
+            OtwFileLogger.log(TAG, "GPS tracking started — requestLocationUpdates 호출됨")
         } catch (e: Exception) {
             Log.e(TAG, "startTracking failed", e)
         }
@@ -103,6 +104,7 @@ object LocationTracker {
         lastMovingTime = 0L
         currentInterval = INTERVAL_DRIVING
         Log.d(TAG, "GPS tracking stopped")
+        OtwFileLogger.log(TAG, "GPS tracking stopped — removeUpdates 호출됨")
     }
 
     fun isActive(): Boolean = isTracking

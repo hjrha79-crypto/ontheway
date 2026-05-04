@@ -785,6 +785,7 @@ class OnTheWayService : AccessibilityService() {
             StatusAlertEngine.reset()
         }
         DrivingModeManager.setMode(this, DrivingMode.DRIVING)
+        if (!gpsActive) startGps()  // 운행 ON 시 서비스 GPS도 시작
 
         // v3.3: 수락 시각 기록 (배달 완료 소요시간 계산용)
         lastAcceptTime = System.currentTimeMillis()
@@ -1417,6 +1418,15 @@ class OnTheWayService : AccessibilityService() {
     /** 외부에서 TTS 호출 */
     fun speakTtsPublic(text: String) = speakTts(text)
 
+    /** GPS 상태 운행 모드와 동기화 (외부 호출용) */
+    fun syncGpsWithDrivingMode() {
+        if (DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
+            if (!gpsActive) startGps()
+        } else {
+            if (gpsActive) stopGps()
+        }
+    }
+
     /** v3.1: TTS 설정 반영 (속도, 볼륨 부스트) */
     private fun speakTts(text: String) {
         if (tts == null || !ttsReady) {
@@ -1633,7 +1643,8 @@ class OnTheWayService : AccessibilityService() {
         val screenOn = (getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager)?.isInteractive == true
         if (idle >= AUTO_OFF_IDLE_MS && !screenOn) {
             DrivingModeManager.setMode(this, DrivingMode.IDLE)
-            OtwFileLogger.log("DrivingMode", "자동 OFF: ${idle / 60000}분 무콜 + 화면 OFF")
+            stopGps()
+            OtwFileLogger.log("DrivingMode", "자동 OFF: ${idle / 60000}분 무콜 + 화면 OFF + GPS 종료")
         }
     }
 
@@ -1654,6 +1665,7 @@ class OnTheWayService : AccessibilityService() {
 
     private fun startGps() {
         if (!AdvancedPrefs.isGpsEnabled(this)) return
+        if (gpsActive) return  // 중복 방지
         try {
             locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
             if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -1661,12 +1673,12 @@ class OnTheWayService : AccessibilityService() {
                 locationManager?.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER, 30000L, 50f, locationListener
                 )
-                // 네트워크도 fallback
                 locationManager?.requestLocationUpdates(
                     LocationManager.NETWORK_PROVIDER, 30000L, 50f, locationListener
                 )
                 gpsActive = true
                 Log.d("OTW_GPS", "GPS 시작")
+                OtwFileLogger.log("OTW_GPS", "서비스 GPS 시작 — requestLocationUpdates")
             } else {
                 Log.w("OTW_GPS", "위치 권한 없음 - GPS 비활성화")
                 gpsActive = false
@@ -1675,6 +1687,13 @@ class OnTheWayService : AccessibilityService() {
             Log.w("OTW_GPS", "GPS 시작 실패: ${e.message}")
             gpsActive = false
         }
+    }
+
+    /** 서비스 GPS 종료 — 운행 OFF 시 호출 */
+    private fun stopGps() {
+        try { locationManager?.removeUpdates(locationListener) } catch (_: Exception) {}
+        gpsActive = false
+        OtwFileLogger.log("OTW_GPS", "서비스 GPS 종료 — removeUpdates")
     }
 
     private fun startForegroundNotification() {
