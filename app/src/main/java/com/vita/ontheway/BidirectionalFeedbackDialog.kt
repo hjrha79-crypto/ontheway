@@ -99,9 +99,9 @@ object BidirectionalFeedbackDialog {
             val delivery = RatingHolder(existing?.deliveryRating)
             val price = RatingHolder(existing?.priceRating)
 
-            val pickupRow = makeRow(context, dp, "픽업 위치", pickup)
-            val deliveryRow = makeRow(context, dp, "배달 위치", delivery)
-            val priceRow = makeRow(context, dp, "단가/금액", price)
+            val pickupRow = makeRow(context, dp, "픽업 위치", pickup, "가까움", "멈")
+            val deliveryRow = makeRow(context, dp, "배달 위치", delivery, "좋음", "외지")
+            val priceRow = makeRow(context, dp, "단가/금액", price, "좋음", "나쁨")
 
             root.addView(pickupRow.first)
             root.addView(deliveryRow.first)
@@ -127,7 +127,7 @@ object BidirectionalFeedbackDialog {
 
             // 판정 자체 (별도 섹션)
             val judgment = RatingHolder(existing?.judgmentRating)
-            val judgmentRow = makeRow(context, dp, "판정 자체", judgment)
+            val judgmentRow = makeRow(context, dp, "판정 자체", judgment, "적절", "불만")
             root.addView(judgmentRow.first)
 
             val judgmentButtons = judgmentRow.second
@@ -293,14 +293,16 @@ object BidirectionalFeedbackDialog {
         context: Context,
         dp: (Int) -> Int,
         label: String,
-        holder: RatingHolder
+        holder: RatingHolder,
+        goodLabel: String = "좋음",
+        badLabel: String = "나쁨"
     ): Pair<LinearLayout, RowButtons> {
         val goodBtn = TextView(context).apply {
-            text = "\uD83D\uDC4D"; textSize = 18f; setTextColor(C_TEXT)
+            text = goodLabel; textSize = 14f; setTextColor(C_TEXT)
             setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
         }
         val badBtn = TextView(context).apply {
-            text = "\uD83D\uDC4E"; textSize = 18f; setTextColor(C_TEXT)
+            text = badLabel; textSize = 14f; setTextColor(C_TEXT)
             setBackgroundColor(C_OFF); gravity = Gravity.CENTER; minHeight = dp(44)
         }
 
