@@ -33,19 +33,19 @@ object SupabaseSync {
     fun uploadCallLog(ctx: Context, json: JSONObject) {
         if (!isConfigured()) return
         json.put("source_app", "on_the_way")
-        enqueue(ctx, "otw_call_logs", json)
+        enqueue(ctx, "otw_call_logs", DataAnonymizer.anonymize(json))
     }
 
     fun uploadFeedback(ctx: Context, json: JSONObject) {
         if (!isConfigured()) return
         json.put("source_app", "on_the_way")
-        enqueue(ctx, "otw_feedback_logs", json)
+        enqueue(ctx, "otw_feedback_logs", DataAnonymizer.anonymize(json))
     }
 
     fun uploadJudgmentMatch(ctx: Context, json: JSONObject) {
         if (!isConfigured()) return
         json.put("source_app", "on_the_way")
-        enqueue(ctx, "otw_judgment_match", json)
+        enqueue(ctx, "otw_judgment_match", DataAnonymizer.anonymize(json))
     }
 
     /** 앱 시작 시 미전송 데이터 재전송 */
