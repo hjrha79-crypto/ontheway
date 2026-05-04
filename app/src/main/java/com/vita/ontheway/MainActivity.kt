@@ -992,7 +992,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     entryPoint = matrix.entryPoint,
                     platformDistanceKm = matrix.platformDistanceKm,
                     onthewayDistanceKm = matrix.onthewayDistanceKm,
-                    distanceDiffKm = matrix.distanceDiffKm
+                    distanceDiffKm = matrix.distanceDiffKm,
+                    memo = matrix.memo
                 )
                 android.widget.Toast.makeText(this, "$emoji 기록됨", android.widget.Toast.LENGTH_SHORT).show()
             }

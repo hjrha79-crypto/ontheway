@@ -204,7 +204,7 @@ object CallDetailDialog {
                         platformDistanceKm = matrix.platformDistanceKm,
                         onthewayDistanceKm = matrix.onthewayDistanceKm,
                         distanceDiffKm = matrix.distanceDiffKm,
-                        pointValue = ptVal)
+                        pointValue = ptVal, memo = matrix.memo)
                     val emoji = if (ep == "thumbs_up") "\uD83D\uDC4D" else "\uD83D\uDC4E"
                     Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
                 }
@@ -259,7 +259,7 @@ object CallDetailDialog {
                                 platformDistanceKm = matrix.platformDistanceKm,
                                 onthewayDistanceKm = matrix.onthewayDistanceKm,
                                 distanceDiffKm = matrix.distanceDiffKm,
-                                pointValue = ptVal2)
+                                pointValue = ptVal2, memo = matrix.memo)
                             Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
                             onFeedbackChanged?.invoke()
                         }

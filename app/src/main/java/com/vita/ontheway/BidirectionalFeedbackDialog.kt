@@ -35,7 +35,8 @@ object BidirectionalFeedbackDialog {
         val entryPoint: String,        // "thumbs_up" / "thumbs_down"
         val platformDistanceKm: Float? = null,
         val onthewayDistanceKm: Float? = null,
-        val distanceDiffKm: Float? = null
+        val distanceDiffKm: Float? = null,
+        val memo: String? = null       // 자유 메모
     ) {
         fun toReasonsList(): List<String> {
             val list = mutableListOf<String>()
@@ -229,6 +230,21 @@ object BidirectionalFeedbackDialog {
                 root.addView(distRow)
             }
 
+            // 자유 메모
+            root.addView(View(context).apply {
+                setBackgroundColor(C_DIVIDER)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
+                ).apply { setMargins(0, dp(12), 0, dp(12)) }
+            })
+            val memoInput = EditText(context).apply {
+                hint = "다른 의견 (선택)"; textSize = 13f; setTextColor(C_TEXT); setHintTextColor(C_SUB)
+                minLines = 2; maxLines = 4
+                setBackgroundColor(Color.parseColor("#F5F5F5"))
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+            }
+            root.addView(memoInput)
+
             val scrollView = ScrollView(context).apply {
                 addView(root)
             }
@@ -247,6 +263,7 @@ object BidirectionalFeedbackDialog {
                     val effectivePlatformDist = userInputDist ?: platformDistanceKm
                     val diffKm = if (effectivePlatformDist != null && onthewayDistanceKm != null)
                         effectivePlatformDist - onthewayDistanceKm else null
+                    val memoText = memoInput.text.toString().trim().takeIf { it.isNotEmpty() }
                     val result = MatrixResult(
                         pickupRating = pickup.rating,
                         deliveryRating = delivery.rating,
@@ -255,7 +272,8 @@ object BidirectionalFeedbackDialog {
                         entryPoint = entryPoint,
                         platformDistanceKm = effectivePlatformDist,
                         onthewayDistanceKm = onthewayDistanceKm,
-                        distanceDiffKm = diffKm
+                        distanceDiffKm = diffKm,
+                        memo = memoText
                     )
                     if (userInputDist != null) {
                         val otwStr = if (onthewayDistanceKm != null) "${"%.1f".format(onthewayDistanceKm)}km" else "N/A"
