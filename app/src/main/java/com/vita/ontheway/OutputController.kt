@@ -85,28 +85,34 @@ object OutputController {
         return validateMessage("$platform, ${price}원, $verdict")
     }
 
-    /** verdict 3단계 판정 (TTS용, 정보형 표현) */
+    /** verdict 3단계 판정 (TTS용, 직관 표현) */
     private fun extractVerdict(call: DeliveryCall, result: CallFilter.FilterResult): String {
-        if (result.verdict == CallFilter.Verdict.REJECT) return "주의"
+        if (result.verdict == CallFilter.Verdict.REJECT) return "멈"
         val dist = call.distance ?: 0.0
         val unitPrice = if (dist > 0) (call.price / dist).toInt() else 0
         val pickupKm = call.pickupDistanceKm ?: 0.0
         val pickupUnknown = call.pickupDistanceKm == null || call.pickupDistanceKm <= 0.0
         val raw = when {
-            call.price >= 8000 -> "우세"
-            dist > 0 && unitPrice >= 1700 -> "우세"
+            call.price >= 8000 -> "추천"
+            dist > 0 && unitPrice >= 1700 -> "추천"
             dist > 0 && unitPrice in 1400..1699 -> "보통"
-            dist == 0.0 && pickupKm > 0 && pickupKm <= 1.0 && call.price >= 3000 -> "우세"
-            dist == 0.0 && pickupKm >= 5.0 -> "주의"
+            dist == 0.0 && pickupKm > 0 && pickupKm <= 1.0 && call.price >= 3000 -> "추천"
+            dist == 0.0 && pickupKm >= 5.0 -> "멈"
             else -> "보통"
         }
-        // 픽업거리 미측정 시 우세 → 보통 강등 (고액 8000원+ 제외)
-        if (raw == "우세" && pickupUnknown && call.price < 8000) {
-            OtwFileLogger.log(TAG, "verdict 강등: 우세→보통 (pickupKm=null, ${call.price}원, dist=$dist)")
+        // 픽업거리 미측정 시 추천 → 보통 강등 (고액 8000원+ 제외)
+        if (raw == "추천" && pickupUnknown && call.price < 8000) {
+            OtwFileLogger.log(TAG, "verdict 강등: 추천→보통 (pickupKm=null, ${call.price}원, dist=$dist)")
             return "보통"
         }
         return raw
     }
+
+    /** Overlay용 이모지 추가 (TTS는 원문 그대로) */
+    fun addVerdictEmoji(text: String): String = text
+        .replace("추천", "\uD83D\uDFE2 추천")
+        .replace("보통", "\u26AA 보통")
+        .replace("멈", "\uD83D\uDD34 멈")
 
     /**
      * 상태 알림용 emit (30초 쿨다운 무시).
@@ -148,12 +154,13 @@ object OutputController {
         val now = System.currentTimeMillis()
 
         // Overlay 쿨다운 (2초) + 동일 메시지 dedup
-        val isSameMsg = overlayText == lastOverlayText && now - lastOverlayTime < OVERLAY_COOLDOWN_MS
+        val overlayWithEmoji = addVerdictEmoji(overlayText)
+        val isSameMsg = overlayWithEmoji == lastOverlayText && now - lastOverlayTime < OVERLAY_COOLDOWN_MS
         if (!isSameMsg) {
             lastOverlayTime = now
-            lastOverlayText = overlayText
+            lastOverlayText = overlayWithEmoji
             val textColor = CardOverlay.colorForUnitPrice(pricePerKm)
-            try { CardOverlay.show(ctx, overlayText, textColor) } catch (e: Exception) {
+            try { CardOverlay.show(ctx, overlayWithEmoji, textColor) } catch (e: Exception) {
                 Log.w(TAG, "Overlay 실패: ${e.message}")
             }
         } else {

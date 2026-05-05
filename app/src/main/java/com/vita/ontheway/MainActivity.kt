@@ -407,7 +407,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         val detail = FilterLog.getTodayDetail(this)
         if (detail.total > 0) {
-            filterCountText.text = "오늘 ${detail.total}건 (비추천 ${detail.reject} · 보통/추천 ${detail.accept})\n${SessionStats.getSummary(this)}"
+            filterCountText.text = "오늘 ${detail.total}건 (멈 ${detail.reject} · 보통/추천 ${detail.accept})\n${SessionStats.getSummary(this)}"
         } else {
             filterCountText.text = SessionStats.getSummary(this)
         }
@@ -422,11 +422,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val price = e.optInt("price", 0)
             val verdict = e.optString("verdict", "")
             val verdictKr = when (verdict) {
-                "REJECT" -> "주의"; "ACCEPT" -> {
+                "REJECT" -> "멈"; "ACCEPT" -> {
                     val up = e.optInt("unitPrice", 0)
                     val dist = e.optDouble("distanceKm", -1.0)
                     val pt = e.optDouble("point", -1.0)
-                    if (price >= 10000 || (price >= 7000 && ((dist in 0.0..3.0) || (pt in 0.0..15.0))) || (up >= 2500 && dist in 0.0..3.0)) "우세" else "보통"
+                    if (price >= 10000 || (price >= 7000 && ((dist in 0.0..3.0) || (pt in 0.0..15.0))) || (up >= 2500 && dist in 0.0..3.0)) "추천" else "보통"
                 }; else -> verdict
             }
             lastCallText.text = "$platform ${fmt(price)}원 $verdictKr"
@@ -476,7 +476,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(16), dp(2), dp(16), dp(6))
         }
-        listOf("전체", "추천", "보통", "비추천").forEach { label ->
+        listOf("전체", "추천", "보통", "멈").forEach { label ->
             verdRow.addView(TextView(this).apply {
                 text = label; textSize = 11f; gravity = Gravity.CENTER
                 val sel = label == dashFilterVerdict
@@ -549,7 +549,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val verdictColor = when (verdictKr) {
             "추천" -> Color.parseColor("#00FF88")
             "보통" -> Color.parseColor("#4CC9F0")
-            "비추천" -> Color.parseColor("#FF4D6D")
+            "멈" -> Color.parseColor("#FF4D6D")
             else -> C_SUB
         }
 
@@ -757,7 +757,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             textSize = 12f
             setTextColor(when (verdictKr) {
                 "추천" -> Color.parseColor("#00FF88")
-                "비추천" -> Color.parseColor("#FF4D6D")
+                "멈" -> Color.parseColor("#FF4D6D")
                 else -> Color.parseColor("#4CC9F0")
             })
             setPadding(0, 0, 0, dp(8))
@@ -919,7 +919,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private fun getVerdictKr(entry: org.json.JSONObject): String {
         val verdict = entry.optString("verdict", "")
-        if (verdict == "REJECT") return "주의"
+        if (verdict == "REJECT") return "멈"
         if (verdict == "ACCEPTED") return "수락됨"
         val price = entry.optInt("price", 0)
         val unitPrice = entry.optInt("unitPrice", 0)
@@ -928,7 +928,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val isGrab = price >= 10000 ||
             (price >= 7000 && ((dist in 0.0..3.0) || (pt in 0.0..15.0))) ||
             (unitPrice >= 2500 && dist in 0.0..3.0)
-        return if (isGrab) "우세" else "보통"
+        return if (isGrab) "추천" else "보통"
     }
 
     private fun extractShortReason(reason: String, verdict: String): String {
@@ -1024,10 +1024,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val verdictKr: String
         val verdictColor: Int
         if (verdict == "REJECT") {
-            verdictKr = "주의"
+            verdictKr = "멈"
             verdictColor = Color.parseColor("#E53935")
         } else if (reason.contains("추천:") || reason.contains("잡으세요")) {
-            verdictKr = "우세"
+            verdictKr = "추천"
             verdictColor = Color.parseColor("#5B6ABF")
         } else {
             verdictKr = "보통"
@@ -1268,7 +1268,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 dlg.setNegativeButton("블랙리스트") { _, _ ->
                     AlertDialog.Builder(this)
                         .setTitle("블랙리스트 추가")
-                        .setMessage("$displayName 을(를) 블랙리스트에 추가하시겠습니까?\n(앞으로 이 가게 콜은 '주의'로 판정)")
+                        .setMessage("$displayName 을(를) 블랙리스트에 추가하시겠습니까?\n(앞으로 이 가게 콜은 '멈'으로 판정)")
                         .setPositiveButton("추가") { _, _ ->
                             StoreManager.addBlacklist(this, storeKey, platformCode)
                             android.widget.Toast.makeText(this, "$displayName 블랙리스트 추가", android.widget.Toast.LENGTH_SHORT).show()
