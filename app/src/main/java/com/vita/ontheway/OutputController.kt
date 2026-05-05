@@ -100,6 +100,22 @@ object OutputController {
             dist == 0.0 && pickupKm >= 5.0 -> "멈"
             else -> "보통"
         }
+
+        // 멀티콜 보정: 단가 0.5x + 우세 강등
+        if (call.isMulti) {
+            val effectiveUnitPrice = if (dist > 0) ((call.price / dist) * 0.5).toInt() else 0
+            OtwFileLogger.log(TAG, "[VERDICT_MULTI] 멀티 보정: " +
+                "원래 단가=${if (dist > 0) (call.price / dist).toInt() else 0} → 보정 $effectiveUnitPrice")
+            // 멀티는 추천/보통 → 보통 강등
+            val downgraded = if (raw == "추천") "보통" else raw
+            // 보정 단가 < 1500 → 멈
+            if (dist > 0 && effectiveUnitPrice < 1500) {
+                OtwFileLogger.log(TAG, "[VERDICT_MULTI] 보정단가 ${effectiveUnitPrice} < 1500 → 멈")
+                return "멈"
+            }
+            return downgraded
+        }
+
         // 픽업거리 미측정 시 추천 → 보통 강등 (고액 8000원+ 제외)
         if (raw == "추천" && pickupUnknown && call.price < 8000) {
             OtwFileLogger.log(TAG, "verdict 강등: 추천→보통 (pickupKm=null, ${call.price}원, dist=$dist)")
