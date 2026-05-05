@@ -380,4 +380,40 @@ class BaeminParserTest {
         val result = BaeminParser.sanitizeStoreName("프랭크버거 경기광주태전점+기상+이삭토스트 광주샬롬점+중복된 요청입니다.")
         assertEquals("프랭크버거 경기광주태전점+이삭토스트 광주샬롬점", result)
     }
+
+    // ── rawText 기반 멀티 검출 테스트 (Wave 1-E) ──
+
+    @Test
+    fun `detectMulti - 픽업지 2회 출현`() {
+        assertTrue(BaeminParser.detectMulti("배민배달 픽업지 맘스터치 전달지 태전동 픽업지 BBQ 전달지 고산동"))
+    }
+
+    @Test
+    fun `detectMulti - 픽업지2 키워드`() {
+        assertTrue(BaeminParser.detectMulti("배민배달 픽업지 맘스터치 픽업지2 BBQ"))
+    }
+
+    @Test
+    fun `detectMulti - 2건 패턴`() {
+        assertTrue(BaeminParser.detectMulti("배달료 7,010원 2건 모두 수락"))
+    }
+
+    @Test
+    fun `detectMulti - 두건 패턴`() {
+        assertTrue(BaeminParser.detectMulti("배달료 5,000원 두건"))
+    }
+
+    @Test
+    fun `detectMulti - 단건은 false`() {
+        assertFalse(BaeminParser.detectMulti("배달료 3,500원 픽업지 맘스터치 전달지 태전동"))
+    }
+
+    @Test
+    fun `parse - 단건 파싱인데 픽업지2 포함 시 isMulti=true`() {
+        val texts = listOf("배달료 4,400원", "픽업지", "맘스터치", "픽업지2", "BBQ")
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertTrue("멀티 감지: ${result[0].isMulti}", result[0].isMulti)
+        assertEquals(2, result[0].bundleCount)
+    }
 }

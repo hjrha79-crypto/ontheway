@@ -29,6 +29,8 @@ object BaeminParser {
     // 묶음배달 패턴: "묶음배달", "2건", "3건 묶음" 등
     private val BUNDLE_PATTERN = Regex("묶음|\\d+건", RegexOption.IGNORE_CASE)
     private val BUNDLE_COUNT_PATTERN = Regex("(\\d+)\\s*건")
+    // rawText 기반 멀티콜 추가 검출 패턴
+    private val MULTI_COUNT_PATTERN = Regex("(2|두|세)\\s*건")
 
     // 이전내역(완료된 배달 목록) 화면 키워드 — 신규 콜 오인 방지
     val HISTORY_SCREEN_KEYWORDS = listOf(
@@ -290,6 +292,13 @@ object BaeminParser {
             ))
         }
 
+        // ── rawText 기반 멀티 추가 검출 (단건 파싱이지만 실제 멀티) ──
+        if (results.size == 1 && !results[0].isMulti && detectMulti(joined)) {
+            val r = results[0]
+            OtwFileLogger.log("BaeminParser", "rawText 멀티 검출: store='${r.storeName}', price=${r.price}")
+            return listOf(r.copy(isMulti = true, bundleCount = 2))
+        }
+
         // 결과 로그
         if (results.isNotEmpty()) {
             val r = results[0]
@@ -298,6 +307,21 @@ object BaeminParser {
 
         // 단건도 포인트 포함
         return results
+    }
+
+    /**
+     * rawText 기반 멀티콜 추가 검출.
+     * 픽업지 복수 출현, "픽업지2" UI, "2건"/"두건" 패턴.
+     */
+    fun detectMulti(rawText: String): Boolean {
+        // 방법 1: "픽업지" 2회 이상
+        val pickupCount = rawText.split("픽업지").size - 1
+        if (pickupCount >= 2) return true
+        // 방법 2: "픽업지2" (배민 멀티 전용 UI)
+        if (rawText.contains("픽업지2")) return true
+        // 방법 3: "2건" "두건" "세건"
+        if (MULTI_COUNT_PATTERN.containsMatchIn(rawText)) return true
+        return false
     }
 
     /** 배민 포인트 값 추출 (거리 지표) */
