@@ -30,6 +30,9 @@ class CallSimulationTest {
 
         ctx = mockk<Context>()
         every { ctx.getSharedPreferences(any(), any()) } returns mockPrefs
+
+        // FIX2: BaeminParser dedup 캐시 초기화
+        BaeminParser.resetDedupCache()
     }
 
     // ---- 배민 단일 콜 ----

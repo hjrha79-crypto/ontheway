@@ -32,6 +32,17 @@ object BaeminParser {
     // rawText 기반 멀티콜 추가 검출 패턴
     private val MULTI_COUNT_PATTERN = Regex("(2|두|세)\\s*건")
 
+    // 파싱 dedup 캐시: 동일 storeName+price 5분 내 재파싱 방지
+    private const val PARSE_DEDUP_WINDOW_MS = 300_000L  // 5분
+    private var lastParseTs: Long = 0
+    private var lastParsePrice: Int = 0
+    private var lastParseStore: String = ""
+
+    /** 테스트용: dedup 캐시 초기화 */
+    fun resetDedupCache() {
+        lastParseTs = 0; lastParsePrice = 0; lastParseStore = ""
+    }
+
     // 이전내역(완료된 배달 목록) 화면 키워드 — 신규 콜 오인 방지
     val HISTORY_SCREEN_KEYWORDS = listOf(
         "배정받은 배달이 없습니다",
@@ -145,15 +156,16 @@ object BaeminParser {
         val results = mutableListOf<DeliveryCall>()
         val joined = texts.joinToString(" ")
 
-        // 이전내역 화면 감지 → DROP (신규 콜 증거 있으면 우회)
-        val hasNewCallEvidence =
+        // 이전내역 화면 감지 → DROP
+        // FIX2: 강화된 신규 콜 증거 — "신규배달" 또는 "신규배차_수락버튼" 명시 필요
+        // (기존 "배차수락", "\d+초" 는 이전 콜 화면에도 혼입되어 오탐 유발)
+        val hasStrongNewCallEvidence =
             joined.contains("신규배차_수락버튼") ||
-            joined.contains("배차수락") ||
-            Regex("\\d+초(?!\\S)").containsMatchIn(joined)
+            joined.contains("신규배달")
 
         if (HISTORY_SCREEN_KEYWORDS.any { joined.contains(it) }) {
-            if (hasNewCallEvidence) {
-                OtwFileLogger.log("BaeminParser", "HISTORY_KEYWORD_BUT_NEW_CALL: keyword detected but proceeding")
+            if (hasStrongNewCallEvidence) {
+                OtwFileLogger.log("BaeminParser", "HISTORY_KEYWORD_BUT_NEW_CALL: strong evidence, proceeding")
             } else {
                 OtwFileLogger.log("BaeminParser", "DROP_HISTORY_SCREEN")
                 return null
@@ -297,6 +309,21 @@ object BaeminParser {
             val r = results[0]
             OtwFileLogger.log("BaeminParser", "rawText 멀티 검출: store='${r.storeName}', price=${r.price}")
             return listOf(r.copy(isMulti = true, bundleCount = 2))
+        }
+
+        // ── FIX2: 파싱 dedup — 동일 store+price 5분 내 재파싱 방지 ──
+        if (results.isNotEmpty()) {
+            val r = results[0]
+            val now = System.currentTimeMillis()
+            val sameCall = r.price == lastParsePrice &&
+                (r.storeName.isBlank() || lastParseStore.isBlank() || r.storeName == lastParseStore)
+            if (sameCall && now - lastParseTs < PARSE_DEDUP_WINDOW_MS) {
+                OtwFileLogger.log("BaeminParser", "DEDUP_SKIP: ${r.price}원 store='${r.storeName}' (${now - lastParseTs}ms)")
+                return emptyList()
+            }
+            lastParseTs = now
+            lastParsePrice = r.price
+            lastParseStore = r.storeName
         }
 
         // 결과 로그

@@ -5,9 +5,15 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
+import org.junit.Before
 import org.junit.Test
 
 class BaeminParserTest {
+
+    @Before
+    fun setup() {
+        BaeminParser.resetDedupCache()
+    }
 
     @Test
     fun `배달료기준거리 1,065m 파싱 성공 - distance 1_065km로 설정`() {
@@ -237,10 +243,37 @@ class BaeminParserTest {
     }
 
     @Test
-    fun `신규콜가드 - 카운터만 있어도 DROP 우회`() {
+    fun `신규콜가드 - 카운터만으로는 DROP 우회 불가 (FIX2 강화)`() {
+        // FIX2: "\d+초" 만으로는 신규 콜 증거 불충분 → DROP
         val texts = listOf("31초", "배달료 4,000원", "픽업지", "테스트가게", "픽업 완료 되었습니다")
         val result = BaeminParser.parse(texts)
-        assertNotNull("카운터로 신규 콜 증거 있으면 DROP_HISTORY_SCREEN 되면 안됨", result)
+        assertNull("카운터만으로는 히스토리 DROP 우회 불가", result)
+    }
+
+    @Test
+    fun `FIX2 - 픽업완료 + 신규배달 동시 = 새 콜로 진행`() {
+        // 5/5 21:35 사례 재현: 이전 콜 마무리 + 새 콜 동시 표시
+        val texts = listOf("신규배달 1건을 수락해주세요", "신규배차_수락버튼", "배달료 5,500원", "픽업지", "새가게", "픽업 완료 되었습니다")
+        val result = BaeminParser.parse(texts)
+        assertNotNull("신규배달 명시 시 파싱 진행", result)
+        assertTrue(result!!.isNotEmpty())
+        assertEquals(5500, result[0].price)
+    }
+
+    @Test
+    fun `FIX2 - 픽업완료만 표시 = DROP`() {
+        val texts = listOf("픽업 완료 되었습니다", "배달료 3,900원", "픽업지", "BHC 오포고산점")
+        val result = BaeminParser.parse(texts)
+        assertNull("픽업완료만 있으면 DROP", result)
+    }
+
+    @Test
+    fun `FIX2 - 신규배달만 표시 = 정상 파싱`() {
+        val texts = listOf("신규배달 1건을 수락해주세요", "신규배차_수락버튼", "배달료 4,200원", "픽업지", "맘스터치")
+        val result = BaeminParser.parse(texts)
+        assertNotNull(result)
+        assertTrue(result!!.isNotEmpty())
+        assertEquals(4200, result[0].price)
     }
 
     // ── isBlacklistedPattern 테스트 ──
