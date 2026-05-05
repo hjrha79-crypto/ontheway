@@ -956,48 +956,54 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         storeName: String, price: Int, dist: Double,
         verdictKr: String, reason: String, feedbackSessionId: String
     ) {
-        val ep = if (isUp) "thumbs_up" else "thumbs_down"
-        BidirectionalFeedbackDialog.show(this, ep, platform = platformCode) { matrix ->
-            val fb = if (isUp) "up" else "down"
+        if (isUp) {
+            // 👍 즉시 저장 (4축 생략)
             val existing = FeedbackLogger.findBySessionId(this, feedbackSessionId)
             if (existing != null) {
-                val updated = existing.copy(
-                    feedback = fb,
-                    reasons = matrix.toReasonsList(),
-                    pickupRating = matrix.pickupRating,
-                    deliveryRating = matrix.deliveryRating,
-                    priceRating = matrix.priceRating,
-                    judgmentRating = matrix.judgmentRating,
-                    entryPoint = matrix.entryPoint
-                )
+                val updated = existing.copy(feedback = "up", entryPoint = "thumbs_up")
                 FeedbackLogger.updateBySessionId(this, feedbackSessionId, updated)
                 android.widget.Toast.makeText(this, "$emoji 덮어쓰기 완료", android.widget.Toast.LENGTH_SHORT).show()
             } else {
-                FeedbackLogger.log(
-                    this,
-                    platform = platformCode,
-                    store = storeName,
-                    price = price,
-                    distanceKm = if (dist >= 0) dist else 0.0,
-                    verdict = verdictKr,
-                    reason = reason,
-                    sessionId = feedbackSessionId,
-                    feedback = fb,
-                    reasons = matrix.toReasonsList(),
-                    driverAction = if (fb == "up") "accepted" else "rejected",
-                    pickupRating = matrix.pickupRating,
-                    deliveryRating = matrix.deliveryRating,
-                    priceRating = matrix.priceRating,
-                    judgmentRating = matrix.judgmentRating,
-                    entryPoint = matrix.entryPoint,
-                    platformDistanceKm = matrix.platformDistanceKm,
-                    onthewayDistanceKm = matrix.onthewayDistanceKm,
-                    distanceDiffKm = matrix.distanceDiffKm,
-                    memo = matrix.memo
-                )
+                FeedbackLogger.log(this, platform = platformCode, store = storeName,
+                    price = price, distanceKm = if (dist >= 0) dist else 0.0,
+                    verdict = verdictKr, reason = reason, sessionId = feedbackSessionId,
+                    feedback = "up", reasons = emptyList(),
+                    driverAction = "accepted", entryPoint = "thumbs_up")
                 android.widget.Toast.makeText(this, "$emoji 기록됨", android.widget.Toast.LENGTH_SHORT).show()
             }
             refreshDashboard()
+        } else {
+            // 👎 → 4축 상세
+            BidirectionalFeedbackDialog.show(this, "thumbs_down", platform = platformCode) { matrix ->
+                val existing = FeedbackLogger.findBySessionId(this, feedbackSessionId)
+                if (existing != null) {
+                    val updated = existing.copy(
+                        feedback = "down",
+                        reasons = matrix.toReasonsList(),
+                        pickupRating = matrix.pickupRating,
+                        deliveryRating = matrix.deliveryRating,
+                        priceRating = matrix.priceRating,
+                        judgmentRating = matrix.judgmentRating,
+                        entryPoint = matrix.entryPoint
+                    )
+                    FeedbackLogger.updateBySessionId(this, feedbackSessionId, updated)
+                    android.widget.Toast.makeText(this, "$emoji 덮어쓰기 완료", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    FeedbackLogger.log(this, platform = platformCode, store = storeName,
+                        price = price, distanceKm = if (dist >= 0) dist else 0.0,
+                        verdict = verdictKr, reason = reason, sessionId = feedbackSessionId,
+                        feedback = "down", reasons = matrix.toReasonsList(),
+                        driverAction = "rejected",
+                        pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
+                        priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
+                        entryPoint = matrix.entryPoint,
+                        platformDistanceKm = matrix.platformDistanceKm,
+                        onthewayDistanceKm = matrix.onthewayDistanceKm,
+                        distanceDiffKm = matrix.distanceDiffKm, memo = matrix.memo)
+                    android.widget.Toast.makeText(this, "$emoji 기록됨", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                refreshDashboard()
+            }
         }
     }
 
@@ -2083,17 +2089,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             if (fbPrice > 0) {
                 try {
                     val sessionId = "s_${fbTs}_${fbPrice}"
-                    BidirectionalFeedbackDialog.show(this, "thumbs_down",
+                    BidirectionalFeedbackDialog.showThumbsFirst(this,
                         platform = fbPlatform) { matrix ->
+                        val fb = if (matrix.entryPoint == "thumbs_up") "up" else "down"
                         FeedbackLogger.log(this, platform = fbPlatform, store = "",
                             price = fbPrice, distanceKm = 0.0,
                             verdict = "", reason = "", sessionId = sessionId,
-                            feedback = "down", reasons = matrix.toReasonsList(),
-                            driverAction = "rejected",
+                            feedback = fb, reasons = matrix.toReasonsList(),
+                            driverAction = if (fb == "up") "accepted" else "rejected",
                             pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
                             priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
                             entryPoint = matrix.entryPoint, memo = matrix.memo)
-                        Toast.makeText(this, "피드백 저장됨", Toast.LENGTH_SHORT).show()
                     }
                 } catch (_: Exception) {}
             }

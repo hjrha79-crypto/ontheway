@@ -59,6 +59,123 @@ object BidirectionalFeedbackDialog {
 
     private class RowButtons(val goodBtn: TextView, val badBtn: TextView, val holder: RatingHolder)
 
+    /**
+     * 2단계 피드백: 1차 👍/👎 → 2차 (👎만 4축 상세).
+     * 👍 = 즉시 저장 + 토스트.
+     * 👎 = 기존 4축 show() 호출.
+     */
+    fun showThumbsFirst(
+        context: Context,
+        platform: String = "",
+        platformDistanceKm: Float? = null,
+        onthewayDistanceKm: Float? = null,
+        onSave: (MatrixResult) -> Unit
+    ) {
+        try {
+            val dp = { v: Int -> (v * context.resources.displayMetrics.density).toInt() }
+
+            val root = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(24), dp(20), dp(24), dp(16))
+                setBackgroundColor(Color.WHITE)
+            }
+
+            root.addView(TextView(context).apply {
+                text = "이 콜 어땠나요?"
+                textSize = 18f; setTextColor(C_TEXT); gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(24))
+            })
+
+            val btnRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+
+            val dialog = AlertDialog.Builder(context)
+                .setView(root)
+                .setCancelable(true)
+                .create()
+
+            // 👍 버튼
+            val upBtn = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setBackgroundColor(Color.parseColor("#F0FFF0"))
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                minimumHeight = dp(120)
+                isClickable = true; isFocusable = true
+                setOnClickListener {
+                    val result = MatrixResult(
+                        pickupRating = null, deliveryRating = null,
+                        priceRating = null, judgmentRating = null,
+                        entryPoint = "thumbs_up"
+                    )
+                    onSave(result)
+                    OtwFileLogger.log("Feedback", "👍 즉시 저장")
+                    android.widget.Toast.makeText(context, "👍 기록됨", android.widget.Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                }
+            }
+            upBtn.addView(TextView(context).apply {
+                text = "\uD83D\uDC4D"; textSize = 40f; gravity = Gravity.CENTER
+            })
+            upBtn.addView(TextView(context).apply {
+                text = "좋음"; textSize = 14f; setTextColor(C_TEXT); gravity = Gravity.CENTER
+                setPadding(0, dp(8), 0, 0)
+            })
+
+            // 👎 버튼
+            val downBtn = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setBackgroundColor(Color.parseColor("#FFF0F0"))
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                minimumHeight = dp(120)
+                isClickable = true; isFocusable = true
+                setOnClickListener {
+                    dialog.dismiss()
+                    // 2차: 4축 상세 ���이얼로그
+                    show(context, "thumbs_down",
+                        platform = platform,
+                        platformDistanceKm = platformDistanceKm,
+                        onthewayDistanceKm = onthewayDistanceKm,
+                        onSave = onSave)
+                }
+            }
+            downBtn.addView(TextView(context).apply {
+                text = "\uD83D\uDC4E"; textSize = 40f; gravity = Gravity.CENTER
+            })
+            downBtn.addView(TextView(context).apply {
+                text = "나쁨"; textSize = 14f; setTextColor(C_TEXT); gravity = Gravity.CENTER
+                setPadding(0, dp(8), 0, 0)
+            })
+
+            btnRow.addView(upBtn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) })
+            btnRow.addView(downBtn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(8) })
+            root.addView(btnRow)
+
+            // 힌트 텍스트
+            root.addView(TextView(context).apply {
+                text = "나쁨을 누르면 상세 의견을 남길 수 있어요"
+                textSize = 11f; setTextColor(C_SUB); gravity = Gravity.CENTER
+                setPadding(0, dp(16), 0, 0)
+            })
+
+            // 취소 시 👎 기본 저장
+            dialog.setOnCancelListener {
+                val result = MatrixResult(
+                    pickupRating = null, deliveryRating = null,
+                    priceRating = null, judgmentRating = null,
+                    entryPoint = "thumbs_down"
+                )
+                onSave(result)
+                OtwFileLogger.log("Feedback", "취소 → 👎 기본 저장")
+            }
+
+            dialog.show()
+        } catch (_: Exception) {}
+    }
+
     fun show(
         context: Context,
         entryPoint: String,

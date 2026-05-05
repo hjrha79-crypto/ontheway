@@ -241,27 +241,38 @@ object CallDetailDialog {
                     setBackgroundColor(Color.parseColor("#F0F0F0"))
                     setPadding(dp(24), dp(8), dp(24), dp(8))
                     setOnClickListener {
-                        val epStr = if (isUp) "thumbs_up" else "thumbs_down"
                         val otwDist = if (dist >= 0) dist.toFloat() else null
-                        BidirectionalFeedbackDialog.show(context, epStr,
-                            platform = platform,
-                            onthewayDistanceKm = otwDist) { matrix ->
-                            val fb = if (isUp) "up" else "down"
-                            val ptVal2 = if (point > 0) point.toFloat() else null
+                        val ptVal2 = if (point > 0) point.toFloat() else null
+                        if (isUp) {
+                            // 👍 즉시 저장 (4축 생략)
                             FeedbackLogger.log(context, platform = platform, store = storeName,
                                 price = price, distanceKm = if (dist >= 0) dist else 0.0,
                                 verdict = verdictKr, reason = reason, sessionId = sessionId,
-                                feedback = fb, reasons = matrix.toReasonsList(),
-                                driverAction = if (fb == "up") "accepted" else "rejected",
-                                pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
-                                priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
-                                entryPoint = matrix.entryPoint,
-                                platformDistanceKm = matrix.platformDistanceKm,
-                                onthewayDistanceKm = matrix.onthewayDistanceKm,
-                                distanceDiffKm = matrix.distanceDiffKm,
-                                pointValue = ptVal2, memo = matrix.memo)
+                                feedback = "up", reasons = emptyList(),
+                                driverAction = "accepted", entryPoint = "thumbs_up",
+                                onthewayDistanceKm = otwDist, pointValue = ptVal2)
                             Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
                             onFeedbackChanged?.invoke()
+                        } else {
+                            // 👎 → 4축 상세
+                            BidirectionalFeedbackDialog.show(context, "thumbs_down",
+                                platform = platform,
+                                onthewayDistanceKm = otwDist) { matrix ->
+                                FeedbackLogger.log(context, platform = platform, store = storeName,
+                                    price = price, distanceKm = if (dist >= 0) dist else 0.0,
+                                    verdict = verdictKr, reason = reason, sessionId = sessionId,
+                                    feedback = "down", reasons = matrix.toReasonsList(),
+                                    driverAction = "rejected",
+                                    pickupRating = matrix.pickupRating, deliveryRating = matrix.deliveryRating,
+                                    priceRating = matrix.priceRating, judgmentRating = matrix.judgmentRating,
+                                    entryPoint = matrix.entryPoint,
+                                    platformDistanceKm = matrix.platformDistanceKm,
+                                    onthewayDistanceKm = matrix.onthewayDistanceKm,
+                                    distanceDiffKm = matrix.distanceDiffKm,
+                                    pointValue = ptVal2, memo = matrix.memo)
+                                Toast.makeText(context, "$emoji 기록됨", Toast.LENGTH_SHORT).show()
+                                onFeedbackChanged?.invoke()
+                            }
                         }
                     }
                 }
