@@ -16,7 +16,7 @@ import android.util.Log
 object AcceptCoordinator {
 
     private const val TAG = "AcceptCoordinator"
-    private const val DEDUP_WINDOW_MS = 10_000L
+    private const val DEDUP_WINDOW_MS = 300_000L  // 5분 (기존 10초 → 동일 콜 반복 인식 방지)
 
     enum class AcceptSource {
         SYSTEM_NOTI, COUPANG_PICKUP, BAEMIN_PROGRESS, FALLBACK
@@ -24,22 +24,28 @@ object AcceptCoordinator {
 
     private var lastTs: Long = 0
     private var lastPrice: Int = 0
+    private var lastPlatform: String = ""
+    private var lastStoreName: String = ""
 
     /**
      * 수락 감지 단일 진입점.
      * 중복 방지 + EarningsTracker + JudgmentMatchLogger + 로그.
      */
-    fun handleAccept(ctx: Context, source: AcceptSource, price: Int, platform: String) {
+    fun handleAccept(ctx: Context, source: AcceptSource, price: Int, platform: String, storeName: String = "") {
         if (price <= 0) return
         val now = System.currentTimeMillis()
 
-        // 중복 방지 (10초 + 동일 금액)
-        if (price == lastPrice && now - lastTs < DEDUP_WINDOW_MS) {
-            OtwFileLogger.log(TAG, "중복 스킵: $source ${price}원 $platform (${now - lastTs}ms)")
+        // 중복 방지 (5분 + 동일 금액+플랫폼+가게명)
+        val sameCall = price == lastPrice && platform == lastPlatform &&
+            (storeName.isBlank() || lastStoreName.isBlank() || storeName == lastStoreName)
+        if (sameCall && now - lastTs < DEDUP_WINDOW_MS) {
+            OtwFileLogger.log(TAG, "중복 스킵: $source ${price}원 $platform store='$storeName' (${now - lastTs}ms)")
             return
         }
         lastTs = now
         lastPrice = price
+        lastPlatform = platform
+        lastStoreName = storeName
 
         // 1. 시급 누적
         EarningsTracker.recordAccept(ctx, price, platform)
@@ -48,8 +54,8 @@ object AcceptCoordinator {
         try { JudgmentMatchLogger.onAcceptDetected(ctx) } catch (_: Exception) {}
 
         // 3. 로그
-        OtwFileLogger.log(TAG, "수락 확정: $source ${price}원 $platform")
-        Log.d(TAG, "수락 확정: $source ${price}원 $platform")
+        OtwFileLogger.log(TAG, "수락 확정: $source ${price}원 $platform store='$storeName'")
+        Log.d(TAG, "수락 확정: $source ${price}원 $platform store='$storeName'")
     }
 
     /**

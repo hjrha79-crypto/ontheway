@@ -894,7 +894,7 @@ class OnTheWayService : AccessibilityService() {
                     val acceptPrice = lastDeliveryCall?.price
                         ?: AcceptCoordinator.getRecentPrice(this)?.first ?: 0
                     if (acceptPrice > 0) {
-                        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS, acceptPrice, "baemin")
+                        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS, acceptPrice, "baemin", lastDeliveryCall?.storeName ?: "")
                     }
                 }
                 Log.d("ScreenFilter", "[$platformName] skip: ${screen.type} (${screen.confidence})")
@@ -927,7 +927,7 @@ class OnTheWayService : AccessibilityService() {
                 val acceptPrice = call?.price
                     ?: AcceptCoordinator.getRecentPrice(this)?.first ?: 0
                 if (acceptPrice > 0) {
-                    AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.COUPANG_PICKUP, acceptPrice, "coupang")
+                    AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.COUPANG_PICKUP, acceptPrice, "coupang", call?.storeName ?: "")
                 }
                 return  // 픽업 진행 화면은 콜 화면이 아니므로 return
             }
