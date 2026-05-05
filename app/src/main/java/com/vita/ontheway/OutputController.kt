@@ -69,8 +69,9 @@ object OutputController {
 
         // ── 단일 (거리 있음 → 단가 표시) ──
         if (distKm > 0) {
+            val pickupUnknown = call.pickupDistanceKm == null || call.pickupDistanceKm <= 0.0
             val reason = when {
-                unitPrice >= 2000 && distKm <= 1.5 -> "단거리 고단가"
+                unitPrice >= 2000 && distKm <= 1.5 && !pickupUnknown -> "단거리 고단가"
                 else -> "단가 ${unitPrice}원"
             }
             return validateMessage("$platform, ${price}원, $reason, $verdict")
@@ -90,7 +91,8 @@ object OutputController {
         val dist = call.distance ?: 0.0
         val unitPrice = if (dist > 0) (call.price / dist).toInt() else 0
         val pickupKm = call.pickupDistanceKm ?: 0.0
-        return when {
+        val pickupUnknown = call.pickupDistanceKm == null || call.pickupDistanceKm <= 0.0
+        val raw = when {
             call.price >= 8000 -> "우세"
             dist > 0 && unitPrice >= 1700 -> "우세"
             dist > 0 && unitPrice in 1400..1699 -> "보통"
@@ -98,6 +100,12 @@ object OutputController {
             dist == 0.0 && pickupKm >= 5.0 -> "주의"
             else -> "보통"
         }
+        // 픽업거리 미측정 시 우세 → 보통 강등 (고액 8000원+ 제외)
+        if (raw == "우세" && pickupUnknown && call.price < 8000) {
+            OtwFileLogger.log(TAG, "verdict 강등: 우세→보통 (pickupKm=null, ${call.price}원, dist=$dist)")
+            return "보통"
+        }
+        return raw
     }
 
     /**
