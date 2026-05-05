@@ -788,7 +788,7 @@ class SettingsActivity : AppCompatActivity() {
             DrivingModeManager.getMode(this) == DrivingMode.DRIVING
         ) { checked ->
             val mode = if (checked) DrivingMode.DRIVING else DrivingMode.IDLE
-            DrivingModeManager.setMode(this, mode)
+            DrivingModeManager.setMode(this, mode, "user_toggle_settings")
             Toast.makeText(this, if (checked) "운행 모드 ON" else "운행 모드 OFF", Toast.LENGTH_SHORT).show()
         }
         advCard.addView(drivingRow)

@@ -29,9 +29,6 @@ object LocationTracker {
     private const val INTERVAL_SLOW = 10000L    // slow / congestion
     private const val INTERVAL_STOPPED = 30000L // stopped (minimal)
 
-    // auto-IDLE after 3 min stopped
-    private const val IDLE_THRESHOLD_MS = 180_000L
-
     private const val MIN_DISTANCE_M = 0f
 
     private var locationManager: LocationManager? = null
@@ -40,7 +37,6 @@ object LocationTracker {
     private var appContext: Context? = null
 
     private var currentInterval = INTERVAL_DRIVING
-    private var lastMovingTime: Long = 0L
 
     fun startTracking(ctx: Context) {
         if (isTracking) {
@@ -55,7 +51,6 @@ object LocationTracker {
         }
 
         currentInterval = INTERVAL_DRIVING
-        lastMovingTime = System.currentTimeMillis()
 
         appContext = ctx.applicationContext
         locationManager = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -101,7 +96,6 @@ object LocationTracker {
         listener?.let { locationManager?.removeUpdates(it) }
         listener = null
         isTracking = false
-        lastMovingTime = 0L
         currentInterval = INTERVAL_DRIVING
         Log.d(TAG, "GPS tracking stopped")
         OtwFileLogger.log(TAG, "GPS tracking stopped — removeUpdates 호출됨")
@@ -155,19 +149,7 @@ object LocationTracker {
         Log.d(TAG, "${trace.lat},${trace.lng} spd=${"%.1f".format(speed)}m/s [$speedLabel] interval=${targetInterval}ms")
         OtwFileLogger.log("LocationTrace", "lat=${"%.6f".format(trace.lat)} lng=${"%.6f".format(trace.lng)} speed=${"%.0f".format(speedKmh)}km/h")
 
-        // 3. update lastMovingTime
-        if (speed >= SPEED_STOPPED) {
-            lastMovingTime = now
-        }
-
-        // 4. auto-IDLE after 3 min stopped
-        if (lastMovingTime > 0L && now - lastMovingTime > IDLE_THRESHOLD_MS) {
-            Log.d(TAG, "3min stopped -> auto IDLE")
-            DrivingModeManager.setMode(ctx, DrivingMode.IDLE)
-            return // setMode calls stopTracking
-        }
-
-        // 5. change interval if needed
+        // 3. change interval if needed
         if (targetInterval != currentInterval) {
             Log.d(TAG, "interval change: ${currentInterval}ms -> ${targetInterval}ms")
             currentInterval = targetInterval

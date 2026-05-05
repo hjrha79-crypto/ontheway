@@ -784,7 +784,7 @@ class OnTheWayService : AccessibilityService() {
             ReturnTimeEstimator.saveStartLocation(this, currentLat, currentLng)
             StatusAlertEngine.reset()
         }
-        DrivingModeManager.setMode(this, DrivingMode.DRIVING)
+        DrivingModeManager.setMode(this, DrivingMode.DRIVING, "call_accepted")
         if (!gpsActive) startGps()  // 운행 ON 시 서비스 GPS도 시작
 
         // v3.3: 수락 시각 기록 (배달 완료 소요시간 계산용)
@@ -1653,7 +1653,7 @@ class OnTheWayService : AccessibilityService() {
         val idle = now - lastAccessibilityCallTime
         val screenOn = (getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager)?.isInteractive == true
         if (idle >= AUTO_OFF_IDLE_MS && !screenOn) {
-            DrivingModeManager.setMode(this, DrivingMode.IDLE)
+            DrivingModeManager.setMode(this, DrivingMode.IDLE, "auto_idle_no_call_screen_off")
             stopGps()
             OtwFileLogger.log("DrivingMode", "자동 OFF: ${idle / 60000}분 무콜 + 화면 OFF + GPS 종료")
         }

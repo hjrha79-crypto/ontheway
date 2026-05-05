@@ -28,7 +28,7 @@ object DrivingModeManager {
         }
     }
 
-    fun setMode(ctx: Context, mode: DrivingMode) {
+    fun setMode(ctx: Context, mode: DrivingMode, source: String = "unknown") {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         val previousMode = getMode(ctx)
@@ -40,6 +40,8 @@ object DrivingModeManager {
             Log.d(TAG, "already $mode")
             return
         }
+
+        OtwFileLogger.log(TAG, "[DRIVING_MODE_CHANGE] $previousMode→$mode source=$source")
 
         when (mode) {
             DrivingMode.DRIVING -> {

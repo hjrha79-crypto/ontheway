@@ -212,7 +212,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         drivingModeDurationTv = findViewById(R.id.drivingModeDurationTv)
         drivingModeSwitch?.setOnCheckedChangeListener { _, isChecked ->
             val mode = if (isChecked) DrivingMode.DRIVING else DrivingMode.IDLE
-            DrivingModeManager.setMode(this, mode)
+            DrivingModeManager.setMode(this, mode, "user_toggle_main")
             updateDrivingModeUi()
             Toast.makeText(this, if (isChecked) "운행 시작" else "운행 종료", Toast.LENGTH_SHORT).show()
         }
@@ -2150,7 +2150,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     sw.isChecked = isDriving
                     sw.setOnCheckedChangeListener { _, isChecked ->
                         val mode = if (isChecked) DrivingMode.DRIVING else DrivingMode.IDLE
-                        DrivingModeManager.setMode(this, mode)
+                        DrivingModeManager.setMode(this, mode, "user_toggle_main")
                         updateDrivingModeUi()
                         Toast.makeText(this, if (isChecked) "운행 시작" else "운행 종료", Toast.LENGTH_SHORT).show()
                     }

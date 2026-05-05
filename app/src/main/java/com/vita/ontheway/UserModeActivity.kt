@@ -164,7 +164,7 @@ class UserModeActivity : AppCompatActivity() {
     private fun toggleDrivingMode() {
         val current = DrivingModeManager.getMode(this)
         val newMode = if (current == DrivingMode.DRIVING) DrivingMode.IDLE else DrivingMode.DRIVING
-        DrivingModeManager.setMode(this, newMode)
+        DrivingModeManager.setMode(this, newMode, "user_toggle_usermode")
         if (newMode == DrivingMode.DRIVING) {
             LocationTracker.startTracking(this)
             ReturnTimeEstimator.saveStartLocation(this, OnTheWayService.currentLat, OnTheWayService.currentLng)
