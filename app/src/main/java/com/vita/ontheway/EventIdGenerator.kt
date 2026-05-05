@@ -3,10 +3,10 @@ package com.vita.ontheway
 import java.security.MessageDigest
 
 object EventIdGenerator {
-    private const val TIME_BUCKET_MS = 10_000L  // 10초 윈도우
+    private const val TIME_BUCKET_MS = 300_000L  // 5분 윈도우 (기존 10초 → cooldown과 동기화)
 
     /**
-     * 같은 콜이 여러 이벤트로 쪼개져도 같은 ID가 나오도록 10초 bucket 적용.
+     * 같은 콜이 여러 이벤트로 쪼개져도 같은 ID가 나오도록 5분 bucket 적용.
      * storeName이 없으면 "UNKNOWN"으로 처리.
      */
     fun generate(

@@ -19,26 +19,30 @@ object EarningsTracker {
         val goalProgress: Float    // 0.0 ~ 1.0+
     )
 
-    // 중복 방지: 마지막 기록 시각+금액+플랫폼
-    private var lastRecordedTs: Long = 0
-    private var lastRecordedPrice: Int = 0
-    private var lastRecordedPlatform: String = ""
+    // event_id 기반 dedup Set (오늘 처리한 event_id)
+    private val processedEventIds = mutableSetOf<String>()
+    private var dedupDate: String = ""
 
     /** 수락 기록 */
-    fun recordAccept(ctx: Context, price: Int, platform: String) {
+    fun recordAccept(ctx: Context, price: Int, platform: String, storeName: String = "") {
         if (!AdvancedPrefs.isEarningsTrackingEnabled(ctx)) return
-        // 5분 이내 동일 금액+플랫폼 = 중복 스킵 (기존 10초 → AcceptCoordinator와 동기화)
         val now = System.currentTimeMillis()
-        if (price == lastRecordedPrice && platform == lastRecordedPlatform && now - lastRecordedTs < 300_000) {
-            OtwFileLogger.log(TAG, "중복 스킵: ${price}원 $platform (${now - lastRecordedTs}ms)")
+        val today = todayStr()
+
+        // 날짜 변경 시 dedup Set 리셋
+        if (dedupDate != today) {
+            processedEventIds.clear()
+            dedupDate = today
+        }
+
+        // event_id 기반 dedup (같은 콜 = 같은 event_id)
+        val eventId = EventIdGenerator.generate(storeName.ifBlank { null }, price, now)
+        if (!processedEventIds.add(eventId)) {
+            OtwFileLogger.log(TAG, "EVENT_DEDUP: ${price}원 $platform store='$storeName' eventId=${eventId.take(8)}")
             return
         }
-        lastRecordedTs = now
-        lastRecordedPrice = price
-        lastRecordedPlatform = platform
 
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val today = todayStr()
         val savedDate = prefs.getString("date", "")
 
         // 날짜 바뀌면 리셋

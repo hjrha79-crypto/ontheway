@@ -48,7 +48,7 @@ object AcceptCoordinator {
         lastStoreName = storeName
 
         // 1. 시급 누적
-        EarningsTracker.recordAccept(ctx, price, platform)
+        EarningsTracker.recordAccept(ctx, price, platform, storeName)
 
         // 2. 판정-행동 매칭
         try { JudgmentMatchLogger.onAcceptDetected(ctx) } catch (_: Exception) {}

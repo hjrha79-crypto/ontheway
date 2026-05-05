@@ -994,19 +994,22 @@ class CallSimulationTest {
     // ---- v3.18: EventIdGenerator 테스트 ----
 
     @Test
-    fun `77 EventId 같은콜 10초이내 같은ID`() {
-        val t1 = 1_700_000_000_000L
-        val t2 = t1 + 5_000L  // 5초 후
+    fun `77 EventId 같은콜 5분이내 같은ID`() {
+        // 5분 bucket = 300_000ms. t1과 t2가 같은 bucket에 속하도록 정렬
+        val bucketStart = 1_700_000_000_000L / 300_000L * 300_000L  // bucket 시작점
+        val t1 = bucketStart + 10_000L  // bucket 시작 +10초
+        val t2 = bucketStart + 120_000L // bucket 시작 +2분
         val id1 = EventIdGenerator.generate("맘스터치 태전점", 4300, t1)
         val id2 = EventIdGenerator.generate("맘스터치 태전점", 4300, t2)
-        assertEquals(id1, id2)  // 같은 ID
-        println("77 PASS: 10초 이내 같은 eventId = $id1")
+        assertEquals(id1, id2)  // 같은 ID (5분 bucket)
+        println("77 PASS: 5분 이내 같은 eventId = $id1")
     }
 
     @Test
     fun `78 EventId 다른bucket 다른ID`() {
-        val t1 = 1_700_000_000_000L
-        val t2 = t1 + 11_000L  // 11초 후 (다른 bucket)
+        val bucketStart = 1_700_000_000_000L / 300_000L * 300_000L
+        val t1 = bucketStart + 10_000L       // bucket N
+        val t2 = bucketStart + 310_000L      // bucket N+1 (5분 10초 후)
         val id1 = EventIdGenerator.generate("맘스터치 태전점", 4300, t1)
         val id2 = EventIdGenerator.generate("맘스터치 태전점", 4300, t2)
         assertNotEquals(id1, id2)
