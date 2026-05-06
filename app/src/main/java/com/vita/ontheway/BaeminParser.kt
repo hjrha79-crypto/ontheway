@@ -305,7 +305,7 @@ object BaeminParser {
         }
 
         // ── rawText 기반 멀티 추가 검출 (단건 파싱이지만 실제 멀티) ──
-        if (results.size == 1 && !results[0].isMulti && detectMulti(joined)) {
+        if (results.size == 1 && !results[0].isMulti && detectMulti(texts)) {
             val r = results[0]
             OtwFileLogger.log("BaeminParser", "rawText 멀티 검출: store='${r.storeName}', price=${r.price}")
             return listOf(r.copy(isMulti = true, bundleCount = 2))
@@ -338,16 +338,27 @@ object BaeminParser {
 
     /**
      * rawText 기반 멀티콜 추가 검출.
-     * 픽업지 복수 출현, "픽업지2" UI, "2건"/"두건" 패턴.
+     * 개별 텍스트 노드 기준 — 콤마 구분 요약 노드의 중복 "픽업지" 제거.
+     *
+     * FIX-MULTI: 기존 joined rawText의 "픽업지" substring 카운트는
+     * 배민 접근성 트리의 요약 노드("배민배달, 조리완료, 픽업지, ...")와
+     * 개별 노드("픽업지")를 이중 계산하여 단건을 멀티로 오인식.
      */
-    fun detectMulti(rawText: String): Boolean {
-        // 방법 1: "픽업지" 2회 이상
-        val pickupCount = rawText.split("픽업지").size - 1
-        if (pickupCount >= 2) return true
-        // 방법 2: "픽업지2" (배민 멀티 전용 UI)
-        if (rawText.contains("픽업지2")) return true
-        // 방법 3: "2건" "두건" "세건"
-        if (MULTI_COUNT_PATTERN.containsMatchIn(rawText)) return true
+    fun detectMulti(texts: List<String>): Boolean {
+        // 방법 1: "픽업지" 개별 텍스트 노드가 2회 이상 (콤마 구분 요약 노드 제외)
+        val pickupNodeCount = texts.count { it.trim() == "픽업지" }
+        if (pickupNodeCount >= 2) return true
+        // 방법 2: "픽업지2" (배민 멀티 전용 UI) — 개별 노드에서만
+        if (texts.any { "픽업지2" in it.trim() }) return true
+        // 방법 3: "묶음" 명시 키워드
+        if (texts.any { "묶음" in it }) return true
+        // 방법 4: "N건" 패턴 — 단, UI 버튼 텍스트("2건 모두 수락" 등) 제외
+        for (text in texts) {
+            val t = text.trim()
+            if (MULTI_COUNT_PATTERN.containsMatchIn(t) && !t.contains("모두 수락") && !t.contains("모두 거절")) {
+                return true
+            }
+        }
         return false
     }
 

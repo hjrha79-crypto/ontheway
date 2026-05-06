@@ -414,31 +414,54 @@ class BaeminParserTest {
         assertEquals("프랭크버거 경기광주태전점+이삭토스트 광주샬롬점", result)
     }
 
-    // ── rawText 기반 멀티 검출 테스트 (Wave 1-E) ──
+    // ── rawText 기반 멀티 검출 테스트 (Wave 1-E → FIX-MULTI) ──
 
     @Test
-    fun `detectMulti - 픽업지 2회 출현`() {
-        assertTrue(BaeminParser.detectMulti("배민배달 픽업지 맘스터치 전달지 태전동 픽업지 BBQ 전달지 고산동"))
+    fun `detectMulti - 픽업지 노드 2회 출현`() {
+        val texts = listOf("배민배달", "픽업지", "맘스터치", "전달지", "태전동", "픽업지", "BBQ", "전달지", "고산동")
+        assertTrue(BaeminParser.detectMulti(texts))
     }
 
     @Test
     fun `detectMulti - 픽업지2 키워드`() {
-        assertTrue(BaeminParser.detectMulti("배민배달 픽업지 맘스터치 픽업지2 BBQ"))
+        val texts = listOf("배민배달", "픽업지", "맘스터치", "픽업지2", "BBQ")
+        assertTrue(BaeminParser.detectMulti(texts))
     }
 
     @Test
-    fun `detectMulti - 2건 패턴`() {
-        assertTrue(BaeminParser.detectMulti("배달료 7,010원 2건 모두 수락"))
+    fun `detectMulti - 묶음 키워드`() {
+        val texts = listOf("배달료 7,010원", "2건 묶음배달")
+        assertTrue(BaeminParser.detectMulti(texts))
     }
 
     @Test
     fun `detectMulti - 두건 패턴`() {
-        assertTrue(BaeminParser.detectMulti("배달료 5,000원 두건"))
+        val texts = listOf("배달료 5,000원", "두건")
+        assertTrue(BaeminParser.detectMulti(texts))
+    }
+
+    @Test
+    fun `detectMulti - 2건 모두 수락 버튼은 멀티 아님`() {
+        // UI 버튼 텍스트 "2건 모두 수락"은 멀티 판정에서 제외
+        val texts = listOf("배달료 3,500원", "픽업지", "맘스터치", "2건 모두 수락")
+        assertFalse(BaeminParser.detectMulti(texts))
     }
 
     @Test
     fun `detectMulti - 단건은 false`() {
-        assertFalse(BaeminParser.detectMulti("배달료 3,500원 픽업지 맘스터치 전달지 태전동"))
+        val texts = listOf("배달료 3,500원", "픽업지", "맘스터치", "전달지", "태전동")
+        assertFalse(BaeminParser.detectMulti(texts))
+    }
+
+    @Test
+    fun `detectMulti - 콤마요약 + 개별노드 픽업지 1건 = 단건 (FIX-MULTI 회귀)`() {
+        // 5/6 14:53 사례: 콤마구분 요약노드에 "픽업지" 포함 + 개별 "픽업지" 노드 1개 → 단건
+        val texts = listOf(
+            "배민배달, 조리완료, 픽업지, 육참냉면&돈카츠 태전점, 전달지, 경기 광주시",
+            "배민배달", "조리완료", "픽업지", "육참냉면&돈카츠 태전점",
+            "전달지", "경기 광주시 삼지곡길 73-4", "배달료", "6,090원"
+        )
+        assertFalse(BaeminParser.detectMulti(texts))
     }
 
     @Test
