@@ -999,8 +999,8 @@ class OnTheWayService : AccessibilityService() {
                         var pickupDistKm: Double? = null
                         if (gpsActive && currentLat != 0.0 &&
                             DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
-                            val addr = bundleCall.destination.ifEmpty {
-                                bundleCall.storeName.split("+").firstOrNull() ?: ""
+                            val addr = (bundleCall.storeName.split("+").firstOrNull() ?: "").ifEmpty {
+                                bundleCall.destination
                             }
                             if (addr.isNotEmpty()) {
                                 val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
@@ -1074,7 +1074,7 @@ class OnTheWayService : AccessibilityService() {
             var pickupDistKm: Double? = null
             if (gpsActive && currentLat != 0.0 &&
                 DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
-                val addr = call.destination.ifEmpty { call.storeName }
+                val addr = call.storeName.ifEmpty { call.destination }
                 val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
                 pickupDistKm = validatePickupDistance(straight)
                 if (pickupDistKm != null) {
