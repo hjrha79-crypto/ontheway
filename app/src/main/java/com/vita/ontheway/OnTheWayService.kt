@@ -133,8 +133,8 @@ class OnTheWayService : AccessibilityService() {
     private val debounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val BAEMIN_DEBOUNCE_MS = 2000L
 
-    // v3.6: 배민 콜 대량 중복 감지 방지 (같은 플랫폼+금액 30초 이내 = 중복)
-    private data class RecentCall(val platform: String, val price: Int, val time: Long)
+    // v3.6: 배민 콜 대량 중복 감지 방지 (같은 플랫폼+금액+storeName 30초 이내 = 중복)
+    private data class RecentCall(val platform: String, val price: Int, val store: String, val time: Long)
     private val recentCalls = mutableListOf<RecentCall>()
 
     // v3.24: 배민 묶음→단건 중복 방지
@@ -897,16 +897,17 @@ class OnTheWayService : AccessibilityService() {
 
         // v3.6: 배민 대량 중복 감지 — 같은 플랫폼+금액 3초 이내 = 중복 무시
         val dedupedCalls = calls.filter { call ->
+            val storeKey = call.storeName.ifEmpty { call.rawText.hashCode().toString() }
             val isDup = recentCalls.any { r ->
-                r.platform == platformName && r.price == call.price && (now0 - r.time < 30000)
+                r.platform == platformName && r.price == call.price && r.store == storeKey && (now0 - r.time < 30000)
             }
             if (isDup) {
-                Log.d("DeliveryFilter", "[$platformName] 대량 중복 무시: ${call.price}원")
-                OtwFileLogger.log("DeliveryFilter", "[$platformName] 대량 중복 무시: ${call.price}원")
-                DropReason.recordDrop(DropReason.DROP_DUPLICATE, "$platformName ${call.price}원 30s내 중복", pkg)
+                Log.d("DeliveryFilter", "[$platformName] 대량 중복 무시: ${call.price}원 $storeKey")
+                OtwFileLogger.log("DeliveryFilter", "[$platformName] 대량 중복 무시: ${call.price}원 $storeKey")
+                DropReason.recordDrop(DropReason.DROP_DUPLICATE, "$platformName ${call.price}원 $storeKey 30s내 중복", pkg)
                 false
             } else {
-                recentCalls.add(RecentCall(platformName, call.price, now0))
+                recentCalls.add(RecentCall(platformName, call.price, storeKey, now0))
                 true
             }
         }
@@ -1046,8 +1047,9 @@ class OnTheWayService : AccessibilityService() {
             return
         }
 
-        // P0 fix: 같은 플랫폼+금액 중복 DROP (distance 무관) — 쿠팡 60초, 기타 30초
-        val simpleDedupKey = "${call.platform}_${call.price}_"
+        // P0 fix: 같은 플랫폼+금액+storeName 중복 DROP — 쿠팡 60초, 기타 30초
+        val storeId = call.storeName.ifEmpty { call.rawText.hashCode().toString() }
+        val simpleDedupKey = "${call.platform}_${call.price}_${storeId}_"
         val lastSimple = callSpeakHistory.entries.find { it.key.startsWith(simpleDedupKey) }
         val simpleDedupMs = if (call.platform == "coupang") 60_000L else 30_000L
         if (lastSimple != null && now - lastSimple.value < simpleDedupMs) {
@@ -1057,7 +1059,7 @@ class OnTheWayService : AccessibilityService() {
             return
         }
 
-        val callKey = "${call.platform}_${call.price}_${call.distance ?: 0}"
+        val callKey = "${call.platform}_${call.price}_${storeId}_${call.distance ?: 0}"
 
         // 안전 조건: 1콜 1음성
         if (callSpeakHistory.containsKey(callKey)) {
