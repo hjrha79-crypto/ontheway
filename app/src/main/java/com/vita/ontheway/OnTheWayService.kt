@@ -746,11 +746,14 @@ class OnTheWayService : AccessibilityService() {
     private var lastRetryTime: Long = 0L
     private fun scheduleRootRetry(pkg: String, delayMs: Long, attempt: Int) {
         if (attempt > 2) return
-        // 같은 패키지 1초 내 중복 retry 방지
-        val now = System.currentTimeMillis()
-        if (pkg == lastRetryPkg && now - lastRetryTime < 1000) return
-        lastRetryPkg = pkg
-        lastRetryTime = now
+        // FIX-RETRY-2: 1초 dedup은 새 시퀀스(attempt=1)에만 적용
+        // attempt > 1 = 같은 시퀀스 내 연속 retry → dedup 우회
+        if (attempt == 1) {
+            val now = System.currentTimeMillis()
+            if (pkg == lastRetryPkg && now - lastRetryTime < 1000) return
+            lastRetryPkg = pkg
+            lastRetryTime = now
+        }
 
         debounceHandler.postDelayed({
             if (instance == null) return@postDelayed
