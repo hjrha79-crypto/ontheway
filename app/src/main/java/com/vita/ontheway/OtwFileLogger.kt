@@ -28,6 +28,9 @@ object OtwFileLogger {
     @Volatile
     private var appCtx: Context? = null
 
+    /** FIX-COUPANG-MULTI: 진단 로그용 context 접근 */
+    val appContext: Context? get() = appCtx
+
     @Volatile
     var lastWriteTime: Long = 0L
         private set

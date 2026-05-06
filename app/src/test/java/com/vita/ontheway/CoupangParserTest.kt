@@ -85,4 +85,49 @@ class CoupangParserTest {
         val texts = listOf("픽업", "ABC123", "모현각", "경기 광주시 오포읍")
         assertEquals("모현각", CoupangParser.extractStoreFromProgress(texts))
     }
+
+    // ── FIX-COUPANG-MULTI: 멀티 키워드 감지 테스트 ──
+
+    @Test
+    fun `MULTI - 기존 멀티 키워드 유지`() {
+        val texts = listOf("멀티", "모현각", "8,300원", "거리할증 포함", "배달거리 5.5km", "거절", "주문 수락\n20초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertTrue("멀티 키워드 감지", result[0].isMulti)
+    }
+
+    @Test
+    fun `MULTI - 2건 묶음 명시 키워드`() {
+        val texts = listOf("[2건 묶음]", "모현각", "5,670원", "배달거리 2.1km", "거절", "주문 수락\n25초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertTrue("묶음 키워드로 멀티 감지", result[0].isMulti)
+        assertEquals(2, result[0].bundleCount)
+    }
+
+    @Test
+    fun `MULTI - 3건 묶음`() {
+        val texts = listOf("[3건 묶음]", "멀티", "11,948원", "배달거리 5.3km", "거절", "주문 수락\n30초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertTrue(result[0].isMulti)
+        assertEquals(3, result[0].bundleCount)
+    }
+
+    @Test
+    fun `MULTI - 단일건 묶음 없음`() {
+        val texts = listOf("[1건 단일]", "3,000원", "배달거리 0.7km", "거절", "주문 수락\n30초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertFalse("단일건은 멀티 아님", result[0].isMulti)
+        assertEquals(1, result[0].bundleCount)
+    }
+
+    @Test
+    fun `MULTI - 주문 두 건 텍스트`() {
+        val texts = listOf("멀티", "8,300원", "거리할증 포함", "주문 두 건", "배달거리 5.5km", "거절", "주문 수락\n20초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertTrue(result[0].isMulti)
+    }
 }

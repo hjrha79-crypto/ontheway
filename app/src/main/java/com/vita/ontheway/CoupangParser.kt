@@ -11,6 +11,8 @@ object CoupangParser {
     private val PRICE_PATTERN = Regex("([\\d,]+)\\s*원")
     private val DISTANCE_PATTERN = Regex("배달\\s*거리\\s*(\\d+\\.?\\d*)\\s*km", RegexOption.IGNORE_CASE)
     private val MULTI_PATTERN = Regex("멀티|주문\\s*두\\s*건|대량", RegexOption.IGNORE_CASE)
+    // FIX-COUPANG-MULTI: 명시적 묶음 키워드 (보수적)
+    private val BUNDLE_EXPLICIT_PATTERN = Regex("(\\d+)\\s*건\\s*묶음|묶음\\s*(\\d+)\\s*건|\\[(\\d+)건\\s*묶음\\]|\\[(\\d+)건\\]")
 
     // v3.20: 특수문자 허용 + 길이 30으로 상향 (긴 가게명 대비)
     private val STORE_PATTERN = Regex("^[가-힣a-zA-Z0-9\\s.,\\-()'/&]{2,30}$")
@@ -101,7 +103,25 @@ object CoupangParser {
             if (price != null && price in 1000..100000) {
                 val distance = DISTANCE_PATTERN.find(joined)
                     ?.groupValues?.get(1)?.toDoubleOrNull()
-                val isMulti = MULTI_PATTERN.containsMatchIn(joined)
+                var isMulti = MULTI_PATTERN.containsMatchIn(joined)
+
+                // FIX-COUPANG-MULTI: 명시적 묶음 키워드 감지 (보수적)
+                val bundleMatch = BUNDLE_EXPLICIT_PATTERN.find(joined)
+                var bundleCount = 1
+                if (bundleMatch != null) {
+                    isMulti = true
+                    bundleCount = (bundleMatch.groupValues.drop(1).firstOrNull { it.isNotEmpty() }?.toIntOrNull()) ?: 2
+                    OtwFileLogger.log("CoupangParser", "MULTI_EXPLICIT: '${bundleMatch.value}' → bundleCount=$bundleCount")
+                }
+
+                // FIX-COUPANG-MULTI: 멀티 의심 진단 로그
+                val multiHints = mutableListOf<String>()
+                if (MULTI_PATTERN.containsMatchIn(joined)) multiHints.add("MULTI_KEYWORD")
+                if (bundleMatch != null) multiHints.add("BUNDLE_EXPLICIT(${bundleMatch.value})")
+                if (texts.any { it.contains("주문 두 건") || it.contains("두건") }) multiHints.add("TWO_ORDERS_TEXT")
+                if (multiHints.isNotEmpty()) {
+                    logMultiDiag(joined, price, multiHints)
+                }
 
                 results.add(DeliveryCall(
                     price = price,
@@ -110,10 +130,11 @@ object CoupangParser {
                     platform = "coupang",
                     rawText = joined,
                     storeName = storeName,
-                    parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
+                    parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
+                    bundleCount = bundleCount
                 ))
-                Log.d("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti, store='${storeName.ifEmpty { "(없음)" }}'")
-                OtwFileLogger.log("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti, store='${storeName.ifEmpty { "(없음)" }}'")
+                Log.d("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti, bundle=$bundleCount, store='${storeName.ifEmpty { "(없음)" }}'")
+                OtwFileLogger.log("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti, bundle=$bundleCount, store='${storeName.ifEmpty { "(없음)" }}'")
 
             }
         }
@@ -162,5 +183,32 @@ object CoupangParser {
             }
         }
         return ""
+    }
+
+    /**
+     * FIX-COUPANG-MULTI: 멀티 의심 사례 진단 로그.
+     * coupang_multi_diag.jsonl에 raw 보존.
+     */
+    private fun logMultiDiag(rawText: String, price: Int, hints: List<String>) {
+        try {
+            val ctx = OtwFileLogger.appContext ?: return
+            val entry = org.json.JSONObject().apply {
+                put("ts", System.currentTimeMillis())
+                put("price", price)
+                put("hints", hints.joinToString(","))
+                put("rawText", rawText.take(500))
+            }.toString()
+            val file = java.io.File(ctx.filesDir, "coupang_multi_diag.jsonl")
+            // 100건 초과 시 rotate
+            if (file.exists() && file.length() > 100 * 1024) {
+                val rotated = java.io.File(ctx.filesDir, "coupang_multi_diag.jsonl.1")
+                if (rotated.exists()) rotated.delete()
+                file.renameTo(rotated)
+            }
+            java.io.FileOutputStream(java.io.File(ctx.filesDir, "coupang_multi_diag.jsonl"), true).use { fos ->
+                fos.write((entry + "\n").toByteArray())
+                fos.fd.sync()
+            }
+        } catch (_: Exception) {}
     }
 }

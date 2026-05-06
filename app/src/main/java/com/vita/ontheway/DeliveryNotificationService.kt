@@ -366,7 +366,15 @@ class DeliveryNotificationService : NotificationListenerService() {
     }
 
     // ── 쿠팡 알림 파싱 ──
+    // FIX-COUPANG-MULTI: 알림 텍스트에서 멀티 키워드 진단
+    private val NLS_MULTI_KEYWORDS = listOf("멀티", "두 건", "묶음", "2건", "3건")
+
     private fun parseCoupangNotification(text: String): List<DeliveryCall> {
+        // FIX-COUPANG-MULTI: 멀티 키워드 감지 시 진단 로그
+        val multiHits = NLS_MULTI_KEYWORDS.filter { text.contains(it) }
+        if (multiHits.isNotEmpty()) {
+            OtwFileLogger.logSync("CoupangNLS_MULTI", "멀티 키워드 감지: ${multiHits.joinToString(",")} | raw=${text.take(200)}")
+        }
         // 프로모션/미션 알림 필터 (CoupangParser와 동일 키워드)
         if (CoupangParser.NON_CALL_KEYWORDS.any { text.contains(it) }) {
             Log.d("DeliveryNoti", "쿠팡 프로모션/미션 알림 스킵: ${text.take(50)}")
