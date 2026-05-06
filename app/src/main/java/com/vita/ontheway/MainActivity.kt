@@ -2165,8 +2165,161 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             val mode = if (isChecked) DrivingMode.DRIVING else DrivingMode.IDLE
             DrivingModeManager.setMode(this, mode, "user_toggle_main")
             updateDrivingModeUi()
-            Toast.makeText(this, if (isChecked) "운행 시작" else "운행 종료", Toast.LENGTH_SHORT).show()
+            if (isChecked) {
+                Toast.makeText(this, "운행 시작", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "운행 종료", Toast.LENGTH_SHORT).show()
+                // FIX-AUDIT: 운행 종료 시 매출 진단 다이얼로그
+                showDailyAuditDialog()
+            }
         }
+    }
+
+    /** FIX-AUDIT: 매출 자체 진단 다이얼로그 */
+    private fun showDailyAuditDialog() {
+        // 오늘 콜 0건이면 스킵
+        val todayEarnings = EarningsTracker.getToday(this)
+        val todayDetail = FilterLog.getTodayDetail(this)
+        if (todayDetail.total == 0) return
+
+        val screenTotal = todayEarnings.totalRevenue
+        val screenCalls = todayDetail.total
+        val acceptCount = todayEarnings.acceptedCount
+        val acceptAmount = todayEarnings.totalRevenue
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(16), dp(24), dp(8))
+        }
+
+        // 화면 매출 표시
+        layout.addView(TextView(this).apply {
+            text = "화면 매출: ${java.text.NumberFormat.getNumberInstance().format(screenTotal)}원 (${screenCalls}건)"
+            textSize = 14f
+            setTextColor(Color.parseColor("#AAAAAA"))
+        })
+
+        layout.addView(TextView(this).apply {
+            text = "수락 감지: ${acceptCount}건 ${java.text.NumberFormat.getNumberInstance().format(acceptAmount)}원"
+            textSize = 14f
+            setTextColor(Color.parseColor("#AAAAAA"))
+            setPadding(0, dp(4), 0, dp(12))
+        })
+
+        // 쿠팡 입력
+        layout.addView(TextView(this).apply {
+            text = "쿠팡 실제 매출 (원)"
+            textSize = 13f
+            setTextColor(Color.parseColor("#CCCCCC"))
+        })
+        val coupangInput = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = "0"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#666666"))
+        }
+        layout.addView(coupangInput)
+
+        // 배민 입력
+        layout.addView(TextView(this).apply {
+            text = "배민 실제 매출 (원)"
+            textSize = 13f
+            setTextColor(Color.parseColor("#CCCCCC"))
+            setPadding(0, dp(8), 0, 0)
+        })
+        val baeminInput = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = "0"
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.parseColor("#666666"))
+        }
+        layout.addView(baeminInput)
+
+        AlertDialog.Builder(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert)
+            .setTitle("오늘 실제 매출 입력")
+            .setView(layout)
+            .setPositiveButton("저장") { _, _ ->
+                val coupang = coupangInput.text.toString().toIntOrNull() ?: 0
+                val baemin = baeminInput.text.toString().toIntOrNull() ?: 0
+                val declaredTotal = coupang + baemin
+                if (declaredTotal <= 0) {
+                    Toast.makeText(this, "매출을 입력해 주세요", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                val bubble = BubbleCalculator.calculate(screenTotal, declaredTotal)
+                val reliability = BubbleCalculator.acceptReliability(acceptAmount, declaredTotal)
+                val todayStr = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault())
+                    .format(java.util.Date())
+
+                // 저장
+                DailyAuditDb.get(this).save(DailyAuditDb.AuditEntry(
+                    date = todayStr,
+                    declaredCoupang = coupang,
+                    declaredBaemin = baemin,
+                    declaredTotal = declaredTotal,
+                    screenTotal = screenTotal,
+                    screenCalls = screenCalls,
+                    acceptLogsCount = acceptCount,
+                    acceptLogsAmount = acceptAmount,
+                    bubblePct = bubble.bubblePct
+                ))
+
+                // 결과 표시
+                showAuditResult(bubble, reliability, screenTotal, declaredTotal)
+            }
+            .setNegativeButton("Skip", null)
+            .show()
+    }
+
+    private fun showAuditResult(
+        bubble: BubbleCalculator.BubbleResult,
+        reliability: Float,
+        screenTotal: Int,
+        declaredTotal: Int
+    ) {
+        val nf = java.text.NumberFormat.getNumberInstance()
+        val diff = screenTotal - declaredTotal
+        val kpiColor = when (bubble.kpi) {
+            BubbleCalculator.KpiLevel.GREEN -> "#00FF88"
+            BubbleCalculator.KpiLevel.YELLOW -> "#FFD700"
+            BubbleCalculator.KpiLevel.RED -> "#FF4444"
+        }
+        val kpiIcon = when (bubble.kpi) {
+            BubbleCalculator.KpiLevel.GREEN -> "GREEN"
+            BubbleCalculator.KpiLevel.YELLOW -> "YELLOW"
+            BubbleCalculator.KpiLevel.RED -> "RED"
+        }
+
+        // 7일 트렌드
+        val recent = DailyAuditDb.get(this).getRecent(7)
+        val trendText = if (recent.size >= 2) {
+            recent.reversed().joinToString(" → ") { "${it.bubblePct.toInt()}%" }
+        } else ""
+
+        val msg = buildString {
+            append("화면: ${nf.format(screenTotal)}원\n")
+            append("실제: ${nf.format(declaredTotal)}원\n")
+            append("차이: ${if (diff >= 0) "+" else ""}${nf.format(diff)}원\n\n")
+            append("거품: ${bubble.label}  [$kpiIcon]\n")
+            append("수락 감지 신뢰도: ${reliability.toInt()}%\n")
+            if (trendText.isNotEmpty()) {
+                append("\n7일 트렌드: $trendText")
+            }
+        }
+
+        val resultLayout = TextView(this).apply {
+            text = msg
+            textSize = 15f
+            setTextColor(Color.parseColor(kpiColor))
+            setPadding(dp(24), dp(16), dp(24), dp(16))
+        }
+
+        AlertDialog.Builder(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert)
+            .setTitle("매출 진단 결과")
+            .setView(resultLayout)
+            .setPositiveButton("확인", null)
+            .show()
     }
 
     private fun updateDrivingModeUi() {
