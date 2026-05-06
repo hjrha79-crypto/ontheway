@@ -314,7 +314,13 @@ class OnTheWayService : AccessibilityService() {
         if (root == null && (pkg == PKG_FLEXER || pkg == PKG_DRIVER)) {
             root = findWindowRoot(pkg)
         }
-        if (root == null) return
+        if (root == null) {
+            if (pkg in DELIVERY_PACKAGES) {
+                OtwFileLogger.logSync(TAG_ACCESSIBILITY, "ROOT_NULL: pkg=$pkg, eventType=${event.eventType}")
+                try { CriticalEventDb.get(this).record("ROOT_NULL", pkg) } catch (_: Exception) {}
+            }
+            return
+        }
 
         // ── P0-2 진단: 배민/쿠팡 이벤트 시 View 트리 기록 ──
         if (pkg in DELIVERY_PACKAGES) {
@@ -1433,14 +1439,16 @@ class OnTheWayService : AccessibilityService() {
 
     override fun onInterrupt() {
         Log.w(TAG_ACCESSIBILITY, "onInterrupt: 접근성 서비스 중단됨")
-        try { OtwFileLogger.log(TAG_ACCESSIBILITY, "onInterrupt: instance → null") } catch (_: Exception) {}
+        try { OtwFileLogger.logSync(TAG_ACCESSIBILITY, "onInterrupt: instance → null") } catch (_: Exception) {}
+        try { CriticalEventDb.get(this).record("SVC_DISC", "onInterrupt") } catch (_: Exception) {}
         instance = null
     }
     override fun onServiceConnected() {
         serviceStartTime = System.currentTimeMillis()
         serviceStartUptime = android.os.SystemClock.uptimeMillis()
         Log.d(TAG_ACCESSIBILITY, "onServiceConnected: 접근성 서비스 연결됨, refreshCount 리셋")
-        OtwFileLogger.log(TAG_ACCESSIBILITY, "onServiceConnected: 접근성 서비스 연결됨, refreshCount 리셋")
+        OtwFileLogger.logSync(TAG_ACCESSIBILITY, "onServiceConnected: 접근성 서비스 연결됨, refreshCount 리셋")
+        try { CriticalEventDb.get(this).record("SVC_CONN", "onServiceConnected") } catch (_: Exception) {}
         refreshCount = 0
         lastRefreshTime = 0L
         instance = this
@@ -1711,6 +1719,8 @@ class OnTheWayService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        try { OtwFileLogger.logSync(TAG_ACCESSIBILITY, "onDestroy: 서비스 종료") } catch (_: Exception) {}
+        try { CriticalEventDb.get(this).record("SVC_DISC", "onDestroy") } catch (_: Exception) {}
         try { ProximityDetector.clearTarget() } catch (_: Exception) {}
         ProximityDetector.listener = null
         try { tts?.shutdown() } catch (e: Exception) {}

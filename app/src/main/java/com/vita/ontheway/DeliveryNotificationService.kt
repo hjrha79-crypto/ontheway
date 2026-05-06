@@ -104,7 +104,8 @@ class DeliveryNotificationService : NotificationListenerService() {
         super.onListenerDisconnected()
         val now = System.currentTimeMillis()
         Log.w(TAG_LIFECYCLE, "NLS disconnected, requesting rebind")
-        OtwFileLogger.log(TAG_LIFECYCLE, "NLS disconnected, requesting rebind")
+        OtwFileLogger.logSync(TAG_LIFECYCLE, "NLS disconnected, requesting rebind")
+        try { CriticalEventDb.get(this).record("NLS_DISC", "onListenerDisconnected") } catch (_: Exception) {}
         Log.w("COUPANG_DBG", "onListenerDisconnected at $now")
         try {
             DropReason.recordDrop(DropReason.DROP_OTHER, "NLS_DISCONNECTED")
@@ -297,7 +298,8 @@ class DeliveryNotificationService : NotificationListenerService() {
         lastHealthAlertTime = now
 
         Log.w("A11yHealth", "NLS health check: ${health.status} - ${health.message}")
-        OtwFileLogger.log("A11yHealth", "NLS 감지: ${health.status} - ${health.message}")
+        OtwFileLogger.logSync("A11yHealth", "NLS 감지: ${health.status} - ${health.message}")
+        try { CriticalEventDb.get(this).record("ACCESSIBILITY_DEAD", null, health.message) } catch (_: Exception) {}
 
         // TTS 안내 1회
         if (ttsReady) {

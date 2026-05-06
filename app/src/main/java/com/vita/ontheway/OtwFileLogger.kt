@@ -2,6 +2,7 @@ package com.vita.ontheway
 
 import android.content.Context
 import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executors
@@ -70,6 +71,30 @@ object OtwFileLogger {
             if (f1.exists()) f1.renameTo(f2)
             file.renameTo(f1)
         } catch (_: Exception) {}
+    }
+
+    /**
+     * FIX-LOGSYNC: 치명 이벤트 동기 쓰기 + 디스크 flush.
+     * 강제 종료 시 executor queue 손실 방지.
+     * 호출 스레드에서 직접 쓰기 — critical path에서만 사용.
+     */
+    fun logSync(tag: String, message: String) {
+        val ctx = appCtx ?: return
+        val now = System.currentTimeMillis()
+        val line = "${sdf.format(Date(now))} [$tag] $message\n"
+        lastWriteTime = now
+        try {
+            val file = getLogFile(ctx.filesDir)
+            if (file.length() > MAX_SIZE) {
+                rotate(file)
+            }
+            FileOutputStream(file, true).use { fos ->
+                fos.write(line.toByteArray())
+                fos.fd.sync()
+            }
+        } catch (_: Exception) {
+            // fail-safe: 앱 크래시 방지
+        }
     }
 
     /** 오늘 로그 파일 정보 (DevStats 표시용) */
