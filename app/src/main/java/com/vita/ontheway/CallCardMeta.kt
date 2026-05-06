@@ -26,7 +26,7 @@ object CallCardMetaBuilder {
     ): CallCardMeta {
         return CallCardMeta(
             reason      = buildReason(call, driverDirection, pickupDistanceKm),
-            riskWarning = buildRisk(call, driverDirection, cancelCount),
+            riskWarning = buildRisk(call, driverDirection, cancelCount, pickupDistanceKm),
             nextHint    = buildNextHint(call, driverDirection)
         )
     }
@@ -52,8 +52,8 @@ object CallCardMetaBuilder {
             parts.add("픽업 ${String.format("%.1f", pickupDistanceKm)}km")
         }
 
-        // km당 단가
-        val totalKm = pickupDistanceKm + 5.0
+        // km당 단가 (픽업 + 배달)
+        val totalKm = pickupDistanceKm + call.distanceKm
         if (call.price > 0 && totalKm > 0) {
             val wonPerKm = (call.price / totalKm).toInt()
             parts.add("km당 ${String.format("%,d", wonPerKm)}원")
@@ -69,7 +69,8 @@ object CallCardMetaBuilder {
     private fun buildRisk(
         call: RecommendedCall,
         driverDirection: String,
-        cancelCount: Int
+        cancelCount: Int,
+        pickupDistanceKm: Double
     ): String? {
         val risks = mutableListOf<String>()
 
@@ -85,9 +86,10 @@ object CallCardMetaBuilder {
         // 장거리 복귀 어려움
         if (call.distanceKm >= 15.0) risks.add("복귀 어려움 ⚠")
 
-        // 낮은 효율
-        if (call.price > 0 && call.distanceKm > 0) {
-            val efficiency = call.price / call.distanceKm
+        // 낮은 효율 (totalKm 기준)
+        val totalKm = pickupDistanceKm + call.distanceKm
+        if (call.price > 0 && totalKm > 0) {
+            val efficiency = call.price / totalKm
             if (efficiency < 800) risks.add("효율 낮음 ⚠")
         }
 

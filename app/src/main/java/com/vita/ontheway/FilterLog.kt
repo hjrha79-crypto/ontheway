@@ -47,8 +47,8 @@ object FilterLog {
         lastRecordTs = now
 
         // 메인 스레드에서 데이터 스냅샷 캡처
-        val unitPrice = if (call.distance != null && call.distance > 0)
-            (call.price / call.distance).toInt() else 0
+        val totalKm = (call.pickupDistanceKm ?: 0.0) + (call.distance ?: 0.0)
+        val unitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
         val entryStr = JSONObject().apply {
             put("ts", System.currentTimeMillis())
             put("platform", call.platform)

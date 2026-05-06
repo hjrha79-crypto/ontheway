@@ -222,7 +222,8 @@ class DeliveryNotificationService : NotificationListenerService() {
             val notiReason = result.reason; val notiStore = call.storeName
             val notiDest = call.destination; val notiBundleCount = call.bundleCount
             val notiIsMultiPickup = call.isMultiPickup
-            val notiUp = if (notiDist != null && notiDist > 0) (notiPrice / notiDist).toInt() else 0
+            val notiTotalKm = (call.pickupDistanceKm ?: 0.0) + (notiDist ?: 0.0)
+            val notiUp = if (notiTotalKm > 0) (notiPrice / notiTotalKm).toInt() else 0
             ioExecutor.execute {
                 try {
                     CallLogDb.get(ctx).insert(

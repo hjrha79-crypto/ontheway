@@ -1195,8 +1195,8 @@ class OnTheWayService : AccessibilityService() {
             "비추천" -> "simulated_reject"
             else -> "unknown"
         }
-        val dbUp = if (dbDistance != null && dbDistance > 0)
-            (dbPrice / dbDistance).toInt() else 0
+        val dbTotalKm = (dbPickupKm ?: 0.0) + (dbDistance ?: 0.0)
+        val dbUp = if (dbTotalKm > 0) (dbPrice / dbTotalKm).toInt() else 0
         val dbSessionId = DrivingModeManager.getSessionId(ctx)
         dbExecutor.execute {
             try {

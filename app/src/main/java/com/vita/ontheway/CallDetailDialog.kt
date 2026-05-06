@@ -125,7 +125,8 @@ object CallDetailDialog {
         if (platform == "baemin" && point > 0) {
             val pointKm = BaeminParser.convertPointToKm(point)
             section("거리", "약 ${"%.1f".format(pointKm)}km (${"%.1f".format(point)}P)")
-            if (pointKm > 0) section("단가", "${nf.format((price / pointKm).toInt())}원/km")
+            val pointTotalKm = (if (pickupKm > 0) pickupKm else 0.0) + pointKm
+            if (pointTotalKm > 0) section("단가", "${nf.format((price / pointTotalKm).toInt())}원/km")
         } else if (dist >= 0) {
             section("거리", "${"%.1f".format(dist)}km")
             if (unitPrice > 0) section("단가", "${nf.format(unitPrice)}원/km")

@@ -52,14 +52,11 @@ object CallFilter {
         Log.d("JudgeLogic", "call: platform=${call.platform}, price=${call.price}, distance=${call.distance}, point=${call.point}, isMulti=${call.isMulti}, storeName=${call.storeName}")
 
         val hasDist = call.distance != null && call.distance > 0
-        val unitPrice = if (hasDist) (call.price / call.distance!!).toInt() else 0
-
-        // v3.4: 총거리 판정 (픽업 + 배달)
         val pickupKm = call.pickupDistanceKm ?: 0.0
         val deliveryKm = call.distance ?: 0.0
         val totalKm = pickupKm + deliveryKm
-        val totalUnitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
-        val gpsTag = if (pickupKm > 0) ", 픽업 ${"%.1f".format(pickupKm)}km + 배달 ${"%.1f".format(deliveryKm)}km = 총 ${"%.1f".format(totalKm)}km, 총단가 ${fmt.format(totalUnitPrice)}원/km" else ""
+        val unitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
+        val gpsTag = if (pickupKm > 0) ", 픽업 ${"%.1f".format(pickupKm)}km + 배달 ${"%.1f".format(deliveryKm)}km = 총 ${"%.1f".format(totalKm)}km, 단가 ${fmt.format(unitPrice)}원/km" else ""
 
         // v3.4: 자동 방향 판별
         var autoDirectionTag = ""

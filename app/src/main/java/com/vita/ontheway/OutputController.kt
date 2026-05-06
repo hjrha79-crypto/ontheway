@@ -54,7 +54,9 @@ object OutputController {
         val price = call.price
         val dist = call.distance
         val distKm = dist ?: 0.0
-        val unitPrice = if (distKm > 0) (price / distKm).toInt() else 0
+        val pickupForUnit = call.pickupDistanceKm ?: 0.0
+        val totalForUnit = pickupForUnit + distKm
+        val unitPrice = if (totalForUnit > 0) (price / totalForUnit).toInt() else 0
         val isMulti = call.isMulti
         val bundleCount = call.bundleCount.coerceAtLeast(if (isMulti) 2 else 1)
         val platform = if (call.platform == "coupang") "쿠팡" else "배민"
@@ -89,8 +91,9 @@ object OutputController {
     private fun extractVerdict(call: DeliveryCall, result: CallFilter.FilterResult): String {
         if (result.verdict == CallFilter.Verdict.REJECT) return "멈"
         val dist = call.distance ?: 0.0
-        val unitPrice = if (dist > 0) (call.price / dist).toInt() else 0
         val pickupKm = call.pickupDistanceKm ?: 0.0
+        val totalKm = pickupKm + dist
+        val unitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
         val pickupUnknown = call.pickupDistanceKm == null || call.pickupDistanceKm <= 0.0
         val raw = when {
             call.price >= 8000 -> "추천"
@@ -103,13 +106,13 @@ object OutputController {
 
         // 멀티콜 보정: 단가 0.5x + 우세 강등
         if (call.isMulti) {
-            val effectiveUnitPrice = if (dist > 0) ((call.price / dist) * 0.5).toInt() else 0
+            val effectiveUnitPrice = if (totalKm > 0) ((call.price / totalKm) * 0.5).toInt() else 0
             OtwFileLogger.log(TAG, "[VERDICT_MULTI] 멀티 보정: " +
-                "원래 단가=${if (dist > 0) (call.price / dist).toInt() else 0} → 보정 $effectiveUnitPrice")
+                "원래 단가=${if (totalKm > 0) (call.price / totalKm).toInt() else 0} → 보정 $effectiveUnitPrice")
             // 멀티는 추천/보통 → 보통 강등
             val downgraded = if (raw == "추천") "보통" else raw
             // 보정 단가 < 1500 → 멈
-            if (dist > 0 && effectiveUnitPrice < 1500) {
+            if (totalKm > 0 && effectiveUnitPrice < 1500) {
                 OtwFileLogger.log(TAG, "[VERDICT_MULTI] 보정단가 ${effectiveUnitPrice} < 1500 → 멈")
                 return "멈"
             }
@@ -229,7 +232,8 @@ object OutputController {
      */
     fun toEvidenceReason(reason: String, price: Int, call: DeliveryCall?): String {
         val dist = call?.distance
-        val unitPrice = if (dist != null && dist > 0) (price / dist).toInt() else 0
+        val totalKmEvidence = (call?.pickupDistanceKm ?: 0.0) + (dist ?: 0.0)
+        val unitPrice = if (totalKmEvidence > 0) (price / totalKmEvidence).toInt() else 0
         val isMulti = call?.isMulti == true
         val bundleCount = (call?.bundleCount ?: 1).coerceAtLeast(if (isMulti) 2 else 1)
         val perItem = if (isMulti && bundleCount > 1) price / bundleCount else 0

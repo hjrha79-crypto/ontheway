@@ -17,7 +17,9 @@ object CallBuffer {
     ) {
         fun unitPrice(): Int {
             val d = distanceKm ?: return -1
-            return if (d > 0) (price / d).toInt() else -1
+            if (d <= 0) return -1
+            val totalKm = (pickupKm ?: 0.0) + d
+            return if (totalKm > 0) (price / totalKm).toInt() else -1
         }
     }
 
