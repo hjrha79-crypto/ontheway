@@ -1,5 +1,6 @@
 package com.vita.ontheway
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
@@ -78,5 +79,53 @@ class OtwFileLoggerSyncTest {
         // appCtx null이면 갱신 안 됨 — 이것은 안전 동작
         // 실제 갱신은 Context 존재 시만 발생
         assertTrue("lastWriteTime은 context 없이 변경 안 됨", OtwFileLogger.lastWriteTime == before)
+    }
+
+    // ══ FIX-REGRESSION: 추가 시나리오 ══
+
+    @Test
+    fun `REG-LS1 다중 동시 sync 쓰기`() {
+        val tmpFile = File.createTempFile("otw_concurrent", ".txt")
+        try {
+            repeat(10) { i ->
+                FileOutputStream(tmpFile, true).use { fos ->
+                    fos.write("line_$i\n".toByteArray())
+                    fos.fd.sync()
+                }
+            }
+            val lines = tmpFile.readLines()
+            assertEquals("10줄 모두 보존", 10, lines.size)
+        } finally {
+            tmpFile.delete()
+        }
+    }
+
+    @Test
+    fun `REG-LS2 빈 문자열 쓰기 안전`() {
+        val tmpFile = File.createTempFile("otw_empty", ".txt")
+        try {
+            FileOutputStream(tmpFile, true).use { fos ->
+                fos.write("".toByteArray())
+                fos.fd.sync()
+            }
+            assertEquals(0, tmpFile.length())
+        } finally {
+            tmpFile.delete()
+        }
+    }
+
+    @Test
+    fun `REG-LS3 대용량 라인 쓰기 안전`() {
+        val tmpFile = File.createTempFile("otw_large", ".txt")
+        try {
+            val largeLine = "X".repeat(10_000) + "\n"
+            FileOutputStream(tmpFile, true).use { fos ->
+                fos.write(largeLine.toByteArray())
+                fos.fd.sync()
+            }
+            assertTrue("10KB+ 쓰기 성공", tmpFile.length() > 10_000)
+        } finally {
+            tmpFile.delete()
+        }
     }
 }

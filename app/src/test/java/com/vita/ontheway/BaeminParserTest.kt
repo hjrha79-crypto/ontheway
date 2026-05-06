@@ -604,4 +604,158 @@ class BaeminParserTest {
         )
         assertEquals("T2CN0000J54R", BaeminParser.extractOrderId(texts))
     }
+
+    // ══════════════════════════════════════════════════════
+    // FIX-REGRESSION: 5/6 통합 회귀 테스트 (영구 박제)
+    // ══════════════════════════════════════════════════════
+
+    @Test
+    fun `REG-01 GS25 단건 콤마요약 노드 멀티 오인식 방지`() {
+        // 5/6 16:36:45 GS25 — 콤마요약 + 개별 "픽업지" 1개 = 단건
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "배민배달, 조리완료, 픽업지, GS25 광주태전점, 전달지, 경기 광주시, 포인트, 15P",
+            "배민배달", "조리완료", "픽업지", "GS25 광주태전점",
+            "전달지", "경기 광주시 태봉로 145", "포인트", "15P", "배달료", "2,300원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertFalse("GS25 단건이 멀티 아님", result[0].isMulti)
+        assertEquals(2300, result[0].price)
+    }
+
+    @Test
+    fun `REG-02 서대문 김치찜&김치찌개 단건 앰퍼샌드 가게명`() {
+        // 5/6 16:39 — 가게명에 & 포함 단건
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "배민배달, 조리완료, 픽업지, 서대문 김치찜&김치찌개 광주태전점, 전달지, 경기 광주시",
+            "배민배달", "조리완료", "픽업지", "서대문 김치찜&김치찌개 광주태전점",
+            "T2CN0000LAF4", "전달지", "경기 광주시 태전동로 12", "배달료", "2,600원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertFalse("& 포함 가게명 단건이 멀티 아님", result[0].isMulti)
+        assertEquals(2600, result[0].price)
+        assertEquals("T2CN0000LAF4", result[0].orderId)
+    }
+
+    @Test
+    fun `REG-03 육참냉면&돈카츠 14_53 원본 rawText 패턴 회귀`() {
+        // 5/6 14:53 실제 rawText 재현 (콤마요약 + 개별노드)
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_끄기버튼", "신규배차",
+            "배민배달, 조리완료, 픽업지, 육참냉면&돈카츠 태전점, 전달지, 경기 광주시 삼지곡길 73-4 (삼동), 포인트, 25P",
+            "배민배달", "조리완료", "픽업지", "육참냉면&돈카츠 태전점",
+            "전달지", "경기 광주시 삼지곡길 73-4 (삼동)", "포인트", "25P",
+            "배달료", "6,090원",
+            "touchable-image-container", "신규배차_거절버튼", "신규배차_수락버튼",
+            "지도", "NAVER", "배차대기중_상단_마이페이지_버튼", "button-base",
+            "현재 위치와 가까운 배차를 찾고 있어요", "지도앱으로 검색하기"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertFalse("육참냉면&돈카츠 단건이 멀티 아님", result[0].isMulti)
+        assertEquals(6090, result[0].price)
+    }
+
+    @Test
+    fun `REG-04 이전내역 다중 배달료 + 픽업완료 = DROP`() {
+        // 5/6 21:36 실제 이전내역 화면 (배달료 복수)
+        val texts = listOf(
+            "이전내역",
+            "밥풀릭스 광주태전점", "배달료 3,700원",
+            "동대문엽기떡볶이 광주한아람점", "배달료 2,300원",
+            "호노보노 파스타 식당", "배달료 3,120원",
+            "서대문 김치찜&김치찌개 광주태전점", "배달료 2,600원",
+            "KFC 광주태전점", "배달료 2,300원",
+            "굽네치킨&피자 광주오포점", "배달료 2,890원",
+            "픽업 완료 되었습니다"
+        )
+        val result = BaeminParser.parse(texts)
+        assertNull("이전내역 화면 다중 배달료 = DROP", result)
+    }
+
+    @Test
+    fun `REG-05 진짜 묶음 2건 픽업지 노드 2개`() {
+        // 진짜 묶음: "픽업지" 개별 노드 2개 + 묶음 키워드
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼", "신규배달",
+            "배민배달", "픽업지", "7곡제면소 태전점",
+            "전달지", "경기 광주시 태전동",
+            "픽업지", "BBQ 광주태전점",
+            "전달지", "경기 광주시 고산동",
+            "배달료 3,500원", "배달료 4,200원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        // 2개 배달료 → 합산 묶음 or 개별 중 하나
+        // 핵심: 파싱 실패 없이 결과 반환
+        assertTrue("묶음 또는 개별 2건 파싱", result.isNotEmpty())
+    }
+
+    @Test
+    fun `REG-06 진짜 묶음 detectMulti 픽업지 2노드`() {
+        val texts = listOf(
+            "배민배달", "픽업지", "버거킹 광주태전점",
+            "전달지", "태전동",
+            "픽업지", "맘스터치 태전점",
+            "전달지", "고산동",
+            "배달료 4,500원"
+        )
+        assertTrue("픽업지 2노드 = 멀티", BaeminParser.detectMulti(texts))
+    }
+
+    @Test
+    fun `REG-07 dedup 캐시 동일 store+price 5분 내 재파싱 방지`() {
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "픽업지", "맘스터치 태전점",
+            "배달료", "4,300원"
+        )
+        val r1 = BaeminParser.parse(texts)!!
+        assertTrue(r1.isNotEmpty())
+        assertEquals(4300, r1[0].price)
+        // 동일 호출 = dedup
+        val r2 = BaeminParser.parse(texts)!!
+        assertTrue("dedup: 빈 리스트", r2.isEmpty())
+    }
+
+    @Test
+    fun `REG-08 T2CN 여러 형식 매칭`() {
+        // T2CG, T2CK, T2CI, T2CN 모두 매칭
+        assertEquals("T2CN00015ERE", BaeminParser.extractOrderId(listOf("T2CN00015ERE")))
+        assertEquals("T2CG0000M318", BaeminParser.extractOrderId(listOf("T2CG0000M318")))
+        assertEquals("T2CK0000RGQM", BaeminParser.extractOrderId(listOf("T2CK0000RGQM")))
+    }
+
+    @Test
+    fun `REG-09 T2CN 콤마요약 노드 40자 이상 skip`() {
+        // 요약노드는 skip, 개별 노드에서만 추출
+        val texts = listOf(
+            "서대문 김치찜&김치찌개 광주태전점, 경기도 광주시, T2CN0000LAF4, 배달료 2,600원, 도착예상시간 16:55",
+            "T2CN0000LAF4"
+        )
+        assertEquals("T2CN0000LAF4", BaeminParser.extractOrderId(texts))
+    }
+
+    @Test
+    fun `REG-10 이전내역 키워드만으로 DROP 없으면 진짜 콜 통과`() {
+        // "이전내역" 포함하지 않는 정상 콜
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "픽업지", "반찬전문점 조찬소",
+            "T2CN0000L8PR", "배달료", "2,690원"
+        )
+        val result = BaeminParser.parse(texts)
+        assertNotNull("정상 콜 통과", result)
+        assertTrue(result!!.isNotEmpty())
+        assertEquals(2690, result[0].price)
+    }
 }

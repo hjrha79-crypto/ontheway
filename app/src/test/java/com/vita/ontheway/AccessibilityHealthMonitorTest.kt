@@ -74,4 +74,64 @@ class AccessibilityHealthMonitorTest {
         // instance dead가 1순위
         assertEquals(AccessibilityHealthMonitor.Status.INSTANCE_DEAD, result.status)
     }
+
+    // ══ FIX-REGRESSION: 추가 시나리오 ══
+
+    @Test
+    fun `REG-H1 59초 정지 = 아직 ALIVE (경계값)`() {
+        val now = System.currentTimeMillis()
+        val result = AccessibilityHealthMonitor.check(
+            instanceAlive = true,
+            lastEventTimeMs = now - 59_000L,
+            nowMs = now
+        )
+        assertEquals(AccessibilityHealthMonitor.Status.ALIVE, result.status)
+    }
+
+    @Test
+    fun `REG-H2 61초 정지 = EVENT_STALE (경계값)`() {
+        val now = System.currentTimeMillis()
+        val result = AccessibilityHealthMonitor.check(
+            instanceAlive = true,
+            lastEventTimeMs = now - 61_000L,
+            nowMs = now
+        )
+        assertEquals(AccessibilityHealthMonitor.Status.EVENT_STALE, result.status)
+    }
+
+    @Test
+    fun `REG-H3 root null 29pct = ALIVE (경계값)`() {
+        val now = System.currentTimeMillis()
+        val result = AccessibilityHealthMonitor.check(
+            instanceAlive = true,
+            lastEventTimeMs = now - 5_000L,
+            nowMs = now,
+            rootNullRatio = 0.29
+        )
+        assertEquals(AccessibilityHealthMonitor.Status.ALIVE, result.status)
+    }
+
+    @Test
+    fun `REG-H4 root null 100pct = ROOT_DEGRADED`() {
+        val now = System.currentTimeMillis()
+        val result = AccessibilityHealthMonitor.check(
+            instanceAlive = true,
+            lastEventTimeMs = now - 5_000L,
+            nowMs = now,
+            rootNullRatio = 1.0
+        )
+        assertEquals(AccessibilityHealthMonitor.Status.ROOT_DEGRADED, result.status)
+    }
+
+    @Test
+    fun `REG-H5 event stale이 root degraded보다 우선`() {
+        val now = System.currentTimeMillis()
+        val result = AccessibilityHealthMonitor.check(
+            instanceAlive = true,
+            lastEventTimeMs = now - 120_000L,
+            nowMs = now,
+            rootNullRatio = 0.5
+        )
+        assertEquals(AccessibilityHealthMonitor.Status.EVENT_STALE, result.status)
+    }
 }

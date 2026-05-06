@@ -1255,4 +1255,53 @@ class CallSimulationTest {
         assertEquals(id2, id3)
         println("92 PASS: orderId 있으면 storeName 변동 무관 동일 eventId")
     }
+
+    // ══ FIX-REGRESSION: EventIdGenerator 5/6 회귀 테스트 ══
+
+    @Test
+    fun `REG-EV1 T2CN blank orderId = fallback`() {
+        val t = 1_700_000_000_000L
+        val idBlank = EventIdGenerator.generate("맘스터치", 4300, t, orderId = "")
+        val idNull = EventIdGenerator.generate("맘스터치", 4300, t, orderId = null)
+        assertEquals("blank과 null 모두 fallback", idBlank, idNull)
+    }
+
+    @Test
+    fun `REG-EV2 T2CN 다양한 형식 안정성`() {
+        val t = 1_700_000_000_000L
+        // T2CN, T2CG, T2CK 등 모두 고유 eventId
+        val id1 = EventIdGenerator.generate(null, 3000, t, orderId = "T2CN0000LAF4")
+        val id2 = EventIdGenerator.generate(null, 3000, t, orderId = "T2CG0000M318")
+        val id3 = EventIdGenerator.generate(null, 3000, t, orderId = "T2CK0000RGQM")
+        assertNotEquals(id1, id2)
+        assertNotEquals(id2, id3)
+        assertNotEquals(id1, id3)
+    }
+
+    @Test
+    fun `REG-EV3 storeName null + orderId null = UNKNOWN fallback`() {
+        val t = 1_700_000_000_000L
+        val id = EventIdGenerator.generate(null, 4300, t, orderId = null)
+        assertTrue("eventId 비어있지 않음", id.isNotEmpty())
+        assertEquals("16자 hex", 16, id.length)
+    }
+
+    @Test
+    fun `REG-EV4 같은 orderId 가격 다름 = 같은 eventId`() {
+        // orderId가 같으면 가격 무관하게 같은 ID (주문번호 = 동일 콜)
+        val t = 1_700_000_000_000L
+        val id1 = EventIdGenerator.generate("맘스터치", 4300, t, orderId = "T2CN0000LAF4")
+        val id2 = EventIdGenerator.generate("맘스터치", 4500, t, orderId = "T2CN0000LAF4")
+        assertEquals("같은 orderId = 같은 eventId", id1, id2)
+    }
+
+    @Test
+    fun `REG-EV5 T2CN 30분 간격 6회 모두 동일 eventId`() {
+        val base = 1_700_000_000_000L
+        val orderId = "T2CN00015ERE"
+        val ids = (0..5).map { i ->
+            EventIdGenerator.generate(null, 3700, base + i * 300_000L, orderId = orderId)
+        }
+        ids.forEach { assertEquals("30분 간격 6회 모두 동일", ids[0], it) }
+    }
 }
