@@ -2111,6 +2111,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         updateAppCheckDisplay()
         updateDrivingModeUi()
 
+        // FIX-AUDIT-2: 어제/그제 audit 미입력 자동 감지
+        checkPendingAudit()
+
         // 첫 실행 온보딩
         if (!AdvancedPrefs.isOnboardingShown(this)) {
             androidx.appcompat.app.AlertDialog.Builder(this)
@@ -2175,6 +2178,122 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    /**
+     * FIX-AUDIT-2: 어제/그제 audit 미입력 자동 감지.
+     * onResume 시 1회만 표시. Skip 시 오늘은 다시 안 보임.
+     */
+    private var pendingAuditCheckedToday = false
+    private fun checkPendingAudit() {
+        if (pendingAuditCheckedToday) return
+        pendingAuditCheckedToday = true
+
+        val sdf = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault())
+        val cal = java.util.Calendar.getInstance()
+        val today = sdf.format(cal.time)
+
+        // 최근 2일 체크
+        val datesToCheck = mutableListOf<String>()
+        for (i in 1..2) {
+            cal.time = java.util.Date()
+            cal.add(java.util.Calendar.DAY_OF_YEAR, -i)
+            datesToCheck.add(sdf.format(cal.time))
+        }
+
+        val auditDb = DailyAuditDb.get(this)
+        val prefs = getSharedPreferences("audit_skip", MODE_PRIVATE)
+
+        for (dateStr in datesToCheck) {
+            // 이미 Skip 했으면 건너뜀
+            if (prefs.getBoolean("skip_$dateStr", false)) continue
+            // pending 확인
+            if (auditDb.hasPendingAudit(dateStr)) {
+                showPendingAuditDialog(dateStr)
+                return
+            }
+        }
+    }
+
+    private fun showPendingAuditDialog(dateStr: String) {
+        val displayDate = "${dateStr.substring(4, 6)}/${dateStr.substring(6, 8)}"
+        AlertDialog.Builder(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert)
+            .setTitle("$displayDate 매출 미입력")
+            .setMessage("$displayDate 운행 기록이 있지만 실제 매출이 입력되지 않았습니다.\n지금 입력하시겠어요?")
+            .setPositiveButton("입력") { _, _ ->
+                showDailyAuditDialogForDate(dateStr)
+            }
+            .setNegativeButton("건너뛰기") { _, _ ->
+                getSharedPreferences("audit_skip", MODE_PRIVATE)
+                    .edit().putBoolean("skip_$dateStr", true).apply()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    /** FIX-AUDIT-2: 특정 날짜의 audit 입력 (어제/그제용) */
+    private fun showDailyAuditDialogForDate(dateStr: String) {
+        val auditDb = DailyAuditDb.get(this)
+        val existing = auditDb.getRecent(30).find { it.date == dateStr }
+        val screenTotal = existing?.screenTotal ?: 0
+        val screenCalls = existing?.screenCalls ?: 0
+        val acceptCount = existing?.acceptLogsCount ?: 0
+        val acceptAmount = existing?.acceptLogsAmount ?: 0
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(16), dp(24), dp(8))
+        }
+        layout.addView(TextView(this).apply {
+            text = "화면 매출: ${java.text.NumberFormat.getNumberInstance().format(screenTotal)}원 (${screenCalls}건)"
+            textSize = 14f; setTextColor(Color.parseColor("#AAAAAA"))
+        })
+        layout.addView(TextView(this).apply {
+            text = "수락 감지: ${acceptCount}건 ${java.text.NumberFormat.getNumberInstance().format(acceptAmount)}원"
+            textSize = 14f; setTextColor(Color.parseColor("#AAAAAA")); setPadding(0, dp(4), 0, dp(12))
+        })
+
+        layout.addView(TextView(this).apply { text = "쿠팡 실제 매출 (원)"; textSize = 13f; setTextColor(Color.parseColor("#CCCCCC")) })
+        val coupangInput = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER; hint = "0"
+            setTextColor(Color.WHITE); setHintTextColor(Color.parseColor("#666666"))
+        }
+        layout.addView(coupangInput)
+
+        layout.addView(TextView(this).apply {
+            text = "배민 실제 매출 (원)"; textSize = 13f; setTextColor(Color.parseColor("#CCCCCC")); setPadding(0, dp(8), 0, 0)
+        })
+        val baeminInput = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER; hint = "0"
+            setTextColor(Color.WHITE); setHintTextColor(Color.parseColor("#666666"))
+        }
+        layout.addView(baeminInput)
+
+        AlertDialog.Builder(this, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert)
+            .setTitle("${dateStr.substring(4, 6)}/${dateStr.substring(6, 8)} 실제 매출 입력")
+            .setView(layout)
+            .setPositiveButton("저장") { _, _ ->
+                val coupang = coupangInput.text.toString().toIntOrNull() ?: 0
+                val baemin = baeminInput.text.toString().toIntOrNull() ?: 0
+                val declaredTotal = coupang + baemin
+                if (declaredTotal <= 0) {
+                    Toast.makeText(this, "매출을 입력해 주세요", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val bubble = BubbleCalculator.calculate(screenTotal, declaredTotal)
+                val reliability = BubbleCalculator.acceptReliability(acceptAmount, declaredTotal)
+                auditDb.save(DailyAuditDb.AuditEntry(
+                    date = dateStr, declaredCoupang = coupang, declaredBaemin = baemin,
+                    declaredTotal = declaredTotal, screenTotal = screenTotal, screenCalls = screenCalls,
+                    acceptLogsCount = acceptCount, acceptLogsAmount = acceptAmount, bubblePct = bubble.bubblePct
+                ))
+                showAuditResult(bubble, reliability, screenTotal, declaredTotal)
+            }
+            .setNegativeButton("Skip") { _, _ ->
+                getSharedPreferences("audit_skip", MODE_PRIVATE)
+                    .edit().putBoolean("skip_$dateStr", true).apply()
+            }
+            .show()
+    }
+
     /** FIX-AUDIT: 매출 자체 진단 다이얼로그 */
     private fun showDailyAuditDialog() {
         // 오늘 콜 0건이면 스킵
@@ -2186,6 +2305,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val screenCalls = todayDetail.total
         val acceptCount = todayEarnings.acceptedCount
         val acceptAmount = todayEarnings.totalRevenue
+
+        // FIX-AUDIT-2: 화면 매출 사전 저장 (pending 감지용)
+        val todayStr = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date())
+        DailyAuditDb.get(this).saveScreenOnly(todayStr, screenTotal, screenCalls, acceptCount, acceptAmount)
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

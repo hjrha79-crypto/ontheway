@@ -98,6 +98,54 @@ class DailyAuditDb(ctx: Context) : SQLiteOpenHelper(
         return results
     }
 
+    /**
+     * FIX-AUDIT-2: 최근 2일 내 audit 미입력 날짜 조회.
+     * screen_calls > 0 이고 declared_total == 0 인 날 = pending.
+     * 아직 row가 없는 날은 CallLogDb에서 콜 유무 확인 필요 → 호출처에서 처리.
+     */
+    fun hasPendingAudit(dateStr: String): Boolean {
+        try {
+            val db = readableDatabase
+            // row 있지만 declared_total == 0 (입력 안 함)
+            val cursor = db.query(TABLE, arrayOf("declared_total", "screen_calls"),
+                "date = ?", arrayOf(dateStr), null, null, null)
+            cursor.use {
+                if (it.moveToFirst()) {
+                    val declared = it.getInt(0)
+                    val calls = it.getInt(1)
+                    return calls > 0 && declared == 0
+                }
+            }
+        } catch (_: Exception) {}
+        // row 없음 = 아직 audit 자체가 없는 날 → true (콜 유무는 호출처에서)
+        return false
+    }
+
+    /** FIX-AUDIT-2: 화면 매출만 사전 저장 (운행 종료 시 또는 자동) */
+    fun saveScreenOnly(dateStr: String, screenTotal: Int, screenCalls: Int, acceptCount: Int, acceptAmount: Int) {
+        try {
+            val db = writableDatabase
+            // 이미 declared 입력된 row는 덮어쓰기 X
+            val cursor = db.query(TABLE, arrayOf("declared_total"), "date = ?", arrayOf(dateStr), null, null, null)
+            val alreadyDeclared = cursor.use {
+                it.moveToFirst() && it.getInt(0) > 0
+            }
+            if (alreadyDeclared) return
+
+            val cv = ContentValues().apply {
+                put("date", dateStr)
+                put("screen_total", screenTotal)
+                put("screen_calls", screenCalls)
+                put("accept_logs_count", acceptCount)
+                put("accept_logs_amount", acceptAmount)
+                put("ts", System.currentTimeMillis())
+            }
+            db.insertWithOnConflict(TABLE, null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+        } catch (e: Exception) {
+            Log.w("DailyAuditDb", "saveScreenOnly 실패: ${e.message}")
+        }
+    }
+
     data class AuditEntry(
         val date: String,
         val declaredCoupang: Int = 0,
