@@ -92,10 +92,6 @@ class DeveloperOptionsActivity : AppCompatActivity() {
             FeatureFlags.connectivityTTS
         ) { checked -> FeatureFlags.connectivityTTS = checked; FeatureFlags.save(this) })
 
-        card.addView(devToggle(
-            "배민 거리 자동탭", "배민 ? 버튼 자동 클릭하여 거리 확보",
-            FeatureFlags.baeminDistanceAutoTap
-        ) { checked -> FeatureFlags.baeminDistanceAutoTap = checked; FeatureFlags.save(this) })
 
         card.addView(devToggle(
             "근접 TTS", "픽업/배달지 GPS 근접 시 음성 안내",

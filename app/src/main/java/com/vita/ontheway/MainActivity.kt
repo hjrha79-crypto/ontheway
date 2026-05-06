@@ -1992,7 +1992,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 }
             }
         }
-        try { OnTheWayService.instance?.acceptCurrentCall() } catch (e: Exception) {}
         speak("수락합니다"); resetAccept()
     }
 

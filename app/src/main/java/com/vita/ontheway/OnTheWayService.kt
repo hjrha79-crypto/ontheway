@@ -87,8 +87,6 @@ class OnTheWayService : AccessibilityService() {
         // 수락 관련 상수
         val ACCEPT_BUTTON_TEXTS = listOf("수락", "배차수락", "배차 수락", "주문 수락", "주문수락", "수락하기", "모두 수락")
 
-        const val ACCEPT_TIMEOUT_MS = 30_000L
-        const val AUTO_ACCEPT_COOLDOWN_MS = 60_000L
         const val ROAD_DISTANCE_FACTOR = 1.3  // 직선 → 도로 거리 보정 계수
         const val NOTIF_CHANNEL_ID = "otw_service"
         const val NOTIF_ID = 1001
@@ -114,8 +112,6 @@ class OnTheWayService : AccessibilityService() {
     private var lastSpeakTime: Long = 0
     var lastCallDetectedTime: Long = 0  // 상태 표시용
 
-    // v3.0: 자동 수락 쿨다운
-    private var lastAutoAcceptTime: Long = 0
 
     // v3.0: 마지막 판정 정보 (수락 감지용 + 오버레이 피드백)
     var lastDeliveryCall: DeliveryCall? = null
@@ -590,130 +586,7 @@ class OnTheWayService : AccessibilityService() {
         callDetectedAt.entries.removeIf { it.value < expireTime }
     }
 
-    fun acceptCurrentCall() {
-        // 타임아웃: 마지막 콜 감지 후 30초 이내만 수락 가능
-        if (System.currentTimeMillis() - lastCallDetectedTime > ACCEPT_TIMEOUT_MS) {
-            Log.d("OnTheWay", "수락 타임아웃 - 마지막 콜 감지 30초 초과")
-            return
-        }
 
-        activeSearchSessionId?.let { sid ->
-            SearchSessionStore.updateAccepted(
-                context   = this,
-                sessionId = sid,
-                callId    = lastRecommendedAmount.toString(),
-                price     = lastRecommendedAmount,
-                isUrgent  = lastRecommendedUrgent
-            )
-        }
-
-        val root = rootInActiveWindow ?: return
-        // 수락 버튼 텍스트 매칭 (contains)
-        val acceptNode = ACCEPT_BUTTON_TEXTS.firstNotNullOfOrNull { findNodeByText(root, it) }
-        if (acceptNode != null) {
-            acceptNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            speakTts("수락합니다")
-            Log.d("OnTheWay", "수락 자동 클릭 성공")
-        } else {
-            Log.d("OnTheWay", "수락 버튼을 찾을 수 없음")
-        }
-    }
-
-
-    private fun findNodeByText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        if (node.text?.toString()?.contains(text) == true) return node
-        for (i in 0 until node.childCount) {
-            val found = node.getChild(i)?.let { findNodeByText(it, text) }
-            if (found != null) return found
-        }
-        return null
-    }
-
-    /**
-     * v3.26: 배민 물음표 자동 탭 — "?" 버튼 감지 → ACTION_CLICK
-     * 탭 후 다음 이벤트에서 "배달료기준거리 (\d+)m" 텍스트가 나타남
-     */
-    private fun tryBaeminDistanceAutoTap(root: AccessibilityNodeInfo): Double? {
-        OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 함수 진입: flag=${FeatureFlags.baeminDistanceAutoTap}, devMode=${FeatureFlags.devMode}")
-        if (!FeatureFlags.baeminDistanceAutoTap || !FeatureFlags.devMode) return null
-
-        val qNode = findQuestionMarkNode(root)
-        if (qNode == null) {
-            OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 시도: found=false")
-            return null
-        }
-
-        val desc = qNode.contentDescription?.toString() ?: ""
-        val text = qNode.text?.toString() ?: ""
-        val cls = qNode.className?.toString() ?: ""
-        OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 시도: found=true desc=\"$desc\" text=\"$text\" class=$cls")
-
-        try {
-            val success = qNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 클릭 결과: ${if (success) "success" else "fail"}")
-        } catch (e: Exception) {
-            OtwFileLogger.log("BaeminAutoTap", "[AutoTap] 클릭 결과: fail (${e.message})")
-            return null
-        }
-        return null
-    }
-
-    /**
-     * 물음표 버튼 탐색 (다단계 fallback)
-     * 1) contentDescription == "?" (기존)
-     * 2) contentDescription contains "?" or "물음표" or "배달료 안내"
-     * 3) text == "?"
-     * 4) ImageButton 중 "배달료" 노드 근처에 위치한 것
-     */
-    private fun findQuestionMarkNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // 1단계: 정확 매칭
-        findNodeByContentDescription(node, "?")?.let { return it }
-        // 2단계: 부분 매칭 (contentDescription에 ?, 물음표, 배달료 안내 포함)
-        findNodeByDescContains(node, listOf("?", "물음표", "배달료 안내"))?.let { return it }
-        // 3단계: text == "?"
-        findNodeByExactText(node, "?")?.let { return it }
-        // 4단계: ImageButton 중 clickable한 것
-        findClickableImageButton(node)?.let { return it }
-        return null
-    }
-
-    private fun findNodeByContentDescription(node: AccessibilityNodeInfo, desc: String): AccessibilityNodeInfo? {
-        if (node.contentDescription?.toString() == desc) return node
-        for (i in 0 until node.childCount) {
-            val found = node.getChild(i)?.let { findNodeByContentDescription(it, desc) }
-            if (found != null) return found
-        }
-        return null
-    }
-
-    private fun findNodeByDescContains(node: AccessibilityNodeInfo, keywords: List<String>): AccessibilityNodeInfo? {
-        val desc = node.contentDescription?.toString()
-        if (desc != null && keywords.any { desc.contains(it) }) return node
-        for (i in 0 until node.childCount) {
-            val found = node.getChild(i)?.let { findNodeByDescContains(it, keywords) }
-            if (found != null) return found
-        }
-        return null
-    }
-
-    private fun findNodeByExactText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        if (node.text?.toString()?.trim() == text) return node
-        for (i in 0 until node.childCount) {
-            val found = node.getChild(i)?.let { findNodeByExactText(it, text) }
-            if (found != null) return found
-        }
-        return null
-    }
-
-    private fun findClickableImageButton(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        val cls = node.className?.toString() ?: ""
-        if (cls == "android.widget.ImageButton" && node.isClickable) return node
-        for (i in 0 until node.childCount) {
-            val found = node.getChild(i)?.let { findClickableImageButton(it) }
-            if (found != null) return found
-        }
-        return null
-    }
 
     private fun extractText(node: AccessibilityNodeInfo, results: MutableList<String>) {
         // 2026-04-25 P0: 자기 패키지 노드는 텍스트 수집 스킵 (자기 참조 방지)
@@ -847,25 +720,6 @@ class OnTheWayService : AccessibilityService() {
         }
     }
 
-    /** v3.0: 자동 수락 (잡으세요 판정만) */
-    private fun tryAutoAccept() {
-        if (!AdvancedPrefs.isAutoAcceptEnabled(this)) return
-        if (lastDeliveryVerdict != "추천") return
-
-        val now = System.currentTimeMillis()
-        if (now - lastAutoAcceptTime < AUTO_ACCEPT_COOLDOWN_MS) {
-            Log.d("OnTheWay", "자동수락 쿨다운 중 (${(AUTO_ACCEPT_COOLDOWN_MS - (now - lastAutoAcceptTime)) / 1000}초 남음)")
-            return
-        }
-
-        lastAutoAcceptTime = now
-        speakTts("자동 수락합니다")
-
-        // 1초 후 수락 버튼 클릭
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            acceptCurrentCall()
-        }, 1000)
-    }
 
     // ── 배달 플랫폼 처리 (쿠팡이츠/배민커넥트) ─────────
     private fun handleDeliveryPlatform(root: AccessibilityNodeInfo, pkg: String) {
@@ -944,8 +798,6 @@ class OnTheWayService : AccessibilityService() {
                 lastCustomerRequest = customerReq
                 OtwFileLogger.log("CustomerRequest", "감지: \"$customerReq\"")
             }
-            // v3.26: 배민 물음표 자동 탭 (개발자 모드 전용)
-            tryBaeminDistanceAutoTap(root)
         }
 
         // v3.6: 배민 대량 중복 감지 — 파싱 전에 최근 3초 이내 같은 플랫폼 이벤트 횟수 체크
@@ -1302,9 +1154,6 @@ class OnTheWayService : AccessibilityService() {
             CallFilter.updateRejectStreak(result.verdict, this)
             consecutiveRejectCount = CallFilter.getConsecutiveRejectCount()
 
-            if (result.verdict != CallFilter.Verdict.REJECT && lastDeliveryVerdict != "비추천") {
-                tryAutoAccept()
-            }
         } else if (!shouldSpeak) {
             // TtsDeduplicator 중복
         } else {

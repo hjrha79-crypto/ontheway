@@ -67,15 +67,8 @@ object ExecuteRequestHandler {
         val targetCall = session?.recommendations?.firstOrNull { it.callId == request.callId }
             ?: return buildResult("fail", request.callId, "콜 정보를 찾을 수 없습니다", "recommend_again", request.requestId)
 
-        // 4. 수락 실행
-        return try {
-            OnTheWayService.instance?.acceptCurrentCall()
-                ?: throw IllegalStateException("서비스 미연결")
-
-            buildResult("success", request.callId, "${targetCall.dropoff} 콜 수락 완료", "navigation_start", request.requestId)
-        } catch (e: Exception) {
-            buildResult("fail", request.callId, "수락 실행 실패: ${e.message}", "retry", request.requestId)
-        }
+        // 4. 자동 수락 기능 제거됨 — Helper는 클릭하지 않음
+        return buildResult("fail", request.callId, "자동 수락 기능이 비활성화되었습니다", "none", request.requestId)
     }
 
     fun generateRequestId(): String {

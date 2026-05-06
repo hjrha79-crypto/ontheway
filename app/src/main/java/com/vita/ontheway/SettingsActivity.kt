@@ -739,12 +739,6 @@ class SettingsActivity : AppCompatActivity() {
         }
         advCard.addView(naviAppRow)
 
-        // 3. 자동 수락
-        advCard.addView(advancedToggle(
-            "자동 수락 (추천만)",
-            "추천 판정된 콜만 자동으로 수락합니다 (60초 쿨다운)",
-            AdvancedPrefs.isAutoAcceptEnabled(this)
-        ) { checked -> AdvancedPrefs.setAutoAccept(this, checked) })
 
         // 4. 귀가 방향 필터
         advCard.addView(advancedToggle(

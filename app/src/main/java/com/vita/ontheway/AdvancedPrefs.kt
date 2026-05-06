@@ -11,7 +11,6 @@ object AdvancedPrefs {
     private const val KEY_EARNINGS_TRACKING = "earnings_tracking"
     private const val KEY_NAVI_AUTO_LAUNCH = "navi_auto_launch"
     private const val KEY_NAVI_APP = "navi_app"  // "kakao_navi", "tmap", "kakao_map"
-    private const val KEY_AUTO_ACCEPT = "auto_accept"
     private const val KEY_DIRECTION_FILTER = "direction_filter"
     private const val KEY_HOME_DIRECTION = "home_direction"
     private const val KEY_DAILY_REPORT = "daily_report"
@@ -29,9 +28,6 @@ object AdvancedPrefs {
     fun getNaviApp(ctx: Context): String = prefs(ctx).getString(KEY_NAVI_APP, "kakao_navi") ?: "kakao_navi"
     fun setNaviApp(ctx: Context, v: String) = prefs(ctx).edit().putString(KEY_NAVI_APP, v).apply()
 
-    // 자동 수락
-    fun isAutoAcceptEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_AUTO_ACCEPT, false)
-    fun setAutoAccept(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean(KEY_AUTO_ACCEPT, v).apply()
 
     // 귀가 방향 필터
     fun isDirectionFilterEnabled(ctx: Context) = prefs(ctx).getBoolean(KEY_DIRECTION_FILTER, false)

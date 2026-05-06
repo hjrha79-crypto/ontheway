@@ -52,8 +52,7 @@ data class ShadowDailySummary(
     val avgLossWon: Int,
     val maxLossWon: Int,
     val totalGainIfFollowed: Int,
-    val mismatchBreakdown: Map<String, Int>,
-    val autoAcceptReady: Boolean
+    val mismatchBreakdown: Map<String, Int>
 ) {
     // 제품 가치 전달 메시지
     fun toSummaryMessage(): String {
@@ -70,10 +69,6 @@ object ShadowLog {
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
     private val dayFormat  = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
-    // 자동 수락 조건
-    private const val AUTO_ACCEPT_TOP1  = 85.0
-    private const val AUTO_ACCEPT_TOP3  = 95.0
-    private const val AUTO_ACCEPT_LOSS  = 1000
 
     // ══ 로그 기록 ══════════════════════════
     fun record(
@@ -137,10 +132,7 @@ object ShadowLog {
             avgLossWon           = avgLoss,
             maxLossWon           = maxLoss,
             totalGainIfFollowed  = totalLoss,
-            mismatchBreakdown    = breakdown,
-            autoAcceptReady      = top1Rate >= AUTO_ACCEPT_TOP1 &&
-                                   top3Rate >= AUTO_ACCEPT_TOP3 &&
-                                   avgLoss  <= AUTO_ACCEPT_LOSS
+            mismatchBreakdown    = breakdown
         )
     }
 
@@ -161,10 +153,6 @@ object ShadowLog {
             .entries.sortedByDescending { it.value }
             .joinToString("\n") { "  ${it.key}: ${it.value}%" }
 
-        val autoReady = top1Rate >= AUTO_ACCEPT_TOP1 &&
-                        top3Rate >= AUTO_ACCEPT_TOP3 &&
-                        avgLoss  <= AUTO_ACCEPT_LOSS
-
         return """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OnTheWay Shadow Mode 2주 결과
@@ -174,15 +162,12 @@ OnTheWay Shadow Mode 2주 결과
 AI 따랐으면: +${totalGain.toFormattedWon()}
 
 [핵심 KPI]
-Top1 적중률: ${"%.1f".format(top1Rate)}%  (기준: 85%)
-Top3 포함률: ${"%.1f".format(top3Rate)}%  (기준: 95%)
-평균 손실:   ${avgLoss.toFormattedWon()}  (기준: ≤1,000원)
+Top1 적중률: ${"%.1f".format(top1Rate)}%
+Top3 포함률: ${"%.1f".format(top3Rate)}%
+평균 손실:   ${avgLoss.toFormattedWon()}
 
 [오류 원인 분포]
 $breakdown
-
-[자동 수락 전환]
-${if (autoReady) "✅ 조건 충족 → Live Mode 전환 가능" else "❌ 조건 미충족 → 알고리즘 보완 필요"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
         """.trimIndent()
     }
