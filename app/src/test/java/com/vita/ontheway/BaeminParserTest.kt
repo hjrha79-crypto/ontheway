@@ -472,4 +472,83 @@ class BaeminParserTest {
         assertTrue("멀티 감지: ${result[0].isMulti}", result[0].isMulti)
         assertEquals(2, result[0].bundleCount)
     }
+
+    // ── FIX-MULTI 회귀 테스트: 사례1 단일+멀티 동시 분류 방지 ──
+
+    @Test
+    fun `FIX-MULTI 사례1a - 라화쿵부마라탕 단건이 멀티 X (콤마요약 노드)`() {
+        // 5/6 16:33 패턴: 콤마구분 요약 + 개별 노드 → 단건만 반환
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "배민배달, 조리완료, 픽업지, 라화쿵부마라탕 태전점, 전달지, 경기 광주시",
+            "배민배달", "조리완료", "픽업지", "라화쿵부마라탕 태전점",
+            "전달지", "경기 광주시 태봉로 161", "배달료", "5,200원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertFalse("단건이 멀티 아님", result[0].isMulti)
+        assertEquals(5200, result[0].price)
+    }
+
+    @Test
+    fun `FIX-MULTI 사례1b - 밥풀릭스 단건이 멀티 X`() {
+        // 5/6 16:35 패턴
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "배민배달, 조리완료, 픽업지, 밥풀릭스 광주태전점, 전달지, 경기 광주시, 포인트, 30P",
+            "배민배달", "조리완료", "픽업지", "밥풀릭스 광주태전점",
+            "전달지", "경기 광주시 고불로 33", "포인트", "30P", "배달료", "3,700원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertFalse("단건이 멀티 아님", result[0].isMulti)
+        assertEquals(3700, result[0].price)
+    }
+
+    @Test
+    fun `FIX-MULTI 사례1c - 피자헛 단건이 멀티 X`() {
+        // 5/6 16:35 패턴
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "배민배달, 조리완료, 픽업지, 피자헛 광주태전점, 전달지, 경기 광주시, 포인트, 45P",
+            "배민배달", "조리완료", "픽업지", "피자헛 광주태전점",
+            "전달지", "경기 광주시 태성1로 16", "포인트", "45P", "배달료", "3,900원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertFalse("단건이 멀티 아님", result[0].isMulti)
+        assertEquals(3900, result[0].price)
+    }
+
+    // ── FIX-MULTI 회귀 테스트: 사례4 이전내역 화면 DROP ──
+
+    @Test
+    fun `FIX-MULTI 사례4 - 이전내역 화면 다중 배달료 합산 멀티 오인식 방지`() {
+        // 5/6 16:09 패턴: "이전내역" 텍스트 노드 포함 → DROP
+        val texts = listOf(
+            "이전내역",
+            "밥풀릭스 광주태전점", "배달료 3,700원",
+            "동대문엽기떡볶이 광주한아람점", "배달료 2,300원",
+            "KFC 광주태전점", "배달료 2,300원"
+        )
+        val result = BaeminParser.parse(texts)
+        assertNull("이전내역 화면은 DROP", result)
+    }
+
+    @Test
+    fun `FIX-MULTI 사례4 - 이전내역 + 신규배차 수락버튼 = 새 콜 진행`() {
+        // 이전내역 키워드 + 신규 콜 증거 동시 → 파싱 진행
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "이전내역", "신규배차_수락버튼",
+            "픽업지", "새가게", "전달지", "태전동",
+            "배달료", "4,500원"
+        )
+        val result = BaeminParser.parse(texts)
+        assertNotNull("신규 콜 증거 있으면 파싱 진행", result)
+        assertTrue(result!!.isNotEmpty())
+    }
 }
