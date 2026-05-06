@@ -80,10 +80,11 @@ class SessionManager(private val transitionLog: StateTransitionLog) {
         platform: String,
         storeName: String?,
         price: Int,
-        trigger: String
+        trigger: String,
+        orderId: String? = null
     ): CallSession? = synchronized(lock) {
         val now = System.currentTimeMillis()
-        val eventId = EventIdGenerator.generate(storeName, price, now)
+        val eventId = EventIdGenerator.generate(storeName, price, now, orderId = orderId)
 
         // 만료된 suppression 항목 정리 (개별 TTL 적용)
         suppressionList.entries.removeAll { (now - it.value.timestamp) > it.value.ttlMs }

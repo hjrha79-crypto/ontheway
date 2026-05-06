@@ -822,7 +822,7 @@ class OnTheWayService : AccessibilityService() {
                 for (call in sessionCalls) {
                     BaeminBundleSession.addCallData(call.price, call.point ?: sessionPoint, call.storeName)
                     // v3.18: SessionManager에 이벤트 기록
-                    sessionManager?.onEventReceived("baemin", call.storeName, call.price, "accessibility_event")
+                    sessionManager?.onEventReceived("baemin", call.storeName, call.price, "accessibility_event", orderId = call.orderId)
                 }
 
                 // 대기 중인 debounce 버퍼도 세션으로 드레인
@@ -896,8 +896,9 @@ class OnTheWayService : AccessibilityService() {
         }
 
         // v3.6: 배민 대량 중복 감지 — 같은 플랫폼+금액 3초 이내 = 중복 무시
+        // FIX-T2CN: orderId 1순위 → storeName → rawText hash fallback
         val dedupedCalls = calls.filter { call ->
-            val storeKey = call.storeName.ifEmpty { call.rawText.hashCode().toString() }
+            val storeKey = call.orderId ?: call.storeName.ifEmpty { call.rawText.hashCode().toString() }
             val isDup = recentCalls.any { r ->
                 r.platform == platformName && r.price == call.price && r.store == storeKey && (now0 - r.time < 30000)
             }
@@ -1048,7 +1049,8 @@ class OnTheWayService : AccessibilityService() {
         }
 
         // P0 fix: 같은 플랫폼+금액+storeName 중복 DROP — 쿠팡 60초, 기타 30초
-        val storeId = call.storeName.ifEmpty { call.rawText.hashCode().toString() }
+        // FIX-T2CN: orderId 1순위 → storeName → rawText hash fallback
+        val storeId = call.orderId ?: call.storeName.ifEmpty { call.rawText.hashCode().toString() }
         val simpleDedupKey = "${call.platform}_${call.price}_${storeId}_"
         val lastSimple = callSpeakHistory.entries.find { it.key.startsWith(simpleDedupKey) }
         val simpleDedupMs = if (call.platform == "coupang") 60_000L else 30_000L
@@ -1089,7 +1091,7 @@ class OnTheWayService : AccessibilityService() {
 
         // v3.18: SessionManager 경유 (세션 생성/추적용, suppression은 위에서 이미 처리)
         val callSessionEvt = sessionManager?.onEventReceived(
-            platformName, call.storeName, call.price, "delivery_process"
+            platformName, call.storeName, call.price, "delivery_process", orderId = call.orderId
         )
 
         // 로그 기록 (enriched call로 기록하여 포인트 환산거리 포함)

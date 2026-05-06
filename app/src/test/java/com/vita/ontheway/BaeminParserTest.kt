@@ -551,4 +551,57 @@ class BaeminParserTest {
         assertNotNull("신규 콜 증거 있으면 파싱 진행", result)
         assertTrue(result!!.isNotEmpty())
     }
+
+    // ── FIX-T2CN: 주문번호 추출 테스트 ──
+
+    @Test
+    fun `T2CN - 개별 노드에서 주문번호 추출`() {
+        val texts = listOf(
+            "배민배달", "픽업지", "서대문 김치찜 광주태전점",
+            "T2CN0000LAF4", "배달료 2,600원"
+        )
+        assertEquals("T2CN0000LAF4", BaeminParser.extractOrderId(texts))
+    }
+
+    @Test
+    fun `T2CN - 콤마요약 노드의 T2CN은 무시하고 개별 노드 사용`() {
+        // 콤마구분 요약노드는 skip, 개별 노드에서 추출
+        val texts = listOf(
+            "서대문 김치찜&김치찌개 광주태전점, 경기도 광주시 태전동로 12, T2CN0000LAF4, 배달료 2,600원",
+            "서대문 김치찜&김치찌개 광주태전점",
+            "T2CN0000LAF4",
+            "배달료 2,600원"
+        )
+        assertEquals("T2CN0000LAF4", BaeminParser.extractOrderId(texts))
+    }
+
+    @Test
+    fun `T2CN - 없는 경우 null`() {
+        val texts = listOf("배민배달", "픽업지", "맘스터치", "배달료 3,500원")
+        assertNull(BaeminParser.extractOrderId(texts))
+    }
+
+    @Test
+    fun `T2CN - parse 결과에 orderId 포함`() {
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "배민배달", "픽업지", "호노보노 파스타 식당",
+            "T2CN00013AUH", "배달료 3,120원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertEquals("T2CN00013AUH", result[0].orderId)
+        assertEquals(3120, result[0].price)
+    }
+
+    @Test
+    fun `T2CN - 5_6 실제 사례 T2CN0000J54R 추출`() {
+        val texts = listOf(
+            "KFC 광주태전점",
+            "T2CN0000J54R",
+            "배달료 2,300원"
+        )
+        assertEquals("T2CN0000J54R", BaeminParser.extractOrderId(texts))
+    }
 }

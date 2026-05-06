@@ -1203,4 +1203,56 @@ class CallSimulationTest {
 
         println("88 PASS: suppression 미해당 콜 → 정상 세션 생성")
     }
+
+    // ── FIX-T2CN: 주문번호 기반 event_id 안정화 테스트 ──
+
+    @Test
+    fun `89 T2CN orderId 5분간격 4회 동일 eventId`() {
+        // 같은 T2CN = 같은 event_id, 5분 bucket 무관
+        val t1 = 1_700_000_000_000L
+        val t2 = t1 + 300_000L   // +5분
+        val t3 = t1 + 600_000L   // +10분
+        val t4 = t1 + 900_000L   // +15분
+        val id1 = EventIdGenerator.generate("맘스터치", 4300, t1, orderId = "T2CN0000LAF4")
+        val id2 = EventIdGenerator.generate("맘스터치", 4300, t2, orderId = "T2CN0000LAF4")
+        val id3 = EventIdGenerator.generate("", 4300, t3, orderId = "T2CN0000LAF4")
+        val id4 = EventIdGenerator.generate(null, 4300, t4, orderId = "T2CN0000LAF4")
+        assertEquals(id1, id2)
+        assertEquals(id2, id3)
+        assertEquals(id3, id4)
+        println("89 PASS: 같은 T2CN → 5분/10분/15분 후에도 동일 eventId = $id1")
+    }
+
+    @Test
+    fun `90 T2CN 다른 orderId 같은 가격 다른 eventId`() {
+        val t = 1_700_000_000_000L
+        val id1 = EventIdGenerator.generate("맘스터치", 3700, t, orderId = "T2CN00013AUH")
+        val id2 = EventIdGenerator.generate("맘스터치", 3700, t, orderId = "T2CN0000LAF4")
+        assertNotEquals(id1, id2)
+        println("90 PASS: 다른 T2CN → 같은 가격이어도 다른 eventId")
+    }
+
+    @Test
+    fun `91 T2CN null이면 기존 fallback`() {
+        // orderId 없으면 기존 storeName+price+bucket 로직
+        val bucketStart = 1_700_000_000_000L / 300_000L * 300_000L
+        val t1 = bucketStart + 10_000L
+        val t2 = bucketStart + 120_000L
+        val id1 = EventIdGenerator.generate("맘스터치", 4300, t1, orderId = null)
+        val id2 = EventIdGenerator.generate("맘스터치", 4300, t2, orderId = null)
+        assertEquals(id1, id2)  // 기존 bucket fallback 유지
+        println("91 PASS: orderId null → 기존 5분 bucket fallback 동작")
+    }
+
+    @Test
+    fun `92 T2CN orderId는 storeName 변동 무관`() {
+        val t = 1_700_000_000_000L
+        // 같은 orderId, 다른 storeName → 같은 eventId
+        val id1 = EventIdGenerator.generate("호노보노 파스타 식당", 3120, t, orderId = "T2CN00013AUH")
+        val id2 = EventIdGenerator.generate("", 3120, t, orderId = "T2CN00013AUH")
+        val id3 = EventIdGenerator.generate("호노보노파스타", 3120, t, orderId = "T2CN00013AUH")
+        assertEquals(id1, id2)
+        assertEquals(id2, id3)
+        println("92 PASS: orderId 있으면 storeName 변동 무관 동일 eventId")
+    }
 }

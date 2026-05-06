@@ -24,7 +24,7 @@ object EarningsTracker {
     private var dedupDate: String = ""
 
     /** 수락 기록 */
-    fun recordAccept(ctx: Context, price: Int, platform: String, storeName: String = "") {
+    fun recordAccept(ctx: Context, price: Int, platform: String, storeName: String = "", orderId: String? = null) {
         if (!AdvancedPrefs.isEarningsTrackingEnabled(ctx)) return
         val now = System.currentTimeMillis()
         val today = todayStr()
@@ -36,7 +36,8 @@ object EarningsTracker {
         }
 
         // event_id 기반 dedup (같은 콜 = 같은 event_id)
-        val eventId = EventIdGenerator.generate(storeName.ifBlank { null }, price, now)
+        // FIX-T2CN: orderId 우선
+        val eventId = EventIdGenerator.generate(storeName.ifBlank { null }, price, now, orderId = orderId)
         if (!processedEventIds.add(eventId)) {
             OtwFileLogger.log(TAG, "EVENT_DEDUP: ${price}원 $platform store='$storeName' eventId=${eventId.take(8)}")
             return

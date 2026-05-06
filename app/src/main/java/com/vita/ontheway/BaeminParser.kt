@@ -31,6 +31,8 @@ object BaeminParser {
     private val BUNDLE_COUNT_PATTERN = Regex("(\\d+)\\s*건")
     // rawText 기반 멀티콜 추가 검출 패턴
     private val MULTI_COUNT_PATTERN = Regex("(2|두|세)\\s*건")
+    // FIX-T2CN: 배민 주문번호 패턴
+    private val ORDER_ID_PATTERN = Regex("T2C[A-Z][A-Z0-9]{4,}")
 
     // 파싱 dedup 캐시: 동일 storeName+price 5분 내 재파싱 방지
     private const val PARSE_DEDUP_WINDOW_MS = 300_000L  // 5분
@@ -225,6 +227,9 @@ object BaeminParser {
         // 포인트 파싱 (배민커넥트 거리 지표)
         val point = POINT_PATTERN.find(joined)?.groupValues?.get(1)?.toDoubleOrNull()
 
+        // FIX-T2CN: 주문번호 추출
+        val orderId = extractOrderId(texts)
+
         // 방법1: 단일 노드에 "배달료 7,010원" 있는 경우
         for (text in texts) {
             val match = PRICE_PATTERN.find(text) ?: continue
@@ -233,9 +238,10 @@ object BaeminParser {
                 results.add(DeliveryCall(
                     price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
                     rawText = joined, storeName = storeName, destination = destination,
-                    point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
+                    point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
+                    orderId = orderId
                 ))
-                Log.d("BaeminParser", "파싱(단일): ${price}원, point=${point}P, store=$storeName")
+                Log.d("BaeminParser", "파싱(단일): ${price}원, point=${point}P, store=$storeName, orderId=$orderId")
                 OtwFileLogger.log("BaeminParser", "파싱(단일): ${price}원, point=${point}P, store=$storeName")
             }
         }
@@ -251,9 +257,10 @@ object BaeminParser {
                     results.add(DeliveryCall(
                         price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
-                        point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
+                        point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
+                        orderId = orderId
                     ))
-                    Log.d("BaeminParser", "파싱(분리노드): ${price}원")
+                    Log.d("BaeminParser", "파싱(분리노드): ${price}원, orderId=$orderId")
                     OtwFileLogger.log("BaeminParser", "파싱(분리노드): ${price}원")
                 }
             }
@@ -268,7 +275,8 @@ object BaeminParser {
                     results.add(DeliveryCall(
                         price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
-                        point = point, parsingMethod = V2Event.PARSING_TEXT_REGEX
+                        point = point, parsingMethod = V2Event.PARSING_TEXT_REGEX,
+                        orderId = orderId
                     ))
                     Log.d("BaeminParser", "파싱(join): ${price}원")
                     OtwFileLogger.log("BaeminParser", "파싱(join): ${price}원")
@@ -302,7 +310,8 @@ object BaeminParser {
                 bundleCount = bundleCount,
                 isMultiPickup = isMultiPickup,
                 point = point,
-                parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT
+                parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
+                orderId = orderId
             ))
         }
 
@@ -362,6 +371,21 @@ object BaeminParser {
             }
         }
         return false
+    }
+
+    /**
+     * FIX-T2CN: 개별 텍스트 노드에서 배민 주문번호(T2CN...) 추출.
+     * 콤마구분 요약노드 제외, 개별 노드에서만 매칭.
+     */
+    fun extractOrderId(texts: List<String>): String? {
+        for (text in texts) {
+            val t = text.trim()
+            // 콤마구분 요약노드(여러 항목 나열) 제외
+            if (t.contains(",") && t.length > 40) continue
+            val match = ORDER_ID_PATTERN.find(t)
+            if (match != null) return match.value
+        }
+        return null
     }
 
     /** 배민 포인트 값 추출 (거리 지표) */
