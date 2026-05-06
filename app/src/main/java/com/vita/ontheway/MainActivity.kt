@@ -210,12 +210,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         drivingModeSwitch = findViewById(R.id.drivingModeSwitch)
         drivingModeStatusTv = findViewById(R.id.drivingModeStatusTv)
         drivingModeDurationTv = findViewById(R.id.drivingModeDurationTv)
-        drivingModeSwitch?.setOnCheckedChangeListener { _, isChecked ->
-            val mode = if (isChecked) DrivingMode.DRIVING else DrivingMode.IDLE
-            DrivingModeManager.setMode(this, mode, "user_toggle_main")
-            updateDrivingModeUi()
-            Toast.makeText(this, if (isChecked) "운행 시작" else "운행 종료", Toast.LENGTH_SHORT).show()
-        }
+        setupDrivingToggleListener()
 
         val statsBtn = findViewById<TextView>(R.id.statsBtn)
         val favBtn   = findViewById<TextView>(R.id.favBtn)
@@ -313,6 +308,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         if (!accessibilityEnabled) {
             warnings.add("접근성 서비스가 꺼져 있습니다")
+        } else if (OnTheWayService.instance == null) {
+            // FIX-SELFPING: 토글 ON인데 인스턴스 사망
+            warnings.add("접근성이 멈춰 있습니다 — 껐다 켜 주세요")
         }
 
         // 알림 리스너 체크
@@ -2146,6 +2144,31 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    /** FIX-SELFPING: 운행 토글 리스너 (instance dead 차단 포함) */
+    private fun setupDrivingToggleListener() {
+        drivingModeSwitch?.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                val health = AccessibilityHealthMonitor.check(
+                    instanceAlive = OnTheWayService.instance != null,
+                    lastEventTimeMs = OnTheWayService.lastAccessibilityEventTime
+                )
+                if (health.status == AccessibilityHealthMonitor.Status.INSTANCE_DEAD) {
+                    // 차단: 리스너 해제 → 되돌리기 → 리스너 재설정
+                    drivingModeSwitch?.setOnCheckedChangeListener(null)
+                    drivingModeSwitch?.isChecked = false
+                    setupDrivingToggleListener()
+                    Toast.makeText(this, "접근성이 멈춰 있습니다. 설정에서 OnTheWay를 껐다 켜 주세요", Toast.LENGTH_LONG).show()
+                    startActivity(android.content.Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    return@setOnCheckedChangeListener
+                }
+            }
+            val mode = if (isChecked) DrivingMode.DRIVING else DrivingMode.IDLE
+            DrivingModeManager.setMode(this, mode, "user_toggle_main")
+            updateDrivingModeUi()
+            Toast.makeText(this, if (isChecked) "운행 시작" else "운행 종료", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun updateDrivingModeUi() {
         try {
             val isDriving = DrivingModeManager.getMode(this) == DrivingMode.DRIVING
@@ -2153,12 +2176,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 if (sw.isChecked != isDriving) {
                     sw.setOnCheckedChangeListener(null)
                     sw.isChecked = isDriving
-                    sw.setOnCheckedChangeListener { _, isChecked ->
-                        val mode = if (isChecked) DrivingMode.DRIVING else DrivingMode.IDLE
-                        DrivingModeManager.setMode(this, mode, "user_toggle_main")
-                        updateDrivingModeUi()
-                        Toast.makeText(this, if (isChecked) "운행 시작" else "운행 종료", Toast.LENGTH_SHORT).show()
-                    }
+                    setupDrivingToggleListener()
                 }
             }
             drivingModeStatusTv?.text = if (isDriving) "운행 모드: ON" else "운행 모드: OFF"

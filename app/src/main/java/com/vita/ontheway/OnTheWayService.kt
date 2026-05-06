@@ -48,6 +48,9 @@ class OnTheWayService : AccessibilityService() {
         var instance: OnTheWayService? = null
         var resultCallback: ((String, String, Int, String) -> Unit)? = null
 
+        // FIX-SELFPING: 마지막 accessibility 이벤트 수신 시각
+        @Volatile var lastAccessibilityEventTime: Long = 0L
+
         // SearchSession 추적용
         var activeSearchSessionId: String? = null
         var lastRecommendedAmount: Int = 0
@@ -157,6 +160,7 @@ class OnTheWayService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         event ?: return
+        lastAccessibilityEventTime = System.currentTimeMillis()
         val pkg = event.packageName?.toString() ?: return
 
         // 서비스 시작 5초 이전 이벤트 DROP (재시작 시 오래된 큐 방지)
@@ -1427,7 +1431,11 @@ class OnTheWayService : AccessibilityService() {
         return synchronized(windowEventRing) { windowEventRing.toList() }
     }
 
-    override fun onInterrupt() { instance = null }
+    override fun onInterrupt() {
+        Log.w(TAG_ACCESSIBILITY, "onInterrupt: 접근성 서비스 중단됨")
+        try { OtwFileLogger.log(TAG_ACCESSIBILITY, "onInterrupt: instance → null") } catch (_: Exception) {}
+        instance = null
+    }
     override fun onServiceConnected() {
         serviceStartTime = System.currentTimeMillis()
         serviceStartUptime = android.os.SystemClock.uptimeMillis()

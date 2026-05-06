@@ -270,6 +270,39 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         // 오래된 처리 기록 정리
         processedNotifs.entries.removeIf { now - it.value > 60_000 }
+
+        // FIX-SELFPING: 배민/쿠팡 알림 처리 후 accessibility health check
+        checkAccessibilityHealth(now)
+    }
+
+    /**
+     * FIX-SELFPING: Accessibility 서비스 health check.
+     * 배민/쿠팡 알림 수신 직후 호출 — 서비스 인스턴스 사망 감지 시 TTS 1회 안내.
+     */
+    private var lastHealthAlertTime: Long = 0L
+    private fun checkAccessibilityHealth(now: Long) {
+        // 운행 모드 아니면 체크 불필요
+        if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING) return
+
+        val health = AccessibilityHealthMonitor.check(
+            instanceAlive = OnTheWayService.instance != null,
+            lastEventTimeMs = OnTheWayService.lastAccessibilityEventTime,
+            nowMs = now
+        )
+
+        if (health.status == AccessibilityHealthMonitor.Status.ALIVE) return
+
+        // 5분 내 중복 알림 방지
+        if (now - lastHealthAlertTime < 300_000L) return
+        lastHealthAlertTime = now
+
+        Log.w("A11yHealth", "NLS health check: ${health.status} - ${health.message}")
+        OtwFileLogger.log("A11yHealth", "NLS 감지: ${health.status} - ${health.message}")
+
+        // TTS 안내 1회
+        if (ttsReady) {
+            speakTts("온더웨이 접근성 연결을 확인해 주세요")
+        }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) { /* no-op */ }
