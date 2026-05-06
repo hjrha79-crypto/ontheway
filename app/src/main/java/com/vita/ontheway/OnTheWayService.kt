@@ -136,6 +136,10 @@ class OnTheWayService : AccessibilityService() {
     private val debounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val BAEMIN_DEBOUNCE_MS = 2000L
 
+    // FIX-RETRY: root null / parser empty 시 짧은 retry
+    private val RETRY_DELAY_1_MS = 200L
+    private val RETRY_DELAY_2_MS = 500L
+
     // v3.6: 배민 콜 대량 중복 감지 방지 (같은 플랫폼+금액+storeName 30초 이내 = 중복)
     private data class RecentCall(val platform: String, val price: Int, val store: String, val time: Long)
     private val recentCalls = mutableListOf<RecentCall>()
@@ -318,6 +322,8 @@ class OnTheWayService : AccessibilityService() {
             if (pkg in DELIVERY_PACKAGES) {
                 OtwFileLogger.logSync(TAG_ACCESSIBILITY, "ROOT_NULL: pkg=$pkg, eventType=${event.eventType}")
                 try { CriticalEventDb.get(this).record("ROOT_NULL", pkg) } catch (_: Exception) {}
+                // FIX-RETRY: 200ms + 500ms retry
+                scheduleRootRetry(pkg, RETRY_DELAY_1_MS, 1)
             }
             return
         }
@@ -731,6 +737,48 @@ class OnTheWayService : AccessibilityService() {
     }
 
 
+    /**
+     * FIX-RETRY: root null 또는 parser empty 시 짧은 retry.
+     * rootInActiveWindow 재획득 → handleDeliveryPlatform 재진입.
+     * retry 1: 200ms, retry 2: 500ms. 최대 2회.
+     */
+    private var lastRetryPkg: String? = null
+    private var lastRetryTime: Long = 0L
+    private fun scheduleRootRetry(pkg: String, delayMs: Long, attempt: Int) {
+        if (attempt > 2) return
+        // 같은 패키지 1초 내 중복 retry 방지
+        val now = System.currentTimeMillis()
+        if (pkg == lastRetryPkg && now - lastRetryTime < 1000) return
+        lastRetryPkg = pkg
+        lastRetryTime = now
+
+        debounceHandler.postDelayed({
+            if (instance == null) return@postDelayed
+            val retryRoot = rootInActiveWindow ?: findWindowRoot(pkg)
+            if (retryRoot != null) {
+                val retryRootPkg = retryRoot.packageName?.toString()
+                if (retryRootPkg == pkg) {
+                    Log.d(TAG_ACCESSIBILITY, "RETRY_SUCCESS: pkg=$pkg attempt=$attempt delay=${delayMs}ms")
+                    OtwFileLogger.log(TAG_ACCESSIBILITY, "RETRY_SUCCESS: pkg=$pkg attempt=$attempt")
+                    handleDeliveryPlatform(retryRoot, pkg)
+                } else {
+                    val correctRoot = findWindowRoot(pkg)
+                    if (correctRoot != null) {
+                        Log.d(TAG_ACCESSIBILITY, "RETRY_SUCCESS(getWindows): pkg=$pkg attempt=$attempt")
+                        OtwFileLogger.log(TAG_ACCESSIBILITY, "RETRY_SUCCESS(getWindows): pkg=$pkg attempt=$attempt")
+                        handleDeliveryPlatform(correctRoot, pkg)
+                    } else {
+                        scheduleRootRetry(pkg, RETRY_DELAY_2_MS, attempt + 1)
+                    }
+                }
+            } else {
+                Log.d(TAG_ACCESSIBILITY, "RETRY_FAIL: pkg=$pkg attempt=$attempt root=null")
+                OtwFileLogger.log(TAG_ACCESSIBILITY, "RETRY_FAIL: pkg=$pkg attempt=$attempt root=null")
+                scheduleRootRetry(pkg, RETRY_DELAY_2_MS, attempt + 1)
+            }
+        }, delayMs)
+    }
+
     // ── 배달 플랫폼 처리 (쿠팡이츠/배민커넥트) ─────────
     private fun handleDeliveryPlatform(root: AccessibilityNodeInfo, pkg: String) {
         val texts = mutableListOf<String>()
@@ -902,6 +950,8 @@ class OnTheWayService : AccessibilityService() {
             Log.d("DeliveryFilter", "[$platformName] 파싱 실패 - 무음")
             OtwFileLogger.log("DeliveryFilter", "[$platformName] 파싱 실패 - 무음")
             DropReason.recordDrop(DropReason.DROP_PARSE_FAIL, "parser returned empty", pkg)
+            // FIX-RETRY: 200ms retry (parser empty)
+            scheduleRootRetry(pkg, RETRY_DELAY_1_MS, 1)
             return
         }
 
