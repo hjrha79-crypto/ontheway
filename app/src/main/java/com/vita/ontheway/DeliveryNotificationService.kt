@@ -211,19 +211,24 @@ class DeliveryNotificationService : NotificationListenerService() {
             val session = sessionManager?.onEventReceived(
                 call.platform, call.storeName, call.price, "notification_posted"
             )
-            val result = CallFilter.judge(call, this)
-            TtsDeduplicator.recordProcessed(call.platform, call.price)
-            Log.d("DeliveryNoti", "파싱 결과: price=${call.price}, result=${result.verdict} (${result.reason})")
-            FilterLog.record(this, call, result, eventId = session?.eventId, sessionState = session?.state?.name)
+
+            // FIX-PICKUP-DISTANCE: NLS 경로에서도 픽업 거리 계산
+            val enrichedCall = enrichWithPickupDistance(call)
+
+            val result = CallFilter.judge(enrichedCall, this)
+            TtsDeduplicator.recordProcessed(enrichedCall.platform, enrichedCall.price)
+            Log.d("DeliveryNoti", "파싱 결과: price=${enrichedCall.price}, result=${result.verdict} (${result.reason})")
+            FilterLog.record(this, enrichedCall, result, eventId = session?.eventId, sessionState = session?.state?.name)
 
             // Bug 3 fix: CallLogDb에도 기록 (UserModeActivity 표시용)
             val ctx = this
-            val notiPlatform = call.platform; val notiPrice = call.price
-            val notiDist = call.distance; val notiVerdict = result.verdict.name
-            val notiReason = result.reason; val notiStore = call.storeName
-            val notiDest = call.destination; val notiBundleCount = call.bundleCount
-            val notiIsMultiPickup = call.isMultiPickup
-            val notiTotalKm = (call.pickupDistanceKm ?: 0.0) + (notiDist ?: 0.0)
+            val notiPlatform = enrichedCall.platform; val notiPrice = enrichedCall.price
+            val notiDist = enrichedCall.distance; val notiVerdict = result.verdict.name
+            val notiReason = result.reason; val notiStore = enrichedCall.storeName
+            val notiDest = enrichedCall.destination; val notiBundleCount = enrichedCall.bundleCount
+            val notiIsMultiPickup = enrichedCall.isMultiPickup
+            val notiPickupKm = enrichedCall.pickupDistanceKm
+            val notiTotalKm = (notiPickupKm ?: 0.0) + (notiDist ?: 0.0)
             val notiUp = if (notiTotalKm > 0) (notiPrice / notiTotalKm).toInt() else 0
             ioExecutor.execute {
                 try {
@@ -235,34 +240,35 @@ class DeliveryNotificationService : NotificationListenerService() {
                         isMultiPickup = notiIsMultiPickup, storeName = notiStore,
                         destination = notiDest,
                         sourceType = V2Event.mapSourceType(notiPlatform),
-                        parsingMethod = V2Event.PARSING_NOTIFICATION
+                        parsingMethod = V2Event.PARSING_NOTIFICATION,
+                        pickupKm = notiPickupKm
                     )
                 } catch (e: Exception) { Log.w("DeliveryNoti", "DB 저장 실패: ${e.message}") }
             }
 
             // 쿠팡은 알림 = 즉시 finalize
-            if (call.platform == "coupang") {
+            if (enrichedCall.platform == "coupang") {
                 sessionManager?.finalizeActiveSession("notification_complete")
             }
 
             // OnTheWayService의 lastCallDetectedTime도 갱신
             OnTheWayService.instance?.lastCallDetectedTime = now
 
-            if (!TtsDeduplicator.shouldSpeak(call.platform, call.price)) {
-                Log.d("DeliveryNoti", "TtsDeduplicator 중복 스킵: ${call.platform} ${call.price}원")
+            if (!TtsDeduplicator.shouldSpeak(enrichedCall.platform, enrichedCall.price)) {
+                Log.d("DeliveryNoti", "TtsDeduplicator 중복 스킵: ${enrichedCall.platform} ${enrichedCall.price}원")
                 continue
             }
 
             // v3.23: 계기판 철학 — 근거형 메시지
-            val evidenceMsg = OutputController.buildMessage(call, result)
-            val outputMode = OutputController.determineMode(call)
-            Log.d("DeliveryNoti", "근거 출력: ${call.price}원 → \"${evidenceMsg ?: "SILENT"}\"")
+            val evidenceMsg = OutputController.buildMessage(enrichedCall, result)
+            val outputMode = OutputController.determineMode(enrichedCall)
+            Log.d("DeliveryNoti", "근거 출력: ${enrichedCall.price}원 → \"${evidenceMsg ?: "SILENT"}\"")
 
-            CardOverlay.setLastCall(call.platform, call.price)
+            CardOverlay.setLastCall(enrichedCall.platform, enrichedCall.price)
             OutputController.emit(
                 ctx = this,
                 ttsText = evidenceMsg,
-                overlayText = evidenceMsg ?: "${java.text.NumberFormat.getNumberInstance().format(call.price)}원",
+                overlayText = evidenceMsg ?: "${java.text.NumberFormat.getNumberInstance().format(enrichedCall.price)}원",
                 mode = if (evidenceMsg != null) outputMode else OutputMode.OVERLAY_ONLY,
                 tts = tts,
                 ttsReady = ttsReady
@@ -274,6 +280,32 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         // FIX-SELFPING: 배민/쿠팡 알림 처리 후 accessibility health check
         checkAccessibilityHealth(now)
+    }
+
+    /**
+     * FIX-PICKUP-DISTANCE: NLS 경로에서도 픽업 거리 계산.
+     * OnTheWayService의 GPS 좌표 + KakaoGeocoder 활용.
+     */
+    private fun enrichWithPickupDistance(call: DeliveryCall): DeliveryCall {
+        try {
+            val lat = OnTheWayService.currentLat
+            val lng = OnTheWayService.currentLng
+            if (lat == 0.0 || lng == 0.0) return call
+
+            val addr = call.storeName.ifEmpty { call.destination }
+            if (addr.isBlank()) return call
+
+            val straight = KakaoGeocoder.distanceTo(this, lat, lng, addr) ?: return call
+            val road = straight * OnTheWayService.ROAD_DISTANCE_FACTOR
+            // 동일 필터: 50m~10km 범위만 유효
+            if (road < 0.05 || road > 10.0) return call
+
+            Log.d("DeliveryNoti", "NLS 픽업 거리: $addr → ${"%.1f".format(road)}km")
+            return call.copy(pickupDistanceKm = road)
+        } catch (e: Exception) {
+            Log.w("DeliveryNoti", "NLS 픽업 거리 계산 실패: ${e.message}")
+        }
+        return call
     }
 
     /**

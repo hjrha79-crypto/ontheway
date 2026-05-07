@@ -596,6 +596,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             }, lp(0, WC, 1f).apply { marginEnd = dp(6) })
         }
 
+        // FIX-PICKUP-DISTANCE: 픽업 거리 표시 (큰 글씨)
+        val pickupKm = entry.optDouble("pickupKm", -1.0)
+        if (pickupKm > 0) {
+            headerRow.addView(TextView(this).apply {
+                text = "${"%.1f".format(pickupKm)}km"
+                textSize = 13f
+                setTextColor(Color.parseColor("#FFD700"))
+                setTypeface(null, Typeface.BOLD)
+            }, lp(WC, WC).apply { marginEnd = dp(4) })
+        }
+
         headerRow.addView(TextView(this).apply {
             text = "${fmt(price)}원"; textSize = 13f; setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
@@ -727,12 +738,28 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             addInfoRow("배달지", destination)
         }
 
-        // 거리
+        // FIX-PICKUP-DISTANCE: 픽업 거리 표시
+        val pickupKm = entry.optDouble("pickupKm", -1.0)
+        if (pickupKm > 0) {
+            addInfoRow("픽업", "${"%.1f".format(pickupKm)}km")
+        }
+
+        // 거리 (배달 거리)
         if (platformCode == "baemin" && point > 0) {
             val pointKm = BaeminParser.convertPointToKm(point)
-            addInfoRow("거리", "${"%.1f".format(pointKm)}km (${"%.1f".format(point)}P)")
+            addInfoRow("배달", "${"%.1f".format(pointKm)}km (${"%.1f".format(point)}P)")
         } else if (dist >= 0) {
-            addInfoRow("거리", "${"%.1f".format(dist)}km")
+            addInfoRow("배달", "${"%.1f".format(dist)}km")
+        }
+
+        // 총 거리 (픽업 + 배달)
+        if (pickupKm > 0) {
+            val deliveryKm = if (platformCode == "baemin" && point > 0) BaeminParser.convertPointToKm(point)
+                             else if (dist >= 0) dist else 0.0
+            if (deliveryKm > 0) {
+                val totalKm = pickupKm + deliveryKm
+                addInfoRow("총 거리", "${"%.1f".format(totalKm)}km")
+            }
         }
 
         // 금액 + 단가
