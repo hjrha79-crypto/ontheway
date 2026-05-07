@@ -758,4 +758,113 @@ class BaeminParserTest {
         assertTrue(result!!.isNotEmpty())
         assertEquals(2690, result[0].price)
     }
+
+    // ══════════════════════════════════════════════════════
+    // FIX-STORE-NAME: 가게명 추출 4순위 fallback 테스트
+    // ══════════════════════════════════════════════════════
+
+    @Test
+    fun `STORE-1 1순위 픽업지 다음 토큰 추출`() {
+        val texts = listOf(
+            "배민배달", "조리완료", "픽업지", "육참냉면&돈카츠 태전점",
+            "전달지", "경기 광주시", "배달료", "6,090원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("육참냉면&돈카츠 태전점", name)
+    }
+
+    @Test
+    fun `STORE-2 2순위 T2CN 직전 가게명`() {
+        // 픽업지 없음 → 2순위: T2CN 바로 앞
+        val texts = listOf(
+            "배민배달", "조리완료", "서대문 김치찜&김치찌개 광주태전점",
+            "T2CN0000LAF4", "배달료", "2,600원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("서대문 김치찜&김치찌개 광주태전점", name)
+    }
+
+    @Test
+    fun `STORE-3 3순위 배달료 직전 가게명`() {
+        // 픽업지 없음 + T2CN 없음 → 3순위: 배달료 앞
+        val texts = listOf(
+            "배민배달", "조리완료", "호노보노 파스타 식당",
+            "전달지", "경기 광주시", "배달료", "3,120원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        // 1순위 없음 → 2순위(T2CN 없음) → 3순위 배달료 직전
+        assertTrue("호노보노 파스타 식당 추출", name.contains("호노보노"))
+    }
+
+    @Test
+    fun `STORE-4 4순위 조리완료 다음 가게명`() {
+        // 픽업지/T2CN/배달료 직전 모두 실패 → 4순위
+        val texts = listOf(
+            "조리완료", "반찬전문점 조찬소", "15P"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("반찬전문점 조찬소", name)
+    }
+
+    @Test
+    fun `STORE-5 1순위 성공 시 2순위 무시`() {
+        val texts = listOf(
+            "픽업지", "맘스터치 태전점",
+            "GS25 태전점", "T2CN0000LAF4", "배달료", "3,500원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("맘스터치 태전점", name)  // 1순위 우선
+    }
+
+    @Test
+    fun `STORE-6 모든 순위 실패 → 빈 문자열`() {
+        val texts = listOf("배달료", "3,500원", "25P", "30초")
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("", name)
+    }
+
+    @Test
+    fun `STORE-7 가게명 30자 초과 reject`() {
+        val texts = listOf(
+            "픽업지", "아주아주아주아주아주아주아주아주긴가게이름이삼십자를넘으면안됩니다여기까지만",
+            "배달료", "3,500원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("", name)  // 30자 초과 → reject
+    }
+
+    @Test
+    fun `STORE-8 STORE_PATTERN 한자 + 특수문자 통과`() {
+        val texts = listOf(
+            "픽업지", "수秀 곱도리탕 광주점",
+            "배달료", "4,500원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("수秀 곱도리탕 광주점", name)
+    }
+
+    @Test
+    fun `STORE-9 parse 결과에 가게명 포함 (T2CN 직전 2순위)`() {
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼", "배민배달", "조리완료",
+            "KFC 광주태전점", "T2CN0000JLZW",
+            "배달료", "2,300원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertTrue("KFC 포함", result[0].storeName.contains("KFC"))
+    }
+
+    @Test
+    fun `STORE-10 콤마요약 노드 무시하고 개별 노드에서 추출`() {
+        val texts = listOf(
+            "빽다방 태전한아람초점, 경기도 광주시 태봉로 145-1, T2CN0000HQNG, 배달료 2,600원",
+            "빽다방 태전한아람초점",
+            "T2CN0000HQNG",
+            "배달료", "2,600원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("빽다방 태전한아람초점", name)
+    }
 }

@@ -96,7 +96,8 @@ object StoreNameCleaner {
 
     // ── v3.19 Layer 4: 가게명 형태 검증 ──
 
-    private val ALLOWED_CHARS = Regex("^[가-힣a-zA-Z0-9\\s&\\-().]+$")
+    // FIX-STORE-NAME: 한자(秀 등 CJK) + 특수문자(·/') 허용
+    private val ALLOWED_CHARS = Regex("^[가-힣a-zA-Z0-9\\s\\u3400-\\u9FFF&\\-(). '·/]+$")
 
     /** Layer 4: 가게명 형태가 유효한지 */
     fun isValidFormat(name: String): Boolean {

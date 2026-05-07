@@ -176,37 +176,10 @@ object BaeminParser {
             }
         }
 
-        // v3.17: 가게명 추출 — "픽업지" 다음 토큰 우선, 기존 패턴 매칭 보조
-        val UI_LABELS = setOf(
-            "배민배달", "배민커넥트", "픽업지", "전달지", "포인트", "총 합계", "총합계",
-            "모두 거절", "지도앱으로 검색하기", "조리완료", "배차", "배차 수락",
-            "배달료", "수락", "거절"
-        )
-        val UI_PATTERN = Regex("""^\d+(건|초|분)""")
-
-        // 방법1: "픽업지" 다음 토큰 (가장 정확)
-        val pickupIdx = texts.indexOfFirst { it.trim() == "픽업지" }
-        val storeAfterPickup = if (pickupIdx >= 0 && pickupIdx + 1 < texts.size) {
-            val candidate = texts[pickupIdx + 1].trim()
-            if (candidate.isNotBlank() && candidate !in UI_LABELS && !UI_PATTERN.containsMatchIn(candidate)
-                && !PRICE_PATTERN.containsMatchIn(candidate) && !candidate.contains("원") && !candidate.contains("P"))
-                candidate else null
-        } else null
-
-        // 방법2: 기존 패턴 매칭
-        val storeNames = texts.filter { t ->
-            t.trim().let { tt ->
-                tt.length in 2..30 && tt !in UI_LABELS && !UI_PATTERN.containsMatchIn(tt) &&
-                !PRICE_PATTERN.containsMatchIn(tt) &&
-                !tt.contains("배달료") && !tt.contains("원") && !tt.contains("P") &&
-                !tt.contains("배달을") && !tt.contains("신규배차") &&
-                STORE_PATTERN.matches(tt)
-            }
-        }.map { it.trim() }.distinct()
-            .filter { StoreNameCleaner.validateStoreName(it).isNotEmpty() }
-
-        val rawStoreName = storeAfterPickup ?: storeNames.firstOrNull() ?: ""
-        val storeName = sanitizeStoreName(StoreNameCleaner.validateStoreName(rawStoreName))
+        // FIX-STORE-NAME: 가게명 4순위 fallback 추출
+        val storeResult = extractStoreName(texts)
+        val storeName = storeResult.first
+        val storeNames = storeResult.second
 
         // 방법1: "전달지" 다음 토큰 (가장 정확)
         val destIdx = texts.indexOfFirst { it.trim() == "전달지" }
@@ -371,6 +344,112 @@ object BaeminParser {
             }
         }
         return false
+    }
+
+    // ── FIX-STORE-NAME: 가게명 추출 UI 라벨/패턴 ──
+    private val UI_LABELS = setOf(
+        "배민배달", "배민커넥트", "픽업지", "전달지", "포인트", "총 합계", "총합계",
+        "모두 거절", "지도앱으로 검색하기", "조리완료", "배차", "배차 수락",
+        "배달료", "수락", "거절"
+    )
+    private val UI_PATTERN = Regex("""^\d+(건|초|분)""")
+
+    /**
+     * FIX-STORE-NAME: 가게명 4순위 fallback 추출.
+     * @return Pair(storeName, storeNameCandidates)
+     *
+     * 1순위: "픽업지" 다음 토큰 (가장 정확)
+     * 2순위: T2CN 직전 비-UI 가게명 패턴
+     * 3순위: "배달료" 직전 비-UI 가게명 패턴
+     * 4순위: "조리완료"/"배민배달" 다음 가게명 패턴
+     * fallback: 기존 전체 패턴 매칭
+     */
+    fun extractStoreName(texts: List<String>): Pair<String, List<String>> {
+        // 개별 노드만 (콤마구분 요약노드 제외)
+        val nodes = texts.filter { !(it.contains(",") && it.length > 40) }
+
+        fun isStoreCandidate(s: String): Boolean {
+            val t = s.trim()
+            return t.length in 2..30 && t !in UI_LABELS && !UI_PATTERN.containsMatchIn(t) &&
+                !PRICE_PATTERN.containsMatchIn(t) && !t.contains("배달료") &&
+                !t.contains("원") && !t.contains("P") && !t.contains("배달을") &&
+                !t.contains("신규배차") && !ORDER_ID_PATTERN.containsMatchIn(t) &&
+                STORE_PATTERN.matches(t) &&
+                StoreNameCleaner.validateStoreName(t).isNotEmpty()
+        }
+
+        // 1순위: "픽업지" 다음 토큰
+        val pickupIdx = nodes.indexOfFirst { it.trim() == "픽업지" }
+        if (pickupIdx >= 0 && pickupIdx + 1 < nodes.size) {
+            val candidate = nodes[pickupIdx + 1].trim()
+            if (candidate.isNotBlank() && isStoreCandidate(candidate)) {
+                val cleaned = sanitizeStoreName(StoreNameCleaner.validateStoreName(candidate))
+                if (cleaned.isNotEmpty()) {
+                    return cleaned to listOf(cleaned)
+                }
+            }
+        }
+
+        // 2순위: T2CN 직전 가게명 패턴
+        for (i in nodes.indices) {
+            if (ORDER_ID_PATTERN.containsMatchIn(nodes[i].trim())) {
+                // T2CN 앞쪽에서 가장 가까운 가게명 후보
+                for (j in (i - 1) downTo maxOf(0, i - 3)) {
+                    val candidate = nodes[j].trim()
+                    if (isStoreCandidate(candidate)) {
+                        val cleaned = sanitizeStoreName(StoreNameCleaner.validateStoreName(candidate))
+                        if (cleaned.isNotEmpty()) {
+                            OtwFileLogger.log("BaeminParser", "가게명 2순위(T2CN직전): '$cleaned'")
+                            return cleaned to listOf(cleaned)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3순위: "배달료" 직전 비-UI 가게명
+        val deliveryFeeIdx = nodes.indexOfFirst { it.trim() == "배달료" }
+        if (deliveryFeeIdx > 0) {
+            for (j in (deliveryFeeIdx - 1) downTo maxOf(0, deliveryFeeIdx - 4)) {
+                val candidate = nodes[j].trim()
+                if (isStoreCandidate(candidate)) {
+                    val cleaned = sanitizeStoreName(StoreNameCleaner.validateStoreName(candidate))
+                    if (cleaned.isNotEmpty()) {
+                        OtwFileLogger.log("BaeminParser", "가게명 3순위(배달료직전): '$cleaned'")
+                        return cleaned to listOf(cleaned)
+                    }
+                }
+            }
+        }
+
+        // 4순위: "조리완료" 또는 "배민배달" 다음 가게명
+        for (label in listOf("조리완료", "배민배달")) {
+            val labelIdx = nodes.indexOfFirst { it.trim() == label }
+            if (labelIdx >= 0) {
+                for (j in (labelIdx + 1) until minOf(nodes.size, labelIdx + 4)) {
+                    val candidate = nodes[j].trim()
+                    if (candidate == "픽업지" || candidate == "전달지") continue
+                    if (isStoreCandidate(candidate)) {
+                        val cleaned = sanitizeStoreName(StoreNameCleaner.validateStoreName(candidate))
+                        if (cleaned.isNotEmpty()) {
+                            OtwFileLogger.log("BaeminParser", "가게명 4순위($label 다음): '$cleaned'")
+                            return cleaned to listOf(cleaned)
+                        }
+                    }
+                }
+            }
+        }
+
+        // fallback: 전체 노드에서 패턴 매칭 (기존)
+        val allCandidates = nodes.filter { isStoreCandidate(it.trim()) }
+            .map { it.trim() }.distinct()
+        val fallbackName = allCandidates.firstOrNull()?.let {
+            sanitizeStoreName(StoreNameCleaner.validateStoreName(it))
+        } ?: ""
+        if (fallbackName.isNotEmpty()) {
+            OtwFileLogger.log("BaeminParser", "가게명 fallback: '$fallbackName'")
+        }
+        return fallbackName to allCandidates
     }
 
     /**

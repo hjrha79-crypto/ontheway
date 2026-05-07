@@ -130,4 +130,21 @@ class CoupangParserTest {
         assertTrue(result.isNotEmpty())
         assertTrue(result[0].isMulti)
     }
+
+    // ── FIX-STORE-NAME: 쿠팡 가게명 추출 강화 ──
+
+    @Test
+    fun `STORE - 거절 버튼 직전 가게명 추출`() {
+        // 1순위 실패 시 2순위: 거절 직전
+        val texts = listOf("멀티", "3,922원", "거리할증 포함", "배달거리 1.6km", "강다짐삼각김밥 광주점", "거절", "주문 수락\n32초")
+        val name = CoupangParser.extractStoreName(texts, texts.joinToString(" "))
+        assertEquals("강다짐삼각김밥 광주점", name)
+    }
+
+    @Test
+    fun `STORE - extractStoreName 가게명 없음 시 빈 문자열`() {
+        val texts = listOf("3,500원", "배달거리 1.0km", "거절", "주문 수락\n23초")
+        val name = CoupangParser.extractStoreName(texts, texts.joinToString(" "))
+        assertEquals("", name)
+    }
 }

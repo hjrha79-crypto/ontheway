@@ -84,18 +84,8 @@ object CoupangParser {
             return results
         }
 
-        // 가게명 추출: 금액/거리/키워드가 아닌 짧은 한글 텍스트
-        val storeName = texts.firstOrNull { t ->
-            val trimmed = t.trim()
-            trimmed.length in 2..30 &&
-            !trimmed.contains("\n") &&
-            !PRICE_PATTERN.containsMatchIn(trimmed) &&
-            !DISTANCE_PATTERN.containsMatchIn(trimmed) &&
-            !MULTI_PATTERN.containsMatchIn(trimmed) &&
-            !trimmed.contains("km") && !trimmed.contains("원") &&
-            STORE_PATTERN.matches(trimmed) &&
-            !STORE_NAME_BLACKLIST.contains(trimmed)
-        }?.trim() ?: ""
+        // FIX-STORE-NAME: 가게명 추출 강화 (3순위 fallback)
+        val storeName = extractStoreName(texts, joined)
 
         val priceMatch = PRICE_PATTERN.find(joined)
         if (priceMatch != null) {
@@ -157,6 +147,53 @@ object CoupangParser {
         }
 
         return results
+    }
+
+    /**
+     * FIX-STORE-NAME: 가게명 3순위 fallback 추출.
+     * 1순위: 개별 텍스트 노드에서 가게명 패턴 매칭 (기존)
+     * 2순위: "거절" 직전 비-UI 가게명 패턴
+     * 3순위: joined에서 "가게명 X,XXX원" 패턴 추출
+     */
+    fun extractStoreName(texts: List<String>, joined: String): String {
+        fun isStoreCandidate(s: String): Boolean {
+            val t = s.trim()
+            return t.length in 2..30 && !t.contains("\n") &&
+                !PRICE_PATTERN.containsMatchIn(t) &&
+                !DISTANCE_PATTERN.containsMatchIn(t) &&
+                !MULTI_PATTERN.containsMatchIn(t) &&
+                !t.contains("km") && !t.contains("원") &&
+                STORE_PATTERN.matches(t) &&
+                !STORE_NAME_BLACKLIST.contains(t)
+        }
+
+        // 1순위: 개별 노드 패턴 매칭 (기존)
+        val fromNodes = texts.firstOrNull { isStoreCandidate(it.trim()) }?.trim()
+        if (!fromNodes.isNullOrEmpty()) return fromNodes
+
+        // 2순위: "거절" 또는 "주문 수락" 직전 가게명
+        for (buttonText in CALL_SCREEN_BUTTONS) {
+            val btnIdx = texts.indexOfFirst { it.trim().startsWith(buttonText) }
+            if (btnIdx > 0) {
+                for (j in (btnIdx - 1) downTo maxOf(0, btnIdx - 4)) {
+                    val candidate = texts[j].trim()
+                    if (isStoreCandidate(candidate)) {
+                        OtwFileLogger.log("CoupangParser", "가게명 2순위(버튼직전): '$candidate'")
+                        return candidate
+                    }
+                }
+            }
+        }
+
+        // 3순위: joined에서 "가게명 X,XXX원" 앞부분 추출
+        val storeBeforePrice = Regex("([가-힣a-zA-Z0-9\\s&.]+?)\\s+[\\d,]+\\s*원")
+            .find(joined)?.groupValues?.get(1)?.trim()
+        if (storeBeforePrice != null && isStoreCandidate(storeBeforePrice)) {
+            OtwFileLogger.log("CoupangParser", "가게명 3순위(가격앞): '$storeBeforePrice'")
+            return storeBeforePrice
+        }
+
+        return ""
     }
 
     /**
