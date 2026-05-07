@@ -1199,7 +1199,8 @@ class OnTheWayService : AccessibilityService() {
         CrossSourceDedup.markProcessed(
             eventId = callSessionEvt?.eventId, orderId = call.orderId,
             platform = call.platform, price = call.price,
-            storeName = call.storeName)
+            storeName = call.storeName,
+            source = CrossSourceDedup.SOURCE_A11Y)
         lastDeliveryReason = result.reason
         lastDeliverySessionId = callSessionEvt?.eventId
         // 내부 verdict (데이터/JudgmentMatch용 — 사용자에게는 노출 X)

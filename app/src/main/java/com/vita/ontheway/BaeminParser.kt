@@ -602,6 +602,15 @@ object BaeminParser {
         return km
     }
 
+    /**
+     * FIX-NLS-ORDERID: NLS 알림 텍스트에서 배민 주문번호(T2C...) 추출.
+     * 알림에 orderId가 없을 수 있음 → null 정상.
+     */
+    fun parseNlsOrderId(text: String): String? {
+        if (text.isBlank()) return null
+        return ORDER_ID_PATTERN.find(text)?.value
+    }
+
     /** 고객 요청사항 키워드 */
     private val CUSTOMER_REQUEST_KEYWORDS = listOf(
         "문 앞", "초인종", "벨", "놓아", "비밀번호", "놓고", "두고",

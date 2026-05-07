@@ -196,10 +196,11 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         // 판정 + TTS
         for (call in calls) {
-            // FIX-NLS-CROSS-SOURCE-DEDUP: cross-source dedup (eventId/orderId 우선)
+            // FIX-NLS-CROSS-SOURCE-DEDUP + PP-GUARD: cross-source dedup
             if (CrossSourceDedup.isProcessed(
                     orderId = call.orderId, platform = call.platform,
-                    price = call.price, storeName = call.storeName)) {
+                    price = call.price, storeName = call.storeName,
+                    source = CrossSourceDedup.SOURCE_NLS)) {
                 Log.d("DeliveryNoti", "CrossSourceDedup → 알림 스킵: ${call.platform} ${call.price}원")
                 DropReason.recordDrop(DropReason.DROP_DUPLICATE, "cross_source_dedup ${call.platform}_${call.price}")
                 continue
@@ -229,7 +230,8 @@ class DeliveryNotificationService : NotificationListenerService() {
             CrossSourceDedup.markProcessed(
                 eventId = session?.eventId, orderId = enrichedCall.orderId,
                 platform = enrichedCall.platform, price = enrichedCall.price,
-                storeName = enrichedCall.storeName)
+                storeName = enrichedCall.storeName,
+                source = CrossSourceDedup.SOURCE_NLS)
             Log.d("DeliveryNoti", "파싱 결과: price=${enrichedCall.price}, result=${result.verdict} (${result.reason})")
             FilterLog.record(this, enrichedCall, result, eventId = session?.eventId, sessionState = session?.state?.name)
 
@@ -539,10 +541,14 @@ class DeliveryNotificationService : NotificationListenerService() {
         // 묶음 감지: "[N건 묶음]" 패턴
         val isMulti = text.contains("묶음")
 
+        // FIX-NLS-ORDERID: 알림 텍스트에서 orderId 추출 시도
+        val orderId = BaeminParser.parseNlsOrderId(text)
+
         return listOf(DeliveryCall(
             price = price, distance = nlsDistance, isMulti = isMulti,
             platform = "baemin", rawText = text,
             storeName = storeName,
+            orderId = orderId,
             parsingMethod = V2Event.PARSING_NOTIFICATION
         ))
     }
