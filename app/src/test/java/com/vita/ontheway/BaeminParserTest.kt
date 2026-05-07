@@ -1039,6 +1039,23 @@ class BaeminParserTest {
         assertNull(BaeminParser.parseNlsDistance(""))
     }
 
+    // ══ FIX-NLS-DISTANCE-V2: upper bound ══
+
+    @Test
+    fun `NLS-DIST-V2-1 50km 초과 차단`() {
+        assertNull(BaeminParser.parseNlsDistance("[1건 단일] 3,740원 / 99km"))
+    }
+
+    @Test
+    fun `NLS-DIST-V2-2 정확히 50km = 통과`() {
+        assertEquals(50.0, BaeminParser.parseNlsDistance("[1건 단일] 5,000원 / 50km")!!, 0.01)
+    }
+
+    @Test
+    fun `NLS-DIST-V2-3 정상 범위 0_7km 통과 (regression)`() {
+        assertEquals(0.7, BaeminParser.parseNlsDistance("[1건 단일] 2,700원 / 0.7km오후 4:49주문을 수락해주세요.")!!, 0.01)
+    }
+
     // ══ FIX-MULTI-DETAIL-VIEW: 상세보기 멀티 오인식 차단 ══
 
     @Test

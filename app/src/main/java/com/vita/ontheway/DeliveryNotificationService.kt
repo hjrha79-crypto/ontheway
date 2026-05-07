@@ -287,11 +287,10 @@ class DeliveryNotificationService : NotificationListenerService() {
      * OnTheWayService의 GPS 좌표 + KakaoGeocoder 활용.
      */
     private fun enrichWithPickupDistance(call: DeliveryCall): DeliveryCall {
-        // FIX-NLS-DISTANCE: NLS 거리가 이미 있으면 GPS 계산 skip (배민 자체 거리가 더 정확)
-        if (call.distance != null && call.distance > 0 && call.platform == "baemin") {
-            Log.d("DeliveryNoti", "NLS 거리 있음 (${call.distance}km) → GPS 계산 skip")
-            return call
-        }
+        // FIX-NLS-DISTANCE-V2: NLS 거리(총거리)와 GPS 픽업거리는 별도 필드
+        // NLS distance = call.distance (단가 판정용, 총거리)
+        // GPS pickup = call.pickupDistanceKm (UI/TTS 픽업 표시용)
+        // → 둘 다 계산, skip 하지 않음
 
         try {
             val lat = OnTheWayService.currentLat

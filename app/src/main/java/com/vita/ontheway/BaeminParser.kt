@@ -579,11 +579,14 @@ object BaeminParser {
      * 배민 자체 표기 거리 — 내위치→가게→배달지 총 거리, 100% 정확.
      * @return 거리(km) 또는 null (추출 실패)
      */
+    private const val NLS_DISTANCE_MAX_KM = 50.0
+
     fun parseNlsDistance(text: String): Double? {
         if (text.isBlank()) return null
         val match = NLS_DISTANCE_PATTERN.find(text) ?: return null
         val km = match.groupValues[1].toDoubleOrNull() ?: return null
-        if (km <= 0.0) return null
+        // FIX-NLS-DISTANCE-V2: 0km 이하 또는 50km 초과 = 비현실적 → null (GPS fallback)
+        if (km <= 0.0 || km > NLS_DISTANCE_MAX_KM) return null
         return km
     }
 
