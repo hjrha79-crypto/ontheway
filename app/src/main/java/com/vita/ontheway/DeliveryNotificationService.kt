@@ -183,7 +183,7 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         // 플랫폼별 파싱 (배민 + 쿠팡 병행)
         val calls = when (pkg) {
-            PKG_BAEMIN -> parseBaeminNotification(combined)
+            PKG_BAEMIN -> parseBaeminNotification(combined, title, text)
             PKG_COUPANG -> parseCoupangNotification(combined)
             else -> emptyList()
         }
@@ -389,11 +389,49 @@ class DeliveryNotificationService : NotificationListenerService() {
             .find(text)?.groupValues?.get(1)?.toDoubleOrNull()
         val isMulti = text.contains("멀티") || text.contains("주문 두 건")
 
+        // FIX-STORE-NAME-V2: 쿠팡 알림에서 가게명 추출
+        // "멀티 [가게명] [가격]원" 또는 "[가게명] [가격]원" 패턴
+        val storeName = extractCoupangStoreFromNotif(text, price)
+
         return listOf(DeliveryCall(
             price = price, distance = distance, isMulti = isMulti,
             platform = "coupang", rawText = text,
+            storeName = storeName,
             parsingMethod = V2Event.PARSING_NOTIFICATION
         ))
+    }
+
+    /** FIX-STORE-NAME-V2: 쿠팡 알림에서 가게명 추출 */
+    private fun extractCoupangStoreFromNotif(text: String, price: Int): String {
+        // "멀티 [가게명] X,XXX원" 패턴: 가격 직전 한글 토큰
+        val priceStr = java.text.NumberFormat.getNumberInstance().format(price) + "원"
+        val idx = text.indexOf(priceStr)
+        if (idx < 0) {
+            // comma 없는 형태도 시도
+            val idx2 = text.indexOf("${price}원")
+            if (idx2 > 0) {
+                val before = text.substring(0, idx2).trim()
+                return extractLastStoreToken(before)
+            }
+            return ""
+        }
+        val before = text.substring(0, idx).trim()
+        return extractLastStoreToken(before)
+    }
+
+    private fun extractLastStoreToken(before: String): String {
+        // "멀티 페리카나 오포점" → "페리카나 오포점"
+        // 끝에서 한글+영문+숫자+공백+특수문자로 된 가게명 추출
+        val candidate = before
+            .replace(Regex("^(멀티|단일|일반|대량 주문,?)\\s*"), "")
+            .trim()
+        if (candidate.length in 2..30 &&
+            Regex("[가-힣a-zA-Z]").containsMatchIn(candidate) &&
+            !candidate.contains("거리할증") && !candidate.contains("지원금")) {
+            Log.d("DeliveryNoti", "쿠팡 알림 가게명: '$candidate'")
+            return candidate
+        }
+        return ""
     }
 
     /** v3.20: 쿠팡 알림 원문 로깅 (가게명 추출 데이터 수집용) */
@@ -427,17 +465,71 @@ class DeliveryNotificationService : NotificationListenerService() {
     }
 
     // ── 배민 알림 파싱 ──
-    private fun parseBaeminNotification(text: String): List<DeliveryCall> {
+    // FIX-STORE-NAME-V2: 배민 알림에서 가게명 추출 패턴
+    private val BAEMIN_NOTIF_STORE_PATTERN = Regex("""픽업지\s*[:\s]*([가-힣a-zA-Z0-9\s&/·\-.(),']{2,30})""")
+
+    private fun parseBaeminNotification(text: String, title: String = "", body: String = ""): List<DeliveryCall> {
+        // FIX-STORE-NAME-V2: 배민 알림 원문 로깅 (coupang과 동일)
+        logBaeminNotifRaw(text)
+
         // "배달료 7,010원" 또는 "7,010원"
         val priceMatch = Regex("(?:배달료\\s*)?([\\d,]+)\\s*원").find(text) ?: return emptyList()
         val price = priceMatch.groupValues[1].replace(",", "").toIntOrNull() ?: return emptyList()
         if (price !in 500..100000) return emptyList()
 
+        // FIX-STORE-NAME-V2: 알림 텍스트에서 가게명 추출 (title 우선)
+        val storeName = extractStoreFromNotification(text, title)
+
         return listOf(DeliveryCall(
             price = price, distance = null, isMulti = false,
             platform = "baemin", rawText = text,
+            storeName = storeName,
             parsingMethod = V2Event.PARSING_NOTIFICATION
         ))
+    }
+
+    /** FIX-STORE-NAME-V2: 배민 알림 텍스트에서 가게명 추출 */
+    private fun extractStoreFromNotification(text: String, title: String = ""): String {
+        // 1. "픽업지: [가게명]" 또는 "픽업지 [가게명]" 패턴
+        val match = BAEMIN_NOTIF_STORE_PATTERN.find(text)
+        if (match != null) {
+            val candidate = match.groupValues[1].trim()
+            if (candidate.isNotBlank() && !BaeminParser.isBlacklistedPattern(candidate)) {
+                Log.d("DeliveryNoti", "배민 알림 가게명(픽업지): '$candidate'")
+                return candidate
+            }
+        }
+        // 2. title이 가게명일 수 있음 (배민 알림: title="가게명", text="배달료 X원")
+        if (title.isNotBlank() && title.length in 2..30 &&
+            !title.contains("배민") && !title.contains("알림") &&
+            !title.contains("원") && !BaeminParser.isBlacklistedPattern(title) &&
+            Regex("[가-힣a-zA-Z]").containsMatchIn(title)) {
+            Log.d("DeliveryNoti", "배민 알림 가게명(title): '$title'")
+            return title
+        }
+        return ""
+    }
+
+    /** FIX-STORE-NAME-V2: 배민 알림 원문 로깅 */
+    private fun logBaeminNotifRaw(text: String) {
+        val entryStr = try {
+            JSONObject().apply {
+                put("ts", System.currentTimeMillis())
+                put("pkg", PKG_BAEMIN)
+                put("text", text)
+            }.toString()
+        } catch (e: Exception) { return }
+        val dir = filesDir
+        ioExecutor.execute {
+            try {
+                val file = File(dir, "baemin_notif_raw.jsonl")
+                file.appendText(entryStr + "\n")
+                val lines = file.readLines()
+                if (lines.size > 200) {
+                    file.writeText(lines.takeLast(200).joinToString("\n") + "\n")
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     private fun speakTts(text: String) {

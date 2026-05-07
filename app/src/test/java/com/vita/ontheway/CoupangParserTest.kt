@@ -173,4 +173,23 @@ class CoupangParserTest {
         assertTrue(result.isNotEmpty())
         assertEquals("BHC", result[0].storeName)
     }
+
+    // ── FIX-STORE-NAME-V2: "일반" 태그 차단 + 가게명 추출 ──
+
+    @Test
+    fun `V2 - 일반 태그 차단 후 정상 가게명 추출`() {
+        val texts = listOf("일반", "청담화덕족발 광주고산점", "6,630원", "거리할증 포함", "배달거리 5.4km(실제경로)", "거절", "주문 수락\n24초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertEquals("청담화덕족발 광주고산점", result[0].storeName)
+    }
+
+    @Test
+    fun `V2 - 멀티 태그 + 가게명 + 가격 순서`() {
+        val texts = listOf("멀티", "페리카나 오포점", "4,199원", "거리할증 · 지원금 포함", "배달거리 3.3km(실제경로)", "거절", "주문 수락\n31초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertEquals("페리카나 오포점", result[0].storeName)
+        assertTrue(result[0].isMulti)
+    }
 }

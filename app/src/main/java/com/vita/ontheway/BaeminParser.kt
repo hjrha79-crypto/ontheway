@@ -359,14 +359,22 @@ object BaeminParser {
     )
     private val UI_PATTERN = Regex("""^\d+(건|초|분)""")
 
+    // FIX-STORE-NAME-V2: 콤마구분 요약노드에서 "픽업지" 다음 세그먼트 추출
+    private val SUMMARY_PICKUP_PATTERN = Regex("""픽업지\s*,\s*([^,]+?)(?:\s*,\s*전달지|\s*,\s*경기|\s*,\s*서울|\s*,\s*광주|\s*,\s*부산|\s*,\s*대구|\s*,\s*인천|\s*,\s*대전|\s*,\s*울산|\s*,\s*세종|\s*,\s*강원|\s*,\s*충북|\s*,\s*충남|\s*,\s*전북|\s*,\s*전남|\s*,\s*경북|\s*,\s*경남|\s*,\s*제주|\s*$)""")
+
+    // FIX-STORE-NAME-V2: "가게명, 주소, T2CN..., 배달료" 패턴에서 가게명 추출
+    private val STORE_BEFORE_ADDRESS_PATTERN = Regex("""([가-힣a-zA-Z0-9\s&/·\-.(),']{2,30})\s*,\s*(?:경기도?|서울|광주|부산|대구|인천|대전|울산|세종|강원|충북|충남|전북|전남|경북|경남|제주)""")
+
     /**
-     * FIX-STORE-NAME: 가게명 4순위 fallback 추출.
+     * FIX-STORE-NAME-V2: 가게명 7순위 fallback 추출.
      * @return Pair(storeName, storeNameCandidates)
      *
      * 1순위: "픽업지" 다음 토큰 (가장 정확)
      * 2순위: T2CN 직전 비-UI 가게명 패턴
      * 3순위: "배달료" 직전 비-UI 가게명 패턴
      * 4순위: "조리완료"/"배민배달" 다음 가게명 패턴
+     * 5순위: 콤마구분 요약노드에서 "픽업지," 다음 세그먼트 (v2)
+     * 6순위: rawText에서 "가게명, 주소(경기도/서울...)" 패턴 (v2)
      * fallback: 기존 전체 패턴 매칭
      */
     fun extractStoreName(texts: List<String>): Pair<String, List<String>> {
@@ -441,6 +449,36 @@ object BaeminParser {
                             return cleaned to listOf(cleaned)
                         }
                     }
+                }
+            }
+        }
+
+        // 5순위 (v2): 콤마구분 요약노드에서 "픽업지," 다음 세그먼트
+        val summaryNodes = texts.filter { it.contains(",") && it.length > 40 }
+        for (summary in summaryNodes) {
+            val match = SUMMARY_PICKUP_PATTERN.find(summary)
+            if (match != null) {
+                val candidate = match.groupValues[1].trim()
+                if (candidate.isNotBlank() && isStoreCandidate(candidate)) {
+                    val cleaned = sanitizeStoreName(StoreNameCleaner.validateStoreName(candidate))
+                    if (cleaned.isNotEmpty()) {
+                        OtwFileLogger.log("BaeminParser", "가게명 5순위(요약노드): '$cleaned'")
+                        return cleaned to listOf(cleaned)
+                    }
+                }
+            }
+        }
+
+        // 6순위 (v2): rawText에서 "가게명, 주소(경기도/서울...)" 패턴
+        val joined = texts.joinToString(" ")
+        val addrMatch = STORE_BEFORE_ADDRESS_PATTERN.find(joined)
+        if (addrMatch != null) {
+            val candidate = addrMatch.groupValues[1].trim()
+            if (candidate.isNotBlank() && isStoreCandidate(candidate)) {
+                val cleaned = sanitizeStoreName(StoreNameCleaner.validateStoreName(candidate))
+                if (cleaned.isNotEmpty()) {
+                    OtwFileLogger.log("BaeminParser", "가게명 6순위(주소앞): '$cleaned'")
+                    return cleaned to listOf(cleaned)
                 }
             }
         }

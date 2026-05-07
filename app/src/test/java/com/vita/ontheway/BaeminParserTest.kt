@@ -894,4 +894,112 @@ class BaeminParserTest {
     fun `BL-5 BHC 영문 가게명 정상 통과`() {
         assertFalse(BaeminParser.isBlacklistedPattern("BHC"))
     }
+
+    // ══ FIX-STORE-NAME-V2: 5순위 요약노드 + 6순위 주소앞 패턴 ══
+
+    @Test
+    fun `V2-1 요약노드에서 픽업지 다음 가게명 추출 (5순위)`() {
+        // 개별 노드 없이 요약노드만 있는 케이스
+        val texts = listOf(
+            "배민배달, 조리완료, 픽업지, 맘스터치 BEEF 광주태전중앙로점, 전달지, 경기 광주시 태전동, 포인트, 25P",
+            "배달료", "3,500원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("맘스터치 BEEF 광주태전중앙로점", name)
+    }
+
+    @Test
+    fun `V2-2 요약노드에서 KFC 추출 (5순위)`() {
+        val texts = listOf(
+            "배민배달, 조리완료, 픽업지, KFC 광주태전점, 전달지, 경기 광주시 태봉로, 포인트, 30P",
+            "배달료", "2,300원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("KFC 광주태전점", name)
+    }
+
+    @Test
+    fun `V2-3 요약노드 서대문 특수문자 포함 가게명 (5순위)`() {
+        val texts = listOf(
+            "배민배달, 조리완료, 픽업지, 서대문 김치찜&김치찌개 광주태전점, 전달지, 경기 광주시, 포인트, 20P",
+            "배달료", "2,600원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("서대문 김치찜&김치찌개 광주태전점", name)
+    }
+
+    @Test
+    fun `V2-4 주소앞 패턴으로 가게명 추출 (6순위)`() {
+        // 요약노드도 없고 개별 노드도 없지만 "가게명, 경기도..." 패턴
+        val texts = listOf(
+            "밥풀릭스 광주태전점, 경기도 광주시 태봉로13번길 8 1층 105호",
+            "T2CN00015ERE", "배달료 3,700원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("밥풀릭스 광주태전점", name)
+    }
+
+    @Test
+    fun `V2-5 반찬전문점 조찬소 주소앞 패턴 (6순위)`() {
+        val texts = listOf(
+            "반찬전문점 조찬소, 경기도 광주시 태봉로 145-8",
+            "T2CN0000L8PR", "배달료 2,690원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("반찬전문점 조찬소", name)
+    }
+
+    @Test
+    fun `V2-6 굽네치킨&피자 특수문자 포함 (6순위)`() {
+        val texts = listOf(
+            "굽네치킨&피자 광주오포점, 경기도 광주시 고산길 17-2",
+            "T2CN0000J54R", "배달료 2,890원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("굽네치킨&피자 광주오포점", name)
+    }
+
+    @Test
+    fun `V2-7 개별노드 있으면 1순위 우선 (5순위 미사용)`() {
+        val texts = listOf(
+            "배민배달, 조리완료, 픽업지, 육참냉면&돈카츠 태전점, 전달지, 경기 광주시, 포인트, 25P",
+            "배민배달", "조리완료", "픽업지", "육참냉면&돈카츠 태전점",
+            "전달지", "배달료", "6,090원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("육참냉면&돈카츠 태전점", name)
+    }
+
+    @Test
+    fun `V2-8 sparse tree에서 배달료만 있는 케이스 - 빈 문자열`() {
+        // 실제 sparse tree: 가게명 데이터 없음
+        val texts = listOf(
+            "지도앱으로 검색하기", "배달료 3,700원", "배달 이어서 하기"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("", name)
+    }
+
+    @Test
+    fun `V2-9 parse에서 요약노드 5순위 가게명 전달`() {
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "배민배달, 조리완료, 픽업지, 호노보노 파스타 식당, 전달지, 경기 광주시, 포인트, 30P",
+            "배달료", "3,120원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertEquals("호노보노 파스타 식당", result[0].storeName)
+    }
+
+    @Test
+    fun `V2-10 false positive 방지 - 주소가 가게명으로 추출 안됨`() {
+        val texts = listOf(
+            "경기 광주시 오포안로 402-6, 경기도 광주시",
+            "T2CN00015ERE", "배달료 3,700원"
+        )
+        val (name, _) = BaeminParser.extractStoreName(texts)
+        assertEquals("", name)  // 주소는 가게명이 아님
+    }
 }
