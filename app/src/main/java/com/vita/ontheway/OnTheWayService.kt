@@ -283,12 +283,16 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
-        // v3.3: 배달 완료 감지
+        // v3.3: 배달 완료 / 픽업 완료 감지
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val evTexts = event.text?.joinToString(" ") ?: ""
             if (evTexts.contains("배달 완료") || evTexts.contains("배달완료") || evTexts.contains("배달이 완료되었습니다")) {
                 onDeliveryComplete()
+            }
+            // FIX-TTS-DELIVERY-FLOW: 시나리오 E - 픽업 완료 감지
+            if (evTexts.contains("픽업 완료") || evTexts.contains("수령 완료") || evTexts.contains("출발")) {
+                try { DeliveryFlowManager.onMultiPickupComplete() } catch (_: Exception) {}
             }
             // v3.20: 배달 시작 감지 (AcceptDetectionLogger)
             if (FeatureFlags.acceptLoggerEnabled && evTexts.isNotBlank()) {
@@ -694,6 +698,9 @@ class OnTheWayService : AccessibilityService() {
 
         // GPS 근접 TTS 타겟 설정
         try { setProximityTarget(call, platform) } catch (_: Exception) {}
+
+        // FIX-TTS-DELIVERY-FLOW: 배달 큐 설정
+        try { DeliveryFlowManager.onAccepted(call, lastCustomerRequest) } catch (_: Exception) {}
 
         // 수익 트래킹
         EarningsTracker.recordAccept(this, price, platform)
@@ -1389,10 +1396,13 @@ class OnTheWayService : AccessibilityService() {
     /** v3.3: 배달 완료 감지 시 처리 */
     private fun onDeliveryComplete() {
         try { ProximityDetector.clearTarget() } catch (_: Exception) {}
+
+        // FIX-TTS-DELIVERY-FLOW: 시나리오 D - 다음 배달지 안내 (기존 earnings TTS 대체)
+        try { DeliveryFlowManager.onDeliveryComplete() } catch (_: Exception) {}
+
         if (!AdvancedPrefs.isDeliveryCompleteEnabled(this)) return
         val earnings = EarningsTracker.getToday(this)
-        val fmt = java.text.NumberFormat.getNumberInstance()
-        speakTts("완료. 오늘 ${earnings.acceptedCount}건, ${toKoreanNumber(earnings.totalRevenue)}원")
+        speakTts("완료, ${earnings.acceptedCount}건, ${toKoreanNumber(earnings.totalRevenue)}원")
         Log.d("OnTheWay", "배달 완료 감지")
 
         // 소요시간 기록
@@ -1545,6 +1555,9 @@ class OnTheWayService : AccessibilityService() {
 
         // GPS 근접 TTS 리스너 설정
         try { setupProximityListener() } catch (_: Exception) {}
+
+        // FIX-TTS-DELIVERY-FLOW: 배달 흐름 TTS 콜백 설정
+        DeliveryFlowManager.speakCallback = { msg -> speakTts(msg) }
 
         Log.d("OnTheWay", "OnTheWay 서비스 시작")
     }
@@ -1719,22 +1732,9 @@ class OnTheWayService : AccessibilityService() {
                 }
                 ProximityDetector.ProximityEvent.DELIVERY_NEAR -> {
                     if (FeatureFlags.ttsPreset.ordinal >= TtsPreset.MEDIUM.ordinal) {
-                        val msg = if (!target.customerRequest.isNullOrBlank()) {
-                            target.customerRequest
-                        } else {
-                            "배달 도착"
-                        }
-                        speakTts(msg)
-                        OtwFileLogger.log("ProximityTTS", "DELIVERY_NEAR TTS: \"$msg\" (${target.storeName})")
-
-                        // 멀티콜 + 첫 배달지 근접 → "다음 [두번째가게명]"
-                        if (FeatureFlags.ttsPreset.ordinal >= TtsPreset.HIGH.ordinal &&
-                            !target.nextStoreName.isNullOrBlank()) {
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                speakTts("다음 ${target.nextStoreName}")
-                                OtwFileLogger.log("ProximityTTS", "멀티콜 다음: ${target.nextStoreName}")
-                            }, 2000)
-                        }
+                        // FIX-TTS-DELIVERY-FLOW: DeliveryFlowManager 경유 (시나리오 B + C 리마인더)
+                        try { DeliveryFlowManager.onDeliveryNear() } catch (_: Exception) {}
+                        OtwFileLogger.log("ProximityTTS", "DELIVERY_NEAR → DeliveryFlow (${target.storeName})")
                     }
                 }
             }
@@ -1784,6 +1784,8 @@ class OnTheWayService : AccessibilityService() {
         try { CardOverlay.hide() } catch (e: Exception) {}
         BaeminBundleSession.reset()
         bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
+        DeliveryFlowManager.clearState()
+        DeliveryFlowManager.speakCallback = null
         try { dbExecutor.shutdown() } catch (_: Exception) {}
         super.onDestroy()
     }
