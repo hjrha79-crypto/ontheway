@@ -569,6 +569,24 @@ object BaeminParser {
         return POINT_PATTERN.find(joined)?.groupValues?.get(1)?.toDoubleOrNull()
     }
 
+    // FIX-NLS-DISTANCE: 배민 알림 텍스트 거리 추출
+    // 형식: "[1건 단일] 2,700원 / 0.7km오후 4:49주문을 수락해주세요."
+    // 또는: "[2건 묶음] 12,123원 / 7.6km오전 11:56..."
+    private val NLS_DISTANCE_PATTERN = Regex("""[\d,]+\s*원\s*/\s*(\d+(?:\.\d+)?)\s*km""")
+
+    /**
+     * FIX-NLS-DISTANCE: 배민 NLS 알림 텍스트에서 거리(km) 추출.
+     * 배민 자체 표기 거리 — 내위치→가게→배달지 총 거리, 100% 정확.
+     * @return 거리(km) 또는 null (추출 실패)
+     */
+    fun parseNlsDistance(text: String): Double? {
+        if (text.isBlank()) return null
+        val match = NLS_DISTANCE_PATTERN.find(text) ?: return null
+        val km = match.groupValues[1].toDoubleOrNull() ?: return null
+        if (km <= 0.0) return null
+        return km
+    }
+
     /** 고객 요청사항 키워드 */
     private val CUSTOMER_REQUEST_KEYWORDS = listOf(
         "문 앞", "초인종", "벨", "놓아", "비밀번호", "놓고", "두고",

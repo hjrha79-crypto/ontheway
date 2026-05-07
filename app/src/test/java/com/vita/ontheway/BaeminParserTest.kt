@@ -1003,6 +1003,42 @@ class BaeminParserTest {
         assertEquals("", name)  // 주소는 가게명이 아님
     }
 
+    // ══ FIX-NLS-DISTANCE: 배민 NLS 알림 거리 추출 ══
+
+    @Test
+    fun `NLS-DIST-1 단건 거리 추출`() {
+        val text = "[1건 단일] 2,700원 / 0.7km오후 4:49주문을 수락해주세요."
+        assertEquals(0.7, BaeminParser.parseNlsDistance(text)!!, 0.01)
+    }
+
+    @Test
+    fun `NLS-DIST-2 묶음 거리 추출`() {
+        val text = "[2건 묶음] 12,123원 / 7.6km오전 11:56주문을 수락해주세요."
+        assertEquals(7.6, BaeminParser.parseNlsDistance(text)!!, 0.01)
+    }
+
+    @Test
+    fun `NLS-DIST-3 소수점 거리`() {
+        val text = "[1건 단일] 3,740원 / 3.4km"
+        assertEquals(3.4, BaeminParser.parseNlsDistance(text)!!, 0.01)
+    }
+
+    @Test
+    fun `NLS-DIST-4 정수 거리`() {
+        val text = "[1건 단일] 5,000원 / 2km오후 5:30주문을 수락해주세요."
+        assertEquals(2.0, BaeminParser.parseNlsDistance(text)!!, 0.01)
+    }
+
+    @Test
+    fun `NLS-DIST-5 거리 없는 텍스트 = null`() {
+        assertNull(BaeminParser.parseNlsDistance("주문이 도착했습니다"))
+    }
+
+    @Test
+    fun `NLS-DIST-6 빈 텍스트 = null`() {
+        assertNull(BaeminParser.parseNlsDistance(""))
+    }
+
     // ══ FIX-MULTI-DETAIL-VIEW: 상세보기 멀티 오인식 차단 ══
 
     @Test

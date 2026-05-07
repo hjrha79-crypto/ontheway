@@ -287,6 +287,12 @@ class DeliveryNotificationService : NotificationListenerService() {
      * OnTheWayService의 GPS 좌표 + KakaoGeocoder 활용.
      */
     private fun enrichWithPickupDistance(call: DeliveryCall): DeliveryCall {
+        // FIX-NLS-DISTANCE: NLS 거리가 이미 있으면 GPS 계산 skip (배민 자체 거리가 더 정확)
+        if (call.distance != null && call.distance > 0 && call.platform == "baemin") {
+            Log.d("DeliveryNoti", "NLS 거리 있음 (${call.distance}km) → GPS 계산 skip")
+            return call
+        }
+
         try {
             val lat = OnTheWayService.currentLat
             val lng = OnTheWayService.currentLng
@@ -300,10 +306,10 @@ class DeliveryNotificationService : NotificationListenerService() {
             // 동일 필터: 50m~10km 범위만 유효
             if (road < 0.05 || road > 10.0) return call
 
-            Log.d("DeliveryNoti", "NLS 픽업 거리: $addr → ${"%.1f".format(road)}km")
+            Log.d("DeliveryNoti", "GPS 픽업 거리: $addr → ${"%.1f".format(road)}km")
             return call.copy(pickupDistanceKm = road)
         } catch (e: Exception) {
-            Log.w("DeliveryNoti", "NLS 픽업 거리 계산 실패: ${e.message}")
+            Log.w("DeliveryNoti", "GPS 픽업 거리 계산 실패: ${e.message}")
         }
         return call
     }
@@ -512,8 +518,17 @@ class DeliveryNotificationService : NotificationListenerService() {
         // FIX-STORE-NAME-V2: 알림 텍스트에서 가게명 추출 (title 우선)
         val storeName = extractStoreFromNotification(text, title)
 
+        // FIX-NLS-DISTANCE: 알림 텍스트에서 거리 추출 (배민 자체 표기, 100% 정확)
+        val nlsDistance = BaeminParser.parseNlsDistance(text)
+        if (nlsDistance != null) {
+            Log.d("DeliveryNoti", "배민 NLS 거리: ${nlsDistance}km")
+        }
+
+        // 묶음 감지: "[N건 묶음]" 패턴
+        val isMulti = text.contains("묶음")
+
         return listOf(DeliveryCall(
-            price = price, distance = null, isMulti = false,
+            price = price, distance = nlsDistance, isMulti = isMulti,
             platform = "baemin", rawText = text,
             storeName = storeName,
             parsingMethod = V2Event.PARSING_NOTIFICATION
