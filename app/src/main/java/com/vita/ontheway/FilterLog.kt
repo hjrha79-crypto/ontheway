@@ -116,8 +116,10 @@ object FilterLog {
         for (i in 0 until entries.length()) {
             val e = entries.getJSONObject(i)
             if (e.getLong("ts") < todayStart) continue
+            // FIX-AUDIT-ACCEPTED-EXCLUDE: ACCEPTED 마커는 감지 카운트에서 제외
+            if (e.optString("verdict", "") == "ACCEPTED") continue
             total++
-            if (e.getString("verdict") == "REJECT") rejected++ else accepted++
+            if (e.optString("verdict", "") == "REJECT") rejected++ else accepted++
         }
         return "오늘: ${total}건 (통과 ${accepted} / 필터 ${rejected})"
     }
@@ -141,9 +143,36 @@ object FilterLog {
         for (i in 0 until entries.length()) {
             val e = entries.getJSONObject(i)
             if (e.getLong("ts") < todayStart) continue
+            // FIX-AUDIT-ACCEPTED-EXCLUDE: ACCEPTED 마커는 감지 카운트에서 제외
+            val verdict = e.optString("verdict", "")
+            if (verdict == "ACCEPTED") continue
             total++
             val price = e.optInt("price", 0)
-            if (e.getString("verdict") == "REJECT") { reject++; rejectSum += price }
+            if (verdict == "REJECT") { reject++; rejectSum += price }
+            else { accept++; acceptSum += price }
+        }
+        return TodayDetail(
+            total, reject, accept,
+            if (reject > 0) (rejectSum / reject).toInt() else 0,
+            if (accept > 0) (acceptSum / accept).toInt() else 0
+        )
+    }
+
+    /**
+     * FIX-AUDIT-ACCEPTED-EXCLUDE: 순수 카운팅 로직 (테스트용).
+     * ACCEPTED 엔트리를 제외하고 감지 횟수만 카운트.
+     */
+    fun countDetections(entries: JSONArray, sinceTs: Long = 0): TodayDetail {
+        var total = 0; var reject = 0; var accept = 0
+        var rejectSum = 0L; var acceptSum = 0L
+        for (i in 0 until entries.length()) {
+            val e = entries.getJSONObject(i)
+            if (sinceTs > 0 && e.optLong("ts", 0) < sinceTs) continue
+            val verdict = e.optString("verdict", "")
+            if (verdict == "ACCEPTED") continue
+            total++
+            val price = e.optInt("price", 0)
+            if (verdict == "REJECT") { reject++; rejectSum += price }
             else { accept++; acceptSum += price }
         }
         return TodayDetail(
@@ -238,13 +267,16 @@ object FilterLog {
         }
     }
 
-    /** 최근 N건 반환 (최신순) */
+    /** 최근 N건 반환 (최신순, ACCEPTED 마커 제외) */
     fun getRecent(ctx: Context, count: Int = 20): List<JSONObject> {
         val entries = getAll(ctx)
         val result = mutableListOf<JSONObject>()
-        val start = maxOf(0, entries.length() - count)
-        for (i in entries.length() - 1 downTo start) {
-            result.add(entries.getJSONObject(i))
+        for (i in entries.length() - 1 downTo 0) {
+            if (result.size >= count) break
+            val e = entries.getJSONObject(i)
+            // FIX-AUDIT-ACCEPTED-EXCLUDE: ACCEPTED 마커는 카드 목록에서 제외
+            if (e.optString("verdict", "") == "ACCEPTED") continue
+            result.add(e)
         }
         return result
     }
