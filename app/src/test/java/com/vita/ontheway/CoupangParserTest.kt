@@ -147,4 +147,30 @@ class CoupangParserTest {
         val name = CoupangParser.extractStoreName(texts, texts.joinToString(" "))
         assertEquals("", name)
     }
+
+    // ── FIX-STORE-BLACKLIST: FP 차단 ──
+
+    @Test
+    fun `BLACKLIST - 지도 contentDesc 차단`() {
+        val texts = listOf("지도", "3,500원", "배달거리 1.0km", "거절", "주문 수락\n23초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertFalse("지도는 가게명 아님", result[0].storeName == "지도")
+    }
+
+    @Test
+    fun `BLACKLIST - 지도 + 정상 가게명 → 정상 추출`() {
+        val texts = listOf("지도", "NAVER", "모현각", "3,922원", "배달거리 1.6km", "거절", "주문 수락\n32초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertEquals("모현각", result[0].storeName)
+    }
+
+    @Test
+    fun `BLACKLIST - BHC 영문 가게명 정상 통과`() {
+        val texts = listOf("BHC", "5,670원", "배달거리 2.1km", "거절", "주문 수락\n25초")
+        val result = CoupangParser.parse(texts)
+        assertTrue(result.isNotEmpty())
+        assertEquals("BHC", result[0].storeName)
+    }
 }

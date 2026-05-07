@@ -91,6 +91,9 @@ object StoreNameCleaner {
             android.util.Log.d("StoreNameFilter", "UI 문장 의심: '$trimmed'")
             return true
         }
+        // FIX-STORE-BLACKLIST: viewId / 짧은 영문 단독
+        if (trimmed.startsWith("bros-") || trimmed.startsWith("com.")) return true
+        if (trimmed.matches(Regex("^[a-z]{1,3}$"))) return true  // "id", "ok" 등
         return false
     }
 

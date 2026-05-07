@@ -867,4 +867,31 @@ class BaeminParserTest {
         val (name, _) = BaeminParser.extractStoreName(texts)
         assertEquals("빽다방 태전한아람초점", name)
     }
+
+    // ══ FIX-STORE-BLACKLIST: 가게명 FP 차단 ══
+
+    @Test
+    fun `BL-1 bros-react-button 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("bros-react-button"))
+    }
+
+    @Test
+    fun `BL-2 bros-textview 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("bros-textview"))
+    }
+
+    @Test
+    fun `BL-3 bros- 접두사 모든 패턴 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("bros-some-widget"))
+    }
+
+    @Test
+    fun `BL-4 com 접두사 차단`() {
+        assertTrue(BaeminParser.isBlacklistedPattern("com.woowahan.bros"))
+    }
+
+    @Test
+    fun `BL-5 BHC 영문 가게명 정상 통과`() {
+        assertFalse(BaeminParser.isBlacklistedPattern("BHC"))
+    }
 }

@@ -92,7 +92,9 @@ object BaeminParser {
         "배달이 많은 지역을 볼수 있어요",
         "배차대기중_상단_마이페이지_버튼",
         // 시스템 메시지
-        "중복된 요청입니다", "중복된 요청입니다."
+        "중복된 요청입니다", "중복된 요청입니다.",
+        // FIX-STORE-BLACKLIST: React Native viewId 오염
+        "bros-react-button", "bros-textview", "bros-view"
     )
 
     /** 영문 소문자+숫자+하이픈만으로 구성된 패턴 (accessibility view ID) */
@@ -121,6 +123,9 @@ object BaeminParser {
         if (name.contains("-item-")) return true
         if (name.startsWith("notification-")) return true
         if (name.startsWith("ai-")) return true
+        // FIX-STORE-BLACKLIST: React Native viewId 패턴
+        if (name.startsWith("bros-")) return true
+        if (name.startsWith("com.")) return true
         return false
     }
 
