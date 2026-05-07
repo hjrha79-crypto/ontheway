@@ -36,6 +36,13 @@ object ScreenTypeDetector {
         "메뉴금액", "주문정보", "가게정보", "찾아오는 길"
     )
 
+    // FIX-DETAIL-CLASSIFIER: 배달 상세/진행 화면 전용 키워드
+    // 이 키워드가 있으면 "배달료 X원"이 있어도 NEW_CALL 아님
+    private val DETAIL_ONLY_KEYWORDS = listOf(
+        "가게전화", "주문금액", "고객연결", "고객요청", "결제",
+        "전달 사진 촬영", "메뉴 보기", "가게 전화"
+    )
+
     private val RESUME_KEYWORDS = listOf(
         "배달 이어서 하기", "이어서 배달하기"
     )
@@ -46,18 +53,26 @@ object ScreenTypeDetector {
     private val BUNDLE_ACCEPT = Regex("\\d+건\\s*모두\\s*수락")
 
     fun detect(joined: String): ScreenDetection {
-        // 1. IDLE (단, 배달료 패턴이 있으면 신규 콜 우선)
+        // FIX-DETAIL-CLASSIFIER: 상세/진행 화면 전용 키워드 사전 체크
+        val hasDetailOnly = DETAIL_ONLY_KEYWORDS.any { joined.contains(it) }
+
+        // 1. IDLE (단, 배달료 패턴이 있고 상세 키워드 없으면 신규 콜 우선)
         if (IDLE_KEYWORDS.any { joined.contains(it) }) {
-            if (PRICE_PATTERN.containsMatchIn(joined))
+            if (PRICE_PATTERN.containsMatchIn(joined) && !hasDetailOnly)
                 return ScreenDetection(ScreenType.NEW_CALL, Confidence.MEDIUM)
             return ScreenDetection(ScreenType.IDLE, Confidence.HIGH)
         }
 
-        // 2. IN_PROGRESS (단, 배달료 패턴이 있으면 신규 콜 우선)
+        // 2. IN_PROGRESS (단, 배달료 패턴이 있고 상세 키워드 없으면 신규 콜 우선)
         if (PROGRESS_KEYWORDS.any { joined.contains(it) }) {
-            if (PRICE_PATTERN.containsMatchIn(joined))
+            if (PRICE_PATTERN.containsMatchIn(joined) && !hasDetailOnly)
                 return ScreenDetection(ScreenType.NEW_CALL, Confidence.MEDIUM)
             return ScreenDetection(ScreenType.IN_PROGRESS, Confidence.HIGH)
+        }
+
+        // 2.5 FIX-DETAIL-CLASSIFIER: 상세 전용 키워드 단독 → IN_PROGRESS
+        if (hasDetailOnly) {
+            return ScreenDetection(ScreenType.IN_PROGRESS, Confidence.MEDIUM)
         }
 
         // 3. DELIVERY_RESUME

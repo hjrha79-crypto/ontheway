@@ -1164,4 +1164,78 @@ class BaeminParserTest {
         assertTrue(r[0].isMulti)
         // 내부 상태: lastParseMulti = true (직접 접근 불가, SPLIT-1에서 간접 검증)
     }
+
+    // ══ FIX-DETAIL-CLASSIFIER: 신규배달/상세 화면 분류 ══
+
+    @Test
+    fun `CLASSIFY-1 신규배차 키워드만 = NEW_CALL 정상 파싱`() {
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼", "신규배차_거절버튼", "신규배차_끄기버튼",
+            "배민배달", "조리완료", "픽업지", "KFC 광주태전점",
+            "전달지", "태전동", "배달료", "3,410원"
+        )
+        val result = BaeminParser.parse(texts)
+        assertNotNull(result)
+        assertTrue(result!!.isNotEmpty())
+        assertEquals(3410, result[0].price)
+    }
+
+    @Test
+    fun `CLASSIFY-2 상세 키워드 + 배달료 + 수락버튼 없음 = DROP`() {
+        BaeminParser.resetDedupCache()
+        // 5/7 21:08 케이스 재현: 상세 화면에서 "가게전화" + "배달료"
+        val texts = listOf(
+            "신규배달", "픽업지", "KFC 광주태전점", "가게전화",
+            "전달지", "태전동", "주문금액", "배달료", "3,500원"
+        )
+        val result = BaeminParser.parse(texts)
+        assertNull("상세 화면 = DROP", result)
+    }
+
+    @Test
+    fun `CLASSIFY-3 신규배차_수락버튼 + 상세 키워드 동시 = 정상 파싱 (전환 중)`() {
+        BaeminParser.resetDedupCache()
+        // 수락 버튼이 있으면 진짜 콜 → 파싱 진행
+        val texts = listOf(
+            "신규배차_수락버튼", "신규배차_거절버튼",
+            "배민배달", "픽업지", "맘스터치 태전점",
+            "전달지", "고산동", "배달료", "4,300원",
+            "가게전화" // 상세 키워드 혼입 but 수락 버튼 있음
+        )
+        val result = BaeminParser.parse(texts)
+        assertNotNull(result)
+        assertTrue(result!!.isNotEmpty())
+    }
+
+    @Test
+    fun `CLASSIFY-4 가게정보만 (배달료 없음) = 빈 리스트 (regression 35번)`() {
+        BaeminParser.resetDedupCache()
+        // 기존 35번 테스트: 가게정보만 → 비콜 빈 리스트 (null 아님)
+        val texts = listOf("가게정보", "맛집", "영업시간")
+        val result = BaeminParser.parse(texts)
+        assertNotNull(result)
+        assertTrue("비콜 = 빈 리스트", result!!.isEmpty())
+    }
+
+    @Test
+    fun `CLASSIFY-5 ScreenTypeDetector 상세 키워드 → IN_PROGRESS`() {
+        val joined = "신규배달 픽업지 KFC 가게전화 주문금액 배달료 3,500원"
+        val screen = ScreenTypeDetector.detect(joined)
+        assertEquals(ScreenTypeDetector.ScreenType.IN_PROGRESS, screen.type)
+    }
+
+    @Test
+    fun `CLASSIFY-6 ScreenTypeDetector 상세 없이 배달료만 → NEW_CALL`() {
+        val joined = "배민배달 조리완료 픽업지 KFC 배달료 3,500원"
+        val screen = ScreenTypeDetector.detect(joined)
+        assertEquals(ScreenTypeDetector.ScreenType.NEW_CALL, screen.type)
+    }
+
+    @Test
+    fun `CLASSIFY-7 ScreenTypeDetector 메뉴금액 + 배달료 + 상세 → IN_PROGRESS`() {
+        val joined = "메뉴금액 3,500원 가게전화 배달료 3,500원"
+        val screen = ScreenTypeDetector.detect(joined)
+        assertEquals(ScreenTypeDetector.ScreenType.IN_PROGRESS, screen.type)
+    }
 }

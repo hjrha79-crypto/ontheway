@@ -168,11 +168,15 @@ object BaeminParser {
         val joined = texts.joinToString(" ")
 
         // 이전내역 화면 감지 → DROP
-        // FIX2: 강화된 신규 콜 증거 — "신규배달" 또는 "신규배차_수락버튼" 명시 필요
-        // (기존 "배차수락", "\d+초" 는 이전 콜 화면에도 혼입되어 오탐 유발)
+        // FIX2: 강화된 신규 콜 증거 — "신규배차_수락버튼" 명시 필요
+        // FIX-DETAIL-CLASSIFIER: "신규배달" 단독은 상세 화면에도 등장하므로 제거
+        // "신규배달"은 상세 키워드 없을 때만 증거로 인정
+        val hasDetailKeywords = DETAIL_VIEW_KEYWORDS.any { joined.contains(it) } ||
+            joined.contains("가게전화") || joined.contains("주문금액") ||
+            joined.contains("고객연결") || joined.contains("고객요청")
         val hasStrongNewCallEvidence =
             joined.contains("신규배차_수락버튼") ||
-            joined.contains("신규배달")
+            (joined.contains("신규배달") && !hasDetailKeywords)
 
         if (HISTORY_SCREEN_KEYWORDS.any { joined.contains(it) }) {
             if (hasStrongNewCallEvidence) {
@@ -181,6 +185,14 @@ object BaeminParser {
                 OtwFileLogger.log("BaeminParser", "DROP_HISTORY_SCREEN")
                 return null
             }
+        }
+
+        // FIX-DETAIL-CLASSIFIER: 상세/진행 화면 + 배달료 패턴 → 거품 차단
+        // "신규배차_수락버튼" 없이 상세 키워드 + 배달료 = 상세보기에서 가격 혼입
+        if (hasDetailKeywords && !joined.contains("신규배차_수락버튼") &&
+            Regex("배달료\\s*[\\d,]+\\s*원").containsMatchIn(joined)) {
+            OtwFileLogger.log("BaeminParser", "DROP_DETAIL_VIEW: 상세 키워드 + 배달료 (신규배차 버튼 없음)")
+            return null
         }
 
         // FIX-STORE-NAME: 가게명 4순위 fallback 추출
