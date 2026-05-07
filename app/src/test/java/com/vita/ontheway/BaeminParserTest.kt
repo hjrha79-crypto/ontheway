@@ -1003,6 +1003,54 @@ class BaeminParserTest {
         assertEquals("", name)  // 주소는 가게명이 아님
     }
 
+    // ══ FIX-MULTI-DETAIL-VIEW: 상세보기 멀티 오인식 차단 ══
+
+    @Test
+    fun `DETAIL-1 상세보기 + 신규배차 동시 - 같은 가게 픽업지 2번 = 단건`() {
+        // 5/7 21:08 실측: 사용자 상세보기 진입 → 같은 가게 "픽업지" 2번
+        val texts = listOf(
+            "배민배달", "조리완료", "픽업지", "KFC 광주태전점", "전달지", "태전동",
+            "배달료", "3,500원",
+            // 상세보기 화면에서 다시 등장하는 같은 정보
+            "픽업지", "KFC 광주태전점", "전달지", "태전동"
+        )
+        assertFalse("같은 가게 2번 = 단건", BaeminParser.detectMulti(texts))
+    }
+
+    @Test
+    fun `DETAIL-2 진짜 멀티 - 다른 가게 픽업지 2번 = 멀티`() {
+        val texts = listOf(
+            "배민배달", "픽업지", "버거킹 광주태전점", "전달지", "태전동",
+            "픽업지", "맘스터치 태전점", "전달지", "고산동"
+        )
+        assertTrue("다른 가게 2번 = 멀티", BaeminParser.detectMulti(texts))
+    }
+
+    @Test
+    fun `DETAIL-3 상세보기 키워드 감지 시 멀티 검사 skip`() {
+        val texts = listOf(
+            "배민배달", "픽업지", "KFC 광주태전점",
+            "주문정보", "메뉴금액",  // 상세보기 키워드
+            "픽업지", "KFC 광주태전점"
+        )
+        assertFalse("상세보기 키워드 → skip", BaeminParser.detectMulti(texts))
+    }
+
+    @Test
+    fun `DETAIL-4 parse 전체 흐름 - 상세보기 중복 가격도 단건`() {
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼", "배민배달", "조리완료",
+            "픽업지", "KFC 광주태전점", "배달료", "3,500원",
+            // 상세보기에서 같은 배달료 등장
+            "배달료", "3,500원"
+        )
+        val result = BaeminParser.parse(texts)!!
+        assertTrue(result.isNotEmpty())
+        assertFalse("단건", result[0].isMulti)
+        assertEquals(3500, result[0].price)
+    }
+
     // ══ FIX-MULTI-SPLIT: 멀티→단건 분리 재요청 ══
 
     @Test

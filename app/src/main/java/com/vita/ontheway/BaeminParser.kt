@@ -340,6 +340,9 @@ object BaeminParser {
         return results
     }
 
+    // FIX-MULTI-DETAIL-VIEW: 상세보기 화면 키워드 (멀티 검사 skip)
+    private val DETAIL_VIEW_KEYWORDS = listOf("주문정보", "메뉴금액", "가게정보", "찾아오는 길")
+
     /**
      * rawText 기반 멀티콜 추가 검출.
      * 개별 텍스트 노드 기준 — 콤마 구분 요약 노드의 중복 "픽업지" 제거.
@@ -347,11 +350,28 @@ object BaeminParser {
      * FIX-MULTI: 기존 joined rawText의 "픽업지" substring 카운트는
      * 배민 접근성 트리의 요약 노드("배민배달, 조리완료, 픽업지, ...")와
      * 개별 노드("픽업지")를 이중 계산하여 단건을 멀티로 오인식.
+     *
+     * FIX-MULTI-DETAIL-VIEW: 상세보기+신규배차 동시 표시 시
+     * 같은 가게 "픽업지" 2번 → 멀티 오인식 차단.
      */
     fun detectMulti(texts: List<String>): Boolean {
+        val joined = texts.joinToString(" ")
+
+        // FIX-MULTI-DETAIL-VIEW: 상세보기 화면 키워드 감지 시 멀티 검사 skip
+        if (DETAIL_VIEW_KEYWORDS.any { joined.contains(it) }) {
+            OtwFileLogger.log("BaeminParser", "detectMulti skip: 상세보기 키워드 감지")
+            return false
+        }
+
         // 방법 1: "픽업지" 개별 텍스트 노드가 2회 이상 (콤마 구분 요약 노드 제외)
+        // FIX-MULTI-DETAIL-VIEW: 픽업지+가게명 pair dedup — 같은 가게명 = 1건
         val pickupNodeCount = texts.count { it.trim() == "픽업지" }
-        if (pickupNodeCount >= 2) return true
+        if (pickupNodeCount >= 2) {
+            val pickupStoreNames = extractPickupStoreNames(texts)
+            if (pickupStoreNames.size >= 2) return true
+            // 같은 가게명만 반복 = 상세보기 중복 → 단건
+            OtwFileLogger.log("BaeminParser", "detectMulti: 픽업지 ${pickupNodeCount}회 but 가게명 ${pickupStoreNames.size}개 → 단건")
+        }
         // 방법 2: "픽업지2" (배민 멀티 전용 UI) — 개별 노드에서만
         if (texts.any { "픽업지2" in it.trim() }) return true
         // 방법 3: "묶음" 명시 키워드
@@ -364,6 +384,24 @@ object BaeminParser {
             }
         }
         return false
+    }
+
+    /**
+     * FIX-MULTI-DETAIL-VIEW: "픽업지" 노드 뒤의 가게명을 수집하여 유니크 세트 반환.
+     * 같은 가게명이 2번 등장하면 size=1 (상세보기 중복), 다른 가게면 size>=2 (진짜 멀티).
+     */
+    private fun extractPickupStoreNames(texts: List<String>): Set<String> {
+        val storeNames = mutableSetOf<String>()
+        for (i in texts.indices) {
+            if (texts[i].trim() == "픽업지" && i + 1 < texts.size) {
+                val next = texts[i + 1].trim()
+                if (next.isNotBlank() && next !in UI_LABELS && next.length in 2..30 &&
+                    !next.contains("원") && !next.contains("P")) {
+                    storeNames.add(next)
+                }
+            }
+        }
+        return storeNames
     }
 
     // ── FIX-STORE-NAME: 가게명 추출 UI 라벨/패턴 ──
