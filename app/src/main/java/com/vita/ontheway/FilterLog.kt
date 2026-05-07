@@ -20,9 +20,23 @@ object FilterLog {
     // v3.8: 허용 플랫폼 화이트리스트
     private val ALLOWED_PLATFORMS = setOf("coupang", "baemin", "kakaot")
 
-    // 중복 방지 (같은 platform+price 10초 이내 = 스킵)
-    private var lastRecordKey: String = ""
-    private var lastRecordTs: Long = 0
+    // FIX-FILTERLOG-DEDUP-V2: MutableMap + 60초 TTL
+    private const val DEDUP_TTL_MS = 60_000L
+    private val dedupMap = mutableMapOf<String, Long>()
+
+    /**
+     * FIX-FILTERLOG-DEDUP-V2: dedup key 생성.
+     * 우선순위: eventId > orderId > platform_price_store > platform_price
+     */
+    fun makeDedupKey(platform: String, price: Int, storeName: String = "", eventId: String? = null, orderId: String? = null): String {
+        if (!eventId.isNullOrBlank()) return "eid:$eventId"
+        if (!orderId.isNullOrBlank()) return "oid:$orderId"
+        if (storeName.isNotBlank()) return "pps:$platform:$price:$storeName"
+        return "pp:$platform:$price"
+    }
+
+    /** 테스트용: dedup map 초기화 */
+    fun resetDedupMap() { dedupMap.clear() }
 
     fun record(ctx: Context, call: DeliveryCall, result: CallFilter.FilterResult, baeminPoint: Double? = null, eventId: String? = null, sessionState: String? = null) {
         // GUARD 1: 플랫폼 화이트리스트
@@ -37,14 +51,14 @@ object FilterLog {
             return
         }
 
-        // GUARD 3: 중복 방지 (같은 platform+price 10초 이내)
+        // GUARD 3: FIX-FILTERLOG-DEDUP-V2 — MutableMap 60초 TTL dedup
         val now = System.currentTimeMillis()
-        val key = "${call.platform}_${call.price}"
-        if (key == lastRecordKey && now - lastRecordTs < 10_000) {
+        dedupMap.entries.removeAll { now - it.value > DEDUP_TTL_MS }
+        val key = makeDedupKey(call.platform, call.price, call.storeName, eventId, call.orderId)
+        if (dedupMap.containsKey(key)) {
             return
         }
-        lastRecordKey = key
-        lastRecordTs = now
+        dedupMap[key] = now
 
         // 메인 스레드에서 데이터 스냅샷 캡처
         val totalKm = (call.pickupDistanceKm ?: 0.0) + (call.distance ?: 0.0)
