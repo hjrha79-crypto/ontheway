@@ -1195,6 +1195,11 @@ class OnTheWayService : AccessibilityService() {
         // 판정 결과 → 상태 변수 설정 (TTS 여부와 무관하게 항상 실행)
         callSpeakHistory[callKey] = now
         TtsDeduplicator.recordProcessed(call.platform, call.price)
+        // FIX-NLS-CROSS-SOURCE-DEDUP: Accessibility 처리 완료 등록
+        CrossSourceDedup.markProcessed(
+            eventId = callSessionEvt?.eventId, orderId = call.orderId,
+            platform = call.platform, price = call.price,
+            storeName = call.storeName)
         lastDeliveryReason = result.reason
         lastDeliverySessionId = callSessionEvt?.eventId
         // 내부 verdict (데이터/JudgmentMatch용 — 사용자에게는 노출 X)

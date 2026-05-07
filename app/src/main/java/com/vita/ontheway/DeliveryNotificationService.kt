@@ -196,9 +196,17 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         // 판정 + TTS
         for (call in calls) {
-            // Accessibility가 30초 이내 처리했으면 알림 경로 전체 스킵 (DB 중복 방지)
+            // FIX-NLS-CROSS-SOURCE-DEDUP: cross-source dedup (eventId/orderId 우선)
+            if (CrossSourceDedup.isProcessed(
+                    orderId = call.orderId, platform = call.platform,
+                    price = call.price, storeName = call.storeName)) {
+                Log.d("DeliveryNoti", "CrossSourceDedup → 알림 스킵: ${call.platform} ${call.price}원")
+                DropReason.recordDrop(DropReason.DROP_DUPLICATE, "cross_source_dedup ${call.platform}_${call.price}")
+                continue
+            }
+            // 기존 TtsDeduplicator fallback (하위 호환)
             if (TtsDeduplicator.wasProcessedWithin(call.platform, call.price)) {
-                Log.d("DeliveryNoti", "Accessibility 처리 완료 → 알림 스킵: ${call.platform} ${call.price}원")
+                Log.d("DeliveryNoti", "TtsDedup → 알림 스킵: ${call.platform} ${call.price}원")
                 DropReason.recordDrop(DropReason.DROP_DUPLICATE, "notification wasProcessed ${call.platform}_${call.price}")
                 continue
             }
@@ -217,6 +225,11 @@ class DeliveryNotificationService : NotificationListenerService() {
 
             val result = CallFilter.judge(enrichedCall, this)
             TtsDeduplicator.recordProcessed(enrichedCall.platform, enrichedCall.price)
+            // FIX-NLS-CROSS-SOURCE-DEDUP: NLS 처리 완료 등록
+            CrossSourceDedup.markProcessed(
+                eventId = session?.eventId, orderId = enrichedCall.orderId,
+                platform = enrichedCall.platform, price = enrichedCall.price,
+                storeName = enrichedCall.storeName)
             Log.d("DeliveryNoti", "파싱 결과: price=${enrichedCall.price}, result=${result.verdict} (${result.reason})")
             FilterLog.record(this, enrichedCall, result, eventId = session?.eventId, sessionState = session?.state?.name)
 
