@@ -39,10 +39,12 @@ object BaeminParser {
     private var lastParseTs: Long = 0
     private var lastParsePrice: Int = 0
     private var lastParseStore: String = ""
+    // FIX-MULTI-SPLIT: 마지막 파싱 결과의 isMulti 상태
+    private var lastParseMulti: Boolean = false
 
     /** 테스트용: dedup 캐시 초기화 */
     fun resetDedupCache() {
-        lastParseTs = 0; lastParsePrice = 0; lastParseStore = ""
+        lastParseTs = 0; lastParsePrice = 0; lastParseStore = ""; lastParseMulti = false
     }
 
     // 이전내역(완료된 배달 목록) 화면 키워드 — 신규 콜 오인 방지
@@ -277,6 +279,11 @@ object BaeminParser {
 
             Log.d("BaeminParser", "묶음배달 감지: ${bundleCount}건 합산 ${totalPrice}원, 다중픽업=$isMultiPickup")
             OtwFileLogger.log("BaeminParser", "묶음배달 감지: ${bundleCount}건 합산 ${totalPrice}원, 다중픽업=$isMultiPickup")
+            // FIX-MULTI-SPLIT: 묶음 파싱 시 dedup 캐시 갱신
+            lastParseTs = System.currentTimeMillis()
+            lastParsePrice = totalPrice
+            lastParseStore = sanitizeStoreName(storeNames.joinToString("+"))
+            lastParseMulti = true
             return listOf(DeliveryCall(
                 price = totalPrice,
                 distance = extractActualDistance(texts),
@@ -297,22 +304,30 @@ object BaeminParser {
         if (results.size == 1 && !results[0].isMulti && detectMulti(texts)) {
             val r = results[0]
             OtwFileLogger.log("BaeminParser", "rawText 멀티 검출: store='${r.storeName}', price=${r.price}")
+            // FIX-MULTI-SPLIT: 멀티 검출 시 dedup 캐시 갱신
+            lastParseMulti = true
             return listOf(r.copy(isMulti = true, bundleCount = 2))
         }
 
         // ── FIX2: 파싱 dedup — 동일 store+price 5분 내 재파싱 방지 ──
+        // FIX-MULTI-SPLIT: multi→solo 전환은 분리 재요청이므로 dedup 통과
         if (results.isNotEmpty()) {
             val r = results[0]
             val now = System.currentTimeMillis()
             val sameCall = r.price == lastParsePrice &&
                 (r.storeName.isBlank() || lastParseStore.isBlank() || r.storeName == lastParseStore)
-            if (sameCall && now - lastParseTs < PARSE_DEDUP_WINDOW_MS) {
+            val isMultiToSoloSplit = lastParseMulti && !r.isMulti
+            if (sameCall && !isMultiToSoloSplit && now - lastParseTs < PARSE_DEDUP_WINDOW_MS) {
                 OtwFileLogger.log("BaeminParser", "DEDUP_SKIP: ${r.price}원 store='${r.storeName}' (${now - lastParseTs}ms)")
                 return emptyList()
+            }
+            if (isMultiToSoloSplit) {
+                OtwFileLogger.log("BaeminParser", "SPLIT_PASS: multi→solo ${r.price}원 store='${r.storeName}'")
             }
             lastParseTs = now
             lastParsePrice = r.price
             lastParseStore = r.storeName
+            lastParseMulti = r.isMulti
         }
 
         // 결과 로그

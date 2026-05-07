@@ -147,6 +147,8 @@ class OnTheWayService : AccessibilityService() {
     // v3.24: 배민 묶음→단건 중복 방지
     private var lastBundleTime: Long = 0L
     private var lastBundlePrice: Int = 0
+    // FIX-MULTI-SPLIT: 마지막 묶음의 가게명 목록 (분리 재요청 감지용)
+    private var lastBundleStoreNames: Set<String> = emptySet()
 
     // v3.18: 세션 매니저
     private var sessionManager: SessionManager? = null
@@ -1110,12 +1112,20 @@ class OnTheWayService : AccessibilityService() {
         }
 
         // v3.24: 배민 묶음→단건 중복 방지 (묶음 후 10초 내 단건 = 부분콜 DROP)
+        // FIX-MULTI-SPLIT: 묶음에 없던 가게의 단건 = 분리 재요청 → 통과
         if (call.platform == "baemin" && !call.isMulti && call.bundleCount <= 1
             && lastBundleTime > 0 && now - lastBundleTime < 10_000) {
-            Log.d("DeliveryFilter", "묶음 단건 중복 DROP: ${call.price}원 (묶음 ${lastBundlePrice}원 ${(now - lastBundleTime)/1000}초 전)")
-            OtwFileLogger.log("DeliveryFilter", "묶음 단건 중복 DROP: ${call.price}원 (묶음 ${lastBundlePrice}원)")
-            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "bundle_single_dedup baemin ${call.price}원")
-            return
+            val isSplitReOffer = call.storeName.isNotBlank() &&
+                lastBundleStoreNames.isNotEmpty() &&
+                lastBundleStoreNames.none { call.storeName.contains(it) || it.contains(call.storeName) }
+            if (isSplitReOffer) {
+                OtwFileLogger.log("DeliveryFilter", "SPLIT_RE_OFFER: ${call.price}원 store='${call.storeName}' (묶음에 없던 가게)")
+            } else {
+                Log.d("DeliveryFilter", "묶음 단건 중복 DROP: ${call.price}원 (묶음 ${lastBundlePrice}원 ${(now - lastBundleTime)/1000}초 전)")
+                OtwFileLogger.log("DeliveryFilter", "묶음 단건 중복 DROP: ${call.price}원 (묶음 ${lastBundlePrice}원)")
+                DropReason.recordDrop(DropReason.DROP_DUPLICATE, "bundle_single_dedup baemin ${call.price}원")
+                return
+            }
         }
 
         // P0 fix: 같은 플랫폼+금액+storeName 중복 DROP — 쿠팡 60초, 기타 30초
@@ -1156,6 +1166,8 @@ class OnTheWayService : AccessibilityService() {
             if (call.platform == "baemin") {
                 lastBundleTime = now
                 lastBundlePrice = call.price
+                // FIX-MULTI-SPLIT: 묶음 가게명 목록 기록
+                lastBundleStoreNames = call.storeName.split("+").map { it.trim() }.filter { it.isNotBlank() }.toSet()
             }
         }
 

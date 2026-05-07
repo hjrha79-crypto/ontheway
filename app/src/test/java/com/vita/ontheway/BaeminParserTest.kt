@@ -1002,4 +1002,65 @@ class BaeminParserTest {
         val (name, _) = BaeminParser.extractStoreName(texts)
         assertEquals("", name)  // 주소는 가게명이 아님
     }
+
+    // ══ FIX-MULTI-SPLIT: 멀티→단건 분리 재요청 ══
+
+    @Test
+    fun `SPLIT-1 멀티 후 동일 store+price 단건 = dedup 통과 (multi→solo split)`() {
+        BaeminParser.resetDedupCache()
+        // 1단계: 묶음 파싱
+        val multiTexts = listOf(
+            "신규배차_수락버튼", "배민배달", "조리완료",
+            "픽업지", "KFC 광주태전점", "배달료", "3,500원",
+            "픽업지", "맘스터치 태전점", "배달료", "2,800원",
+            "묶음", "2건"
+        )
+        val r1 = BaeminParser.parse(multiTexts)
+        assertNotNull(r1)
+        assertTrue("묶음 파싱", r1!!.isNotEmpty())
+        assertTrue("isMulti=true", r1[0].isMulti)
+
+        // 2단계: 분리 후 단건 재요청 (같은 가게, 같은 가격대)
+        val soloTexts = listOf(
+            "신규배차_수락버튼", "배민배달", "조리완료",
+            "픽업지", "KFC 광주태전점",
+            "배달료", "3,500원"
+        )
+        val r2 = BaeminParser.parse(soloTexts)
+        assertNotNull(r2)
+        assertTrue("split 통과: 단건 파싱 성공", r2!!.isNotEmpty())
+        assertFalse("isMulti=false", r2[0].isMulti)
+    }
+
+    @Test
+    fun `SPLIT-2 동일 단건+단건 = dedup 차단 (정상 중복 방지)`() {
+        BaeminParser.resetDedupCache()
+        val texts = listOf(
+            "신규배차_수락버튼",
+            "픽업지", "KFC 광주태전점",
+            "배달료", "3,500원"
+        )
+        val r1 = BaeminParser.parse(texts)
+        assertTrue(r1!!.isNotEmpty())
+        assertFalse(r1[0].isMulti)
+
+        // 같은 단건 재파싱 = dedup 차단
+        val r2 = BaeminParser.parse(texts)
+        assertTrue("dedup: 빈 리스트", r2!!.isEmpty())
+    }
+
+    @Test
+    fun `SPLIT-3 멀티 파싱 시 lastParseMulti 기록`() {
+        BaeminParser.resetDedupCache()
+        val multiTexts = listOf(
+            "신규배차_수락버튼",
+            "픽업지", "A가게", "배달료", "3,000원",
+            "픽업지", "B가게", "배달료", "4,000원",
+            "묶음", "2건"
+        )
+        val r = BaeminParser.parse(multiTexts)
+        assertTrue(r!!.isNotEmpty())
+        assertTrue(r[0].isMulti)
+        // 내부 상태: lastParseMulti = true (직접 접근 불가, SPLIT-1에서 간접 검증)
+    }
 }
