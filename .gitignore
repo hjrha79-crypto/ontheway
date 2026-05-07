@@ -25,3 +25,4 @@ today_full.txt
 logs/
 reports/
 feedback_logs_backup_*.jsonl
+scripts/output/
