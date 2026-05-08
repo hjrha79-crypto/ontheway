@@ -236,17 +236,17 @@ object CallFilter {
                 "금액 ${fmt.format(call.price)}원 < 최소기준 ${fmt.format(minPrice)}원 미달$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
 
+        // 외지 페널티: 픽업 ≥ 5km && 단가 < 1,500원/km → REJECT (단가 미달보다 우선)
+        if (pickupKm >= 5.0 && totalKm > 0 && unitPrice < 1500) {
+            return FilterResult(Verdict.REJECT,
+                "외지 페널티: 픽업 ${"%.1f".format(pickupKm)}km, 단가 ${fmt.format(unitPrice)}원/km < 1,500원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+        }
+
         // 단가 미달 (배달거리 or 픽업거리 어느 쪽이든 거리 정보 있으면 판정)
         if (totalKm > 0 && unitPrice < minUnitPrice) {
             val distLabel = if (hasDist) "거리 ${"%.1f".format(call.distance)}km" else "픽업 ${"%.1f".format(pickupKm)}km"
             return FilterResult(Verdict.REJECT,
                 "단가 ${fmt.format(unitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달 ($distLabel)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
-        }
-
-        // 외지 페널티: 픽업 ≥ 5km && 단가 < 1,500원/km → REJECT
-        if (pickupKm >= 5.0 && totalKm > 0 && unitPrice < 1500) {
-            return FilterResult(Verdict.REJECT,
-                "외지 페널티: 픽업 ${"%.1f".format(pickupKm)}km, 단가 ${fmt.format(unitPrice)}원/km < 1,500원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
 
         // ACCEPT 사유

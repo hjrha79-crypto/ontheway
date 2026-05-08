@@ -204,4 +204,67 @@ class VerdictLogicTest {
         assertNotNull(msg)
         assertTrue("주의 포함: $msg", msg!!.contains("주의"))
     }
+
+    // ── reason 우선순위: 외지 > 단가 미달 > 거리 미측정 ──
+
+    @Test
+    fun `외지 + 단가미달 동시 = reason에 외지 페널티`() {
+        // pickupKm=5.5, price=4400 → 단가 800원/km → 단가미달(1400) + 외지(5km+, <1500)
+        val call = DeliveryCall(
+            price = 4400, distance = null, isMulti = false,
+            platform = "coupang", pickupDistanceKm = 5.5
+        )
+        val result = CallFilter.judge(call, ctx)
+        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertTrue("외지 reason 우선: ${result.reason}", result.reason.contains("외지 페널티"))
+        assertFalse("단가 미달 아님: ${result.reason}", result.reason.contains("기준 미달"))
+    }
+
+    @Test
+    fun `외지 픽업 5_5km 단가 1800 = 외지 X (단가 충분)`() {
+        // pickupKm=5.5, price=9900 → 단가 1800원/km ≥ 1500 → 외지 X, 단가 OK
+        val call = DeliveryCall(
+            price = 9900, distance = null, isMulti = false,
+            platform = "coupang", pickupDistanceKm = 5.5
+        )
+        val result = CallFilter.judge(call, ctx)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
+        assertFalse("외지 아님: ${result.reason}", result.reason.contains("외지"))
+    }
+
+    @Test
+    fun `픽업 3km 단가 800 = 단가 미달 (외지 아님)`() {
+        // pickupKm=3.0, price=3200 → 단가 1066원/km → 단가미달(1400), pickup<5 → 외지 X
+        val call = DeliveryCall(
+            price = 3200, distance = null, isMulti = false,
+            platform = "coupang", pickupDistanceKm = 3.0
+        )
+        val result = CallFilter.judge(call, ctx)
+        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertTrue("단가 미달: ${result.reason}", result.reason.contains("기준 미달"))
+        assertFalse("외지 아님: ${result.reason}", result.reason.contains("외지"))
+    }
+
+    @Test
+    fun `거리 null 단가 0 = 거리 미측정 reason`() {
+        val call = DeliveryCall(
+            price = 4000, distance = null, isMulti = false,
+            platform = "coupang", pickupDistanceKm = null
+        )
+        val result = CallFilter.judge(call, ctx)
+        assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
+        assertTrue("거리 미측정: ${result.reason}", result.reason.contains("거리 미측정"))
+    }
+
+    @Test
+    fun `5_8 audit 서대문김치 5_01km 단가 미달 = 외지 페널티`() {
+        // pickup=5.01km, price=5000 → 단가≈998 → 외지(5km+, <1500) + 단가미달(1400) → 외지 우선
+        val call = DeliveryCall(
+            price = 5000, distance = null, isMulti = false,
+            platform = "coupang", pickupDistanceKm = 5.01
+        )
+        val result = CallFilter.judge(call, ctx)
+        assertEquals(CallFilter.Verdict.REJECT, result.verdict)
+        assertTrue("외지 페널티: ${result.reason}", result.reason.contains("외지 페널티"))
+    }
 }
