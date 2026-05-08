@@ -674,8 +674,12 @@ class OnTheWayService : AccessibilityService() {
 
         Log.d("OnTheWay", "수락 감지: ${price}원 ($platform)")
 
-        // 판정-행동 매칭: PENDING → ACCEPTED
-        try { JudgmentMatchLogger.onAcceptDetected(this) } catch (_: Exception) {}
+        // AcceptCoordinator 통합: 수익/매칭/FilterLog 일괄 처리
+        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.CLICK,
+            price, platform,
+            storeName = call.storeName,
+            eventId = lastDeliverySessionId ?: "",
+            orderId = call.orderId ?: "")
 
         // v3.22: 운행 모드 자동 ON + 시작 위치 저장
         if (DrivingModeManager.getMode(this) != DrivingMode.DRIVING) {
@@ -707,8 +711,7 @@ class OnTheWayService : AccessibilityService() {
         // FIX-TTS-DELIVERY-FLOW: 배달 큐 설정
         try { DeliveryFlowManager.onAccepted(call, lastCustomerRequest) } catch (_: Exception) {}
 
-        // 수익 트래킹
-        EarningsTracker.recordAccept(this, price, platform)
+        // 수익 트래킹: AcceptCoordinator.handleAccept 내부에서 처리
 
         // 네비 자동실행 (3초 딜레이)
         val pickupAddr = call.storeName.ifEmpty { call.destination }

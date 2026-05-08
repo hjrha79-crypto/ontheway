@@ -19,7 +19,7 @@ object AcceptCoordinator {
     private const val DEDUP_WINDOW_MS = 300_000L  // 5분 (기존 10초 → 동일 콜 반복 인식 방지)
 
     enum class AcceptSource {
-        SYSTEM_NOTI, COUPANG_PICKUP, BAEMIN_PROGRESS, FALLBACK
+        SYSTEM_NOTI, COUPANG_PICKUP, BAEMIN_PROGRESS, FALLBACK, CLICK
     }
 
     private var lastTs: Long = 0
