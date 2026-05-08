@@ -125,7 +125,7 @@ object CallDetailSheet {
                 text = when {
                     detail.isUrgent -> "⚡ 급송"
                     detail.aiReason.contains("우세") -> "● 우세"
-                    detail.aiReason.contains("좋습니다") -> "● 좋습니다"
+                    detail.aiReason.contains("좋습니다") || detail.aiReason.contains("보통") -> "● 보통"
                     detail.aiReason.contains("보통") -> "● 보통"
                     detail.aiReason.contains("주의") || detail.aiReason.contains("넘기세요") -> "● 주의"
                     detail.rank == 1 -> "● 1위 우세"

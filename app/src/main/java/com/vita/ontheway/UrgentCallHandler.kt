@@ -87,7 +87,7 @@ object UrgentCallHandler {
         }
 
     // ── 4. TTS 메시지 ──
-    fun getTtsMessage(): String = "급송입니다. 바로 잡기 좋습니다."
+    fun getTtsMessage(): String = "급송입니다. 우세."
 }
 
 // ──────────────────────────────────────────

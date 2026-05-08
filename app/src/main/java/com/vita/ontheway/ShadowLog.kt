@@ -202,7 +202,7 @@ $breakdown
 
     fun getStats(context: Context): String {
         val summary = getDailySummary(context) ?: return "오늘 데이터 없음"
-        return "오늘 ${summary.totalCalls}콜 추천 | 수락률 ${summary.top1HitRate.toInt()}%"
+        return "오늘 ${summary.totalCalls}콜 분석 | 수락률 ${summary.top1HitRate.toInt()}%"
     }
 
     fun getTodayStats(context: Context): ShadowDailySummary? = getDailySummary(context)

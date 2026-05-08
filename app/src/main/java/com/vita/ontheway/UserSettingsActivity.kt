@@ -122,7 +122,7 @@ class UserSettingsActivity : AppCompatActivity() {
         })
         minPriceCard.addView(minPriceValue)
         minPriceCard.addView(minPriceSeekBar)
-        minPriceCard.addView(makeHint("1,500원 ~ 6,500원 (이하 비추천)"))
+        minPriceCard.addView(makeHint("1,500원 ~ 6,500원 (이하 주의)"))
         container.addView(minPriceCard)
 
         // ── 3. 최소 단가 ──
@@ -154,7 +154,7 @@ class UserSettingsActivity : AppCompatActivity() {
         })
         unitPriceCard.addView(unitPriceValue)
         unitPriceCard.addView(unitPriceSeekBar)
-        unitPriceCard.addView(makeHint("1,000원/km ~ 3,500원/km (이하 비추천)"))
+        unitPriceCard.addView(makeHint("1,000원/km ~ 3,500원/km (이하 주의)"))
         container.addView(unitPriceCard)
 
         root.addView(container)

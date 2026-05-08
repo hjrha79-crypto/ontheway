@@ -247,7 +247,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             OnTheWayService.activeSearchSessionId?.let { sid ->
                 SearchSessionStore.incrementCallsRejected(this, sid)
             }
-            speak("넘기겠습니다"); resetAccept()
+            speak("주의"); resetAccept()
         }
         svcBtn.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
 
@@ -1958,7 +1958,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         acceptBtn.tag = "active"
 
         startDecisionTimer()
-        speak("${fmt(amount)}원 잡기 좋습니다")
+        speak("${fmt(amount)}원 우세")
     }
 
     private fun showCallDetailSheet() {
@@ -1986,7 +1986,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                     OnTheWayService.activeSearchSessionId?.let { sid ->
                         SearchSessionStore.incrementCallsRejected(this, sid)
                     }
-                    speak("넘기겠습니다"); resetAccept()
+                    speak("주의"); resetAccept()
                 }
             )
         }
@@ -2120,7 +2120,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 OnTheWayService.activeSearchSessionId?.let { sid ->
                     SearchSessionStore.incrementCallsRejected(this, sid)
                 }
-                speak("넘기겠습니다"); resetAccept()
+                speak("주의"); resetAccept()
             }
         }
     }

@@ -243,7 +243,7 @@ class DeveloperOptionsActivity : AppCompatActivity() {
             setPadding(0, dp(8), 0, 0)
         }
 
-        simBtn("쿠팡 추천 (3600원/2km)") {
+        simBtn("쿠팡 우세 (3600원/2km)") {
             val call = DeliveryCall(price = 3600, distance = 2.0, isMulti = false, platform = "coupang")
             val result = CallFilter.judge(call, this)
             val tts = OutputController.buildMessage(call, result)
@@ -252,7 +252,7 @@ class DeveloperOptionsActivity : AppCompatActivity() {
             resultTv.text = "TTS: \"$tts\"\nverdict: ${result.verdict}\n${dumpEarnings()}"
         }
 
-        simBtn("쿠팡 비추천 (2600원/2km)") {
+        simBtn("쿠팡 주의 (2600원/2km)") {
             val call = DeliveryCall(price = 2600, distance = 2.0, isMulti = false, platform = "coupang")
             val result = CallFilter.judge(call, this)
             val tts = OutputController.buildMessage(call, result)

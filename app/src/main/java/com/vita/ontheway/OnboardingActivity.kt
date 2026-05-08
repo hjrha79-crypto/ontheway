@@ -32,7 +32,7 @@ class OnboardingActivity : AppCompatActivity() {
 
     private val pages = listOf(
         Page("콜 자동 분석", "OnTheWay가 배달 콜을\n자동으로 분석합니다", "#5B6ABF"),
-        Page("3단계 판정", "비추천 / 보통 / 추천\n으로 알려드립니다", "#2EAA5E"),
+        Page("3단계 판정", "주의 / 보통 / 우세\n으로 알려드립니다", "#2EAA5E"),
         Page("권한 설정", "접근성 서비스와 알림 권한을\n켜주세요", "#FF9800", true)
     )
 

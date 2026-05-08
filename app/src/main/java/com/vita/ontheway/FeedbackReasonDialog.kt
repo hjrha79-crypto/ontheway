@@ -18,7 +18,7 @@ object FeedbackReasonDialog {
     private val DETAIL_CODES = arrayOf("pickup", "delivery", "price", "other")
 
     // 전체 판정 (단독)
-    private const val VERDICT_LABEL = "추천 판정 자체"
+    private const val VERDICT_LABEL = "판정 자체"
     private const val VERDICT_CODE = "verdict"
 
     fun show(
@@ -74,7 +74,7 @@ object FeedbackReasonDialog {
             }
             root.addView(verdictBox)
 
-            // 배타 로직: "추천 판정 자체" ↔ 세부 항목
+            // 배타 로직: "판정 자체" ↔ 세부 항목
             verdictBox.setOnCheckedChangeListener { _, isChecked ->
                 if (isChecked) {
                     detailBoxes.forEach { it.isChecked = false }

@@ -123,7 +123,7 @@ class DevStatsActivity : AppCompatActivity() {
         }
         row1.addView(makeKpiCard("총 콜", "${sessions.size}건", C_TEXT, 1f))
         row1.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(8.dp(), 1) })
-        row1.addView(makeKpiCard("추천 따라감", "${"%.0f".format(acceptRate)}%",
+        row1.addView(makeKpiCard("우세 따라감", "${"%.0f".format(acceptRate)}%",
             if (acceptRate >= 85) C_ACCENT else C_WARN, 1f))
 
         // 2행
@@ -174,7 +174,7 @@ class DevStatsActivity : AppCompatActivity() {
             listOf(
                 "날짜" to summary.date,
                 "총 콜" to "${summary.totalCalls}건",
-                "추천 따라감" to "${"%.0f".format(summary.acceptRate)}% (${summary.acceptedCount}건)",
+                "우세 따라감" to "${"%.0f".format(summary.acceptRate)}% (${summary.acceptedCount}건)",
                 "급송" to "${summary.urgentCount}건",
                 "평균 손실" to summary.avgLossWon.toFormattedWon(),
                 "실패율" to "${"%.0f".format(summary.badRate)}%"
@@ -429,8 +429,8 @@ class DevStatsActivity : AppCompatActivity() {
             listOf(
                 "일치 (MATCH)" to "${matchCnt}건",
                 "불일치 (MISMATCH)" to "${mismatchCnt}건",
-                "  추천→미수락" to "${jobMismatch}건",
-                "  비추천→수락" to "${passMismatch}건"
+                "  우세→미수락" to "${jobMismatch}건",
+                "  주의→수락" to "${passMismatch}건"
             ).forEach { (key, value) ->
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL

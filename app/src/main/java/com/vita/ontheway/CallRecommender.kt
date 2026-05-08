@@ -107,7 +107,7 @@ object CallRecommender {
 
         return when (verdict) {
             Verdict.GRAB -> "$amtStr ${dirStr}우세"
-            Verdict.GOOD -> "$amtStr 좋습니다"
+            Verdict.GOOD -> "$amtStr 보통"
             Verdict.OK   -> "$amtStr 보통"
             Verdict.SKIP -> "$amtStr 주의"
         }.trim()

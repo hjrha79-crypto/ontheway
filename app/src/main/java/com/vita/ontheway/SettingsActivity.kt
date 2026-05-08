@@ -186,9 +186,9 @@ class SettingsActivity : AppCompatActivity() {
             textSize = 12f; setTextColor(Color.parseColor("#888888"))
             setPadding(dp(16), 0, dp(16), dp(8))
         })
-        val grabBar = filterSeekBar(filterCard, "추천 기준", TtsPrefs.getGrabThreshold(this), 7000, 20000, 1000, "원")
+        val grabBar = filterSeekBar(filterCard, "우세 기준", TtsPrefs.getGrabThreshold(this), 7000, 20000, 1000, "원")
         filterCard.addView(TextView(this).apply {
-            text = "이 금액 이상이면 무조건 '추천' TTS"
+            text = "이 금액 이상이면 무조건 '우세' TTS"
             textSize = 12f; setTextColor(Color.parseColor("#888888"))
             setPadding(dp(16), 0, dp(16), dp(8))
         })
@@ -434,14 +434,14 @@ class SettingsActivity : AppCompatActivity() {
         val ttsCard = card()
 
         ttsCard.addView(advancedToggle(
-            "비추천만 안내",
+            "주의만 안내",
             "ON이면 ACCEPT 콜은 음성 없이 로그만 기록",
             TtsPrefs.isRejectOnlyEnabled(this)
         ) { checked -> TtsPrefs.setRejectOnly(this, checked) })
 
         ttsCard.addView(advancedToggle(
-            "추천만 안내",
-            "ON이면 추천 판정만 음성 출력",
+            "우세만 안내",
+            "ON이면 우세 판정만 음성 출력",
             TtsPrefs.isGrabOnlyEnabled(this)
         ) { checked -> TtsPrefs.setGrabOnly(this, checked) })
 
@@ -1326,7 +1326,7 @@ class SettingsActivity : AppCompatActivity() {
             return
         }
         val h = android.os.Handler(android.os.Looper.getMainLooper())
-        testTts?.speak("추천, 단가 1,800원", TextToSpeech.QUEUE_FLUSH, null, "demo_1")
+        testTts?.speak("우세, 단가 1,800원", TextToSpeech.QUEUE_FLUSH, null, "demo_1")
         if (preset.ordinal >= TtsPreset.MEDIUM.ordinal) {
             h.postDelayed({
                 testTts?.speak("문 앞 초인종", TextToSpeech.QUEUE_ADD, null, "demo_2")
