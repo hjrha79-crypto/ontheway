@@ -5,17 +5,45 @@ import android.content.Context
 import android.util.Log
 
 /**
- * Ledger 원장 Repository — append-only.
+ * ╔══════════════════════════════════════════════════════════════════╗
+ * ║  TIER 1: PERMANENT LEDGER — 운행 원장 데이터 자산                ║
+ * ║                                                                  ║
+ * ║  DO NOT ADD: cleanup(), delete(), truncate(), update() methods.  ║
+ * ║  정정은 CORRECTION_ISSUED 이벤트로 append.                       ║
+ * ║  retention 정책 없음 — 영구 보존.                                ║
+ * ║  archive 정책은 별도 결정 (cleanup X, archive O).                ║
+ * ╚══════════════════════════════════════════════════════════════════╝
  *
- * 원칙:
- * - append() = INSERT만 허용
- * - update/delete 메서드 없음 (컴파일 타임 강제)
- * - 정정은 CORRECTION_ISSUED 이벤트로 append
- * - retention 정책 없음 (영구 보존)
+ * Retention Tier 분류:
+ *
+ * TIER 1 (영구 보존 — cleanup 금지):
+ *   - ledger_events (이 Repository)
+ *   - regret_candidate (P0-7 추가 예정)
+ *
+ * TIER 2 (운영 진단 — cleanup/cap 허용):
+ *   - FilterLog: 200건 cap
+ *   - DiagnosticLog: 1000건 cap
+ *   - BaeminDiagnosticLogger: 5000건 cap
+ *   - CoupangDiagnosticLogger: 5000건 cap
+ *   - CallLogDb: 90일 cleanup
+ *   - StateTransitionLog: 3일 cleanup
+ *   - CriticalEventDb: 24시간 cleanup
+ *
+ * TIER 3 (임시 — 재시작 시 손실 OK):
+ *   - JudgmentMatchLogger.pendingEvents (in-memory)
+ *   - CallSessionRegistry.entries (in-memory)
+ *   - dedup caches (in-memory)
  */
 object LedgerEventsRepository {
 
     private const val TAG = "LedgerRepo"
+
+    // 사이즈 모니터링 임계값
+    private const val LOG_THRESHOLD_1K = 1_000
+    private const val LOG_THRESHOLD_10K = 10_000
+    private const val LOG_THRESHOLD_100K = 100_000
+    private const val WARN_SIZE_BYTES = 100L * 1024 * 1024  // 100MB
+    private var lastLoggedThreshold = 0
 
     /**
      * 이벤트 append (INSERT).
@@ -47,6 +75,8 @@ object LedgerEventsRepository {
             )
             if (rowId == -1L) {
                 Log.w(TAG, "append CONFLICT_IGNORE: ledger_event_id=${event.ledgerEventId}")
+            } else {
+                checkSizeThreshold(ctx)
             }
             rowId
         } catch (e: Exception) {
@@ -71,7 +101,7 @@ object LedgerEventsRepository {
             arrayOf(type.name, sinceWall.toString()))
     }
 
-    /** 전체 카운트 (테스트/디버그용) */
+    /** 전체 카운트 */
     fun count(ctx: Context): Int {
         return try {
             val db = LedgerEventsDb.get(ctx).readableDatabase
@@ -79,6 +109,49 @@ object LedgerEventsRepository {
             cursor.use { if (it.moveToFirst()) it.getInt(0) else 0 }
         } catch (e: Exception) { 0 }
     }
+
+    /** DB 파일 크기 (bytes) */
+    fun dbSizeBytes(ctx: Context): Long {
+        return try {
+            val dbPath = ctx.getDatabasePath(LedgerEventsDb.DB_NAME)
+            if (dbPath.exists()) dbPath.length() else 0
+        } catch (_: Exception) { 0 }
+    }
+
+    /** 사이즈 요약 (디버그용) */
+    fun getSizeReport(ctx: Context): String {
+        val rows = count(ctx)
+        val bytes = dbSizeBytes(ctx)
+        val mb = bytes / (1024.0 * 1024.0)
+        return "ledger: ${rows}건 / ${"%.1f".format(mb)}MB"
+    }
+
+    // ── 사이즈 모니터링 (cleanup X, 인지만) ──
+
+    private fun checkSizeThreshold(ctx: Context) {
+        try {
+            val rows = count(ctx)
+            val threshold = when {
+                rows >= LOG_THRESHOLD_100K && lastLoggedThreshold < LOG_THRESHOLD_100K -> LOG_THRESHOLD_100K
+                rows >= LOG_THRESHOLD_10K && lastLoggedThreshold < LOG_THRESHOLD_10K -> LOG_THRESHOLD_10K
+                rows >= LOG_THRESHOLD_1K && lastLoggedThreshold < LOG_THRESHOLD_1K -> LOG_THRESHOLD_1K
+                else -> return
+            }
+            lastLoggedThreshold = threshold
+            val sizeBytes = dbSizeBytes(ctx)
+            val mb = sizeBytes / (1024.0 * 1024.0)
+            Log.i(TAG, "Ledger milestone: ${rows}건, ${"%.1f".format(mb)}MB")
+            if (sizeBytes > WARN_SIZE_BYTES) {
+                Log.w(TAG, "Ledger 100MB 초과! Archive 정책 검토 필요. (${rows}건, ${"%.1f".format(mb)}MB)")
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ══════════════════════════════════════════════
+    // PERMANENT LEDGER: 아래 메서드는 절대 추가 금지
+    // cleanup() / delete() / truncate() / update()
+    // 정정 = CORRECTION_ISSUED 이벤트 append
+    // ══════════════════════════════════════════════
 
     private fun query(ctx: Context, selection: String, args: Array<String>): List<LedgerEvent> {
         val results = mutableListOf<LedgerEvent>()

@@ -452,7 +452,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 10) 
         }
     }
 
-    /** 90일 이상 오래된 데이터 정리 */
+    /** 90일 이상 오래된 데이터 정리 (TIER 2 운영 진단용).
+     *  Ledger (ledger.db) 영향 X — 별도 DB, 영구 보존. */
     fun cleanup() {
         val cutoff = System.currentTimeMillis() - 90L * 24 * 3600 * 1000
         val deleted = writableDatabase.delete(TABLE, "timestamp < ?", arrayOf(cutoff.toString()))

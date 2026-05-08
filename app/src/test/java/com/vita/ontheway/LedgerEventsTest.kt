@@ -153,6 +153,8 @@ class LedgerEventsTest {
         val methods = LedgerEventsRepository::class.java.declaredMethods.map { it.name }
         assertFalse("update 메서드 없어야 함", methods.any { it.contains("update", ignoreCase = true) })
         assertFalse("delete 메서드 없어야 함", methods.any { it.contains("delete", ignoreCase = true) })
+        assertFalse("cleanup 메서드 없어야 함", methods.any { it.contains("cleanup", ignoreCase = true) })
+        assertFalse("truncate 메서드 없어야 함", methods.any { it.contains("truncate", ignoreCase = true) })
     }
 
     @Test
@@ -163,6 +165,13 @@ class LedgerEventsTest {
         assertTrue("getByEventId 존재", methods.contains("getByEventId"))
         assertTrue("getByType 존재", methods.contains("getByType"))
         assertTrue("count 존재", methods.contains("count"))
+    }
+
+    @Test
+    fun `Repository 사이즈 모니터링 메서드 존재`() {
+        val methods = LedgerEventsRepository::class.java.declaredMethods.map { it.name }
+        assertTrue("dbSizeBytes 존재", methods.contains("dbSizeBytes"))
+        assertTrue("getSizeReport 존재", methods.contains("getSizeReport"))
     }
 
     // ── LedgerEventType 모든 값 event 생성 가능 ──
