@@ -70,7 +70,26 @@ object AcceptCoordinator {
         // 3. FilterLog 수락 기록 (eventId/orderId 포함)
         FilterLog.recordAccepted(ctx, price, platform, eventId, orderId, storeName)
 
-        // 4. 로그
+        // 4. Ledger: DRIVER_ACCEPTED append
+        try {
+            val callSessionId = com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
+                eventId = eventId.ifBlank { null },
+                orderId = orderId.ifBlank { null },
+                fingerprint = com.vita.ontheway.ledger.CallSessionRegistry.buildFingerprint(storeName, price, platform)
+            )
+            com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                ctx, callSessionId, eventId, orderId, platform,
+                com.vita.ontheway.ledger.LedgerEventType.DRIVER_ACCEPTED,
+                "user_action",
+                org.json.JSONObject().apply {
+                    put("price", price)
+                    put("storeName", storeName)
+                    put("source", source.name)
+                }.toString()
+            )
+        } catch (_: Exception) {}
+
+        // 5. 로그
         OtwFileLogger.log(TAG, "수락 확정: $source ${price}원 $platform store='$storeName' eventId='$eventId' orderId='$orderId'")
         Log.d(TAG, "수락 확정: $source ${price}원 $platform store='$storeName' eventId='$eventId' orderId='$orderId'")
     }

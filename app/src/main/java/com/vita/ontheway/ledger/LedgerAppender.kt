@@ -101,6 +101,36 @@ object LedgerAppender {
         appendAsync(ctx, event)
     }
 
+    /**
+     * 일반 lifecycle 이벤트 append (CALL_DETECTED, JUDGMENT_ISSUED, DRIVER_ACCEPTED 등).
+     */
+    fun appendLifecycle(
+        ctx: Context,
+        callSessionId: String,
+        eventId: String?,
+        orderId: String?,
+        platform: String,
+        type: LedgerEventType,
+        sourceChannel: String,
+        derivedPayloadJson: String? = null
+    ) {
+        val event = LedgerEvent(
+            ledgerEventId = UUID.randomUUID().toString(),
+            callSessionId = callSessionId,
+            eventId = eventId,
+            orderId = orderId,
+            platform = platform,
+            eventType = type,
+            sourceChannel = sourceChannel,
+            occurredAtWall = System.currentTimeMillis(),
+            occurredAtMonotonic = android.os.SystemClock.elapsedRealtime(),
+            identityConfidence = if (!orderId.isNullOrBlank()) 1.0 else if (!eventId.isNullOrBlank()) 0.8 else 0.5,
+            confidence = 0.9,
+            derivedPayloadJson = derivedPayloadJson
+        )
+        appendAsync(ctx, event)
+    }
+
     private fun appendAsync(ctx: Context, event: LedgerEvent) {
         val appCtx = ctx.applicationContext
         executor.execute {

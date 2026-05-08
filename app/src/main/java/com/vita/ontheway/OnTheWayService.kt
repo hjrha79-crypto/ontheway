@@ -1240,6 +1240,31 @@ class OnTheWayService : AccessibilityService() {
             source = CrossSourceDedup.SOURCE_A11Y)
         lastDeliveryReason = result.reason
         lastDeliverySessionId = callSessionEvt?.eventId
+
+        // Ledger: CALL_DETECTED + JUDGMENT_ISSUED
+        try {
+            val csId = com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
+                eventId = callSessionEvt?.eventId,
+                orderId = call.orderId,
+                fingerprint = com.vita.ontheway.ledger.CallSessionRegistry.buildFingerprint(
+                    call.storeName, call.price, call.platform)
+            )
+            com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                this, csId, callSessionEvt?.eventId, call.orderId, call.platform,
+                com.vita.ontheway.ledger.LedgerEventType.CALL_DETECTED, "accessibility",
+                org.json.JSONObject().apply {
+                    put("price", call.price); put("storeName", call.storeName)
+                }.toString()
+            )
+            com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                this, csId, callSessionEvt?.eventId, call.orderId, call.platform,
+                com.vita.ontheway.ledger.LedgerEventType.JUDGMENT_ISSUED, "internal",
+                org.json.JSONObject().apply {
+                    put("verdict", result.verdict.name); put("reason", result.reason)
+                }.toString()
+            )
+        } catch (_: Exception) {}
+
         // 내부 verdict (데이터/JudgmentMatch용 — 사용자에게는 노출 X)
         if (result.verdict == CallFilter.Verdict.REJECT) {
             lastDeliveryCall = call

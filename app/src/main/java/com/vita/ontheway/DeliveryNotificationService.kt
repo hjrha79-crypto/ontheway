@@ -242,6 +242,32 @@ class DeliveryNotificationService : NotificationListenerService() {
             Log.d("DeliveryNoti", "파싱 결과: price=${enrichedCall.price}, result=${result.verdict} (${result.reason})")
             FilterLog.record(this, enrichedCall, result, eventId = session?.eventId, sessionState = session?.state?.name)
 
+            // Ledger: CALL_DETECTED + JUDGMENT_ISSUED
+            try {
+                val csId = com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
+                    eventId = session?.eventId,
+                    orderId = enrichedCall.orderId,
+                    fingerprint = com.vita.ontheway.ledger.CallSessionRegistry.buildFingerprint(
+                        enrichedCall.storeName, enrichedCall.price, enrichedCall.platform)
+                )
+                com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                    this, csId, session?.eventId, enrichedCall.orderId, enrichedCall.platform,
+                    com.vita.ontheway.ledger.LedgerEventType.CALL_DETECTED, "notification",
+                    org.json.JSONObject().apply {
+                        put("price", enrichedCall.price)
+                        put("storeName", enrichedCall.storeName)
+                    }.toString()
+                )
+                com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                    this, csId, session?.eventId, enrichedCall.orderId, enrichedCall.platform,
+                    com.vita.ontheway.ledger.LedgerEventType.JUDGMENT_ISSUED, "internal",
+                    org.json.JSONObject().apply {
+                        put("verdict", result.verdict.name)
+                        put("reason", result.reason)
+                    }.toString()
+                )
+            } catch (_: Exception) {}
+
             // Bug 3 fix: CallLogDb에도 기록 (UserModeActivity 표시용)
             val ctx = this
             val notiPlatform = enrichedCall.platform; val notiPrice = enrichedCall.price
