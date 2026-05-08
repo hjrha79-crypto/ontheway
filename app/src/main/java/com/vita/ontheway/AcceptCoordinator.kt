@@ -64,8 +64,13 @@ object AcceptCoordinator {
         // 1. 시급 누적
         EarningsTracker.recordAccept(ctx, price, platform, storeName)
 
-        // 2. 판정-행동 매칭
-        try { JudgmentMatchLogger.onAcceptDetected(ctx) } catch (_: Exception) {}
+        // 2. 판정-행동 매칭 (eventId/orderId 기반)
+        try {
+            JudgmentMatchLogger.onAcceptDetected(
+                ctx, eventId = eventId, orderId = orderId,
+                price = price, storeName = storeName, platform = platform
+            )
+        } catch (_: Exception) {}
 
         // 3. FilterLog 수락 기록 (eventId/orderId 포함)
         FilterLog.recordAccepted(ctx, price, platform, eventId, orderId, storeName)

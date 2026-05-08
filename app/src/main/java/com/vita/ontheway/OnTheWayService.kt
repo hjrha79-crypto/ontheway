@@ -1380,7 +1380,7 @@ class OnTheWayService : AccessibilityService() {
         checkGoalProgress()
         DailyReport.onCallDetected(this)
 
-        // 판정-행동 매칭: PENDING 이벤트 생성 + 30s 타임아웃
+        // 판정-행동 매칭: PENDING 이벤트 생성 + 5분 타임아웃
         try {
             JudgmentMatchLogger.onJudgmentIssued(
                 ctx = this,
@@ -1390,7 +1390,11 @@ class OnTheWayService : AccessibilityService() {
                 storeName = call.storeName,
                 verdict = lastDeliveryVerdict,
                 reason = result.reason,
-                sessionId = callSessionEvt?.eventId
+                sessionId = callSessionEvt?.eventId,
+                eventId = callSessionEvt?.eventId,
+                orderId = call.orderId,
+                callSessionId = com.vita.ontheway.ledger.CallSessionRegistry.findSessionId(
+                    callSessionEvt?.eventId, call.orderId)
             )
         } catch (_: Exception) {}
     }
