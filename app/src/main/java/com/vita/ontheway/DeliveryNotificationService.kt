@@ -405,11 +405,11 @@ class DeliveryNotificationService : NotificationListenerService() {
             val ttsMode = TtsFormatMode.BASIC  // TODO: SettingsActivity에서 읽어오도록 변경 예정
             val priceKr = toKoreanNumber(call.price)
             if (result.verdict == CallFilter.Verdict.REJECT) {
-                val msg = "카카오, 넘기세요, ${priceKr}원"
+                val msg = "카카오, 주의, ${priceKr}원"
                 speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                 Log.d("DeliveryNoti", "카카오T REJECT: ${call.price}원")
             } else {
-                val msg = "카카오, 잡으세요, ${priceKr}원"
+                val msg = "카카오, 우세, ${priceKr}원"
                 speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                 Log.d("DeliveryNoti", "카카오T ACCEPT: ${call.price}원")
             }

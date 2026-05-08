@@ -124,11 +124,11 @@ object CallDetailSheet {
             addView(TextView(context).apply {
                 text = when {
                     detail.isUrgent -> "⚡ 급송"
-                    detail.aiReason.contains("추천") -> "● 추천"
+                    detail.aiReason.contains("우세") -> "● 우세"
                     detail.aiReason.contains("좋습니다") -> "● 좋습니다"
                     detail.aiReason.contains("보통") -> "● 보통"
-                    detail.aiReason.contains("비추천") || detail.aiReason.contains("넘기세요") -> "● 비추천"
-                    detail.rank == 1 -> "● 1위 추천"
+                    detail.aiReason.contains("주의") || detail.aiReason.contains("넘기세요") -> "● 주의"
+                    detail.rank == 1 -> "● 1위 우세"
                     else -> "${detail.rank}순위"
                 }
                 textSize = 11f

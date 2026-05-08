@@ -64,8 +64,8 @@ object OverlayManager {
 
             // 판정별 배경 색상
             val colorHex = when {
-                verdict.contains("추천") || verdict.contains("잡으세요") || verdict == "ACCEPT" -> COLOR_ACCEPT
-                verdict.contains("비추천") || verdict.contains("넘기세요") || verdict == "REJECT" -> COLOR_REJECT
+                verdict.contains("우세") || verdict.contains("잡으세요") || verdict == "ACCEPT" -> COLOR_ACCEPT
+                verdict.contains("주의") || verdict.contains("넘기세요") || verdict == "REJECT" -> COLOR_REJECT
                 else -> COLOR_DEFAULT
             }
             val bg = view.background

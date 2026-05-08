@@ -118,7 +118,7 @@ class OnTheWayService : AccessibilityService() {
 
     // v3.0: 마지막 판정 정보 (수락 감지용 + 오버레이 피드백)
     var lastDeliveryCall: DeliveryCall? = null
-    var lastDeliveryVerdict: String = ""  // "추천", "보통", "비추천"
+    var lastDeliveryVerdict: String = ""  // "우세", "보통", "주의"
     var lastDeliveryPlatform: String = ""
     var lastDeliveryReason: String? = null
     var lastDeliverySessionId: String? = null
@@ -1206,7 +1206,7 @@ class OnTheWayService : AccessibilityService() {
         // 내부 verdict (데이터/JudgmentMatch용 — 사용자에게는 노출 X)
         if (result.verdict == CallFilter.Verdict.REJECT) {
             lastDeliveryCall = call
-            lastDeliveryVerdict = "비추천"
+            lastDeliveryVerdict = "주의"
             lastDeliveryPlatform = platformName
         } else {
             val grabThreshold = TtsPrefs.getGrabThreshold(this)
@@ -1221,7 +1221,7 @@ class OnTheWayService : AccessibilityService() {
             }
             lastDeliveryCall = call
             lastDeliveryPlatform = platformName
-            lastDeliveryVerdict = if (isTopAccept) "추천" else "보통"
+            lastDeliveryVerdict = if (isTopAccept) "우세" else "보통"
         }
 
         // ── TTS 3단계 판정 (중복 방지) — TTS만 스킵, 오버레이/DB/로그는 항상 실행 ──
@@ -1281,8 +1281,8 @@ class OnTheWayService : AccessibilityService() {
         val dbSourceType = V2Event.mapSourceType(call.platform)
         val dbParsingMethod = call.parsingMethod
         val dbDriverAction = when (lastDeliveryVerdict) {
-            "추천", "보통" -> "simulated_accept"
-            "비추천" -> "simulated_reject"
+            "우세", "보통" -> "simulated_accept"
+            "주의" -> "simulated_reject"
             else -> "unknown"
         }
         val dbTotalKm = (dbPickupKm ?: 0.0) + (dbDistance ?: 0.0)
@@ -1436,9 +1436,9 @@ class OnTheWayService : AccessibilityService() {
         if (!AdvancedPrefs.isCallSoundEnabled(this)) return
         try {
             val resId = when (verdict) {
-                "추천" -> resources.getIdentifier("sound_grab", "raw", packageName)
+                "우세" -> resources.getIdentifier("sound_grab", "raw", packageName)
                 "보통" -> resources.getIdentifier("sound_ok", "raw", packageName)
-                "비추천" -> resources.getIdentifier("sound_skip", "raw", packageName)
+                "주의" -> resources.getIdentifier("sound_skip", "raw", packageName)
                 else -> 0
             }
             if (resId != 0) {
@@ -1724,7 +1724,7 @@ class OnTheWayService : AccessibilityService() {
                 getSystemService(VIBRATOR_SERVICE) as Vibrator
             }
             when (verdict) {
-                "추천" -> {
+                "우세" -> {
                     val pattern = longArrayOf(0, 500, 200, 500, 200, 500)
                     vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
                 }

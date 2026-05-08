@@ -504,7 +504,7 @@ class SettingsActivity : AppCompatActivity() {
         // v3.2: 진동 알림
         ttsCard.addView(advancedToggle(
             "진동 알림",
-            "추천: 강한 진동, 보통: 보통 진동, 비추천: 없음",
+            "우세: 강한 진동, 보통: 보통 진동, 주의: 없음",
             TtsPrefs.isVibrationEnabled(this)
         ) { checked -> TtsPrefs.setVibration(this, checked) })
 

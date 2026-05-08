@@ -66,7 +66,7 @@ object CallDetailDialog {
         // 내부 verdict (데이터용, FeedbackLogger 전달용)
         val verdictKr = when {
             verdict == "REJECT" -> "REJECT"
-            reason.contains("추천") || reason.contains("잡으세요") -> "ACCEPT_TOP"
+            reason.contains("우세") || reason.contains("잡으세요") -> "ACCEPT_TOP"
             else -> "ACCEPT"
         }
 

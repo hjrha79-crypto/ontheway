@@ -22,7 +22,7 @@ data class RecommendResult(
     val totalScore: Double,
     val reason: String,       // 화면 표시용: "강남 방향 · 픽업 1.2km"
     val reasonDetail: String, // 판정 레벨: GRAB / GOOD / OK / SKIP
-    val voice: String = ""    // TTS 음성 출력용: "39,400원 강남 방향 잡으세요"
+    val voice: String = ""    // TTS 음성 출력용: "39,400원 강남 방향 우세"
 )
 
 object CallRecommender {
@@ -106,10 +106,10 @@ object CallRecommender {
         } else ""
 
         return when (verdict) {
-            Verdict.GRAB -> "$amtStr ${dirStr}잡으세요"
+            Verdict.GRAB -> "$amtStr ${dirStr}우세"
             Verdict.GOOD -> "$amtStr 좋습니다"
-            Verdict.OK   -> "$amtStr 괜찮습니다"
-            Verdict.SKIP -> "$amtStr 넘기세요"
+            Verdict.OK   -> "$amtStr 보통"
+            Verdict.SKIP -> "$amtStr 주의"
         }.trim()
     }
 

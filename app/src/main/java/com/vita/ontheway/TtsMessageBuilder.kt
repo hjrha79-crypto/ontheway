@@ -47,8 +47,8 @@ object TtsMessageBuilder {
 
     /**
      * 기존 메시지에 상황만 끼워넣기.
-     * 예: "쿠팡, 잡으세요, 만이천원" + "근거리"
-     *     → "쿠팡, 근거리, 잡으세요, 만이천원"
+     * 예: "쿠팡, 우세, 만이천원" + "근거리"
+     *     → "쿠팡, 근거리, 우세, 만이천원"
      */
     fun insertSituation(baseMsg: String, situation: String?): String {
         if (situation == null) return baseMsg
@@ -62,7 +62,7 @@ object TtsMessageBuilder {
 
     /**
      * 간결 모드: 플랫폼 + 상황 + 행동만.
-     * 예: "쿠팡 근거리, 잡으세요"
+     * 예: "쿠팡 근거리, 우세"
      */
     fun buildConcise(
         call: DeliveryCall,
@@ -90,8 +90,8 @@ object TtsMessageBuilder {
 
     private fun actionLabel(result: CallFilter.FilterResult): String {
         return when (result.verdict) {
-            CallFilter.Verdict.ACCEPT -> "추천"
-            CallFilter.Verdict.REJECT -> "비추천"
+            CallFilter.Verdict.ACCEPT -> "우세"
+            CallFilter.Verdict.REJECT -> "주의"
         }
     }
 }

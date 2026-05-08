@@ -216,7 +216,7 @@ object BidirectionalFeedbackDialog {
             val delivery = RatingHolder(existing?.deliveryRating)
             val price = RatingHolder(existing?.priceRating)
 
-            val pickupRow = makeRow(context, dp, "픽업 위치", pickup, "가까움", "멈")
+            val pickupRow = makeRow(context, dp, "픽업 위치", pickup, "가까움", "주의")
             val deliveryRow = makeRow(context, dp, "배달 위치", delivery, "좋음", "외지")
             val priceRow = makeRow(context, dp, "단가/금액", price, "좋음", "나쁨")
 

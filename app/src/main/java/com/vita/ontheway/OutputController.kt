@@ -8,7 +8,7 @@ import java.text.NumberFormat
 /**
  * 출력 단일 진입점 — TTS 3단 구조.
  *
- * 계산형 (쿠팡 + distanceKm > 0): 추천/애매/비추천 + 이유
+ * 계산형 (쿠팡 + distanceKm > 0): 우세/보통/주의 + 이유
  * 정보형 (배민 or distanceKm == 0): 금액 + 픽업거리
  * 침묵: 데이터 부족
  */
@@ -27,7 +27,7 @@ object OutputController {
 
     /** 판단 금지어 — 이 단어가 포함된 메시지는 출력 차단 */
     val FORBIDDEN_WORDS = listOf(
-        "잡으세요", "넘기세요", "괜찮습니다",
+        "잡으세요", "넘기세요", "괜찮습니다", "추천", "멈", "비추천",
         "권장", "좋은 콜"
     )
 
@@ -89,18 +89,18 @@ object OutputController {
 
     /** verdict 3단계 판정 (TTS용, 직관 표현) */
     private fun extractVerdict(call: DeliveryCall, result: CallFilter.FilterResult): String {
-        if (result.verdict == CallFilter.Verdict.REJECT) return "멈"
+        if (result.verdict == CallFilter.Verdict.REJECT) return "주의"
         val dist = call.distance ?: 0.0
         val pickupKm = call.pickupDistanceKm ?: 0.0
         val totalKm = pickupKm + dist
         val unitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
         val pickupUnknown = call.pickupDistanceKm == null || call.pickupDistanceKm <= 0.0
         val raw = when {
-            call.price >= 8000 -> "추천"
-            dist > 0 && unitPrice >= 1700 -> "추천"
+            call.price >= 8000 -> "우세"
+            dist > 0 && unitPrice >= 1700 -> "우세"
             dist > 0 && unitPrice in 1400..1699 -> "보통"
-            dist == 0.0 && pickupKm > 0 && pickupKm <= 1.0 && call.price >= 3000 -> "추천"
-            dist == 0.0 && pickupKm >= 5.0 -> "멈"
+            dist == 0.0 && pickupKm > 0 && pickupKm <= 1.0 && call.price >= 3000 -> "우세"
+            dist == 0.0 && pickupKm >= 5.0 -> "주의"
             else -> "보통"
         }
 
@@ -109,19 +109,19 @@ object OutputController {
             val effectiveUnitPrice = if (totalKm > 0) ((call.price / totalKm) * 0.5).toInt() else 0
             OtwFileLogger.log(TAG, "[VERDICT_MULTI] 멀티 보정: " +
                 "원래 단가=${if (totalKm > 0) (call.price / totalKm).toInt() else 0} → 보정 $effectiveUnitPrice")
-            // 멀티는 추천/보통 → 보통 강등
-            val downgraded = if (raw == "추천") "보통" else raw
-            // 보정 단가 < 1500 → 멈
+            // 멀티는 우세/보통 → 보통 강등
+            val downgraded = if (raw == "우세") "보통" else raw
+            // 보정 단가 < 1500 → 주의
             if (totalKm > 0 && effectiveUnitPrice < 1500) {
-                OtwFileLogger.log(TAG, "[VERDICT_MULTI] 보정단가 ${effectiveUnitPrice} < 1500 → 멈")
-                return "멈"
+                OtwFileLogger.log(TAG, "[VERDICT_MULTI] 보정단가 ${effectiveUnitPrice} < 1500 → 주의")
+                return "주의"
             }
             return downgraded
         }
 
-        // 픽업거리 미측정 시 추천 → 보통 강등 (고액 8000원+ 제외)
-        if (raw == "추천" && pickupUnknown && call.price < 8000) {
-            OtwFileLogger.log(TAG, "verdict 강등: 추천→보통 (pickupKm=null, ${call.price}원, dist=$dist)")
+        // 픽업거리 미측정 시 우세 → 보통 강등 (고액 8000원+ 제외)
+        if (raw == "우세" && pickupUnknown && call.price < 8000) {
+            OtwFileLogger.log(TAG, "verdict 강등: 우세→보통 (pickupKm=null, ${call.price}원, dist=$dist)")
             return "보통"
         }
         return raw
@@ -129,9 +129,9 @@ object OutputController {
 
     /** Overlay용 이모지 추가 (TTS는 원문 그대로) */
     fun addVerdictEmoji(text: String): String = text
-        .replace("추천", "\uD83D\uDFE2 추천")
+        .replace("우세", "\uD83D\uDFE2 우세")
         .replace("보통", "\u26AA 보통")
-        .replace("멈", "\uD83D\uDD34 멈")
+        .replace("주의", "\uD83D\uDD34 주의")
 
     /**
      * 상태 알림용 emit (30초 쿨다운 무시).

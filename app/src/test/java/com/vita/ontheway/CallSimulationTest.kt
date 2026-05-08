@@ -771,7 +771,7 @@ class CallSimulationTest {
         val call = DeliveryCall(price = 3069, distance = 1.5, isMulti = false, platform = "coupang")
         val result = CallFilter.judge(call, ctx)
         assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
-        assertTrue("추천 사유", result.reason.contains("추천"))
+        assertTrue("우세 사유", result.reason.contains("우세"))
         println("57 PASS: 3069원/1.5km → ${result.verdict} (${result.reason})")
     }
 
@@ -921,32 +921,32 @@ class CallSimulationTest {
         println("69 PASS: 빈 문자열 → 빈 리스트")
     }
 
-    // ---- v3.16: 잡으세요 reason 한글만 추출 테스트 ----
+    // ---- v3.16: 우세 reason 한글만 추출 테스트 ----
 
     @Test
-    fun `70 잡으세요 고단가 근거리 reason에서 한글만 추출`() {
+    fun `70 우세 고단가 근거리 reason에서 한글만 추출`() {
         // CallFilter가 생성하는 실제 reason 형태
-        val raw = "잡으세요: 고단가 근거리 2,700원/km ≥ 2,500원 + 거리 1.0km ≤ 3km"
-        val match = Regex("""잡으세요:\s*([가-힣\s]+)""").find(raw)
+        val raw = "우세: 고단가 근거리 2,700원/km ≥ 2,500원 + 거리 1.0km ≤ 3km"
+        val match = Regex("""우세:\s*([가-힣\s]+)""").find(raw)
         assertNotNull(match)
         assertEquals("고단가 근거리", match!!.groupValues[1].trim())
         println("70 PASS: reason → '고단가 근거리' 추출")
     }
 
     @Test
-    fun `71 잡으세요 단거리 고단가 reason 추출`() {
-        val raw = "잡으세요: 단거리 고단가 2,046원/km ≥ 2,000원 + 거리 1.5km ≤ 2km"
-        val match = Regex("""잡으세요:\s*([가-힣\s]+)""").find(raw)
+    fun `71 우세 단거리 고단가 reason 추출`() {
+        val raw = "우세: 단거리 고단가 2,046원/km ≥ 2,000원 + 거리 1.5km ≤ 2km"
+        val match = Regex("""우세:\s*([가-힣\s]+)""").find(raw)
         assertNotNull(match)
         assertEquals("단거리 고단가", match!!.groupValues[1].trim())
         println("71 PASS: reason → '단거리 고단가' 추출")
     }
 
     @Test
-    fun `72 잡으세요 묶음효율 reason 추출`() {
-        val raw = "잡으세요: 묶음 효율 건당 3,040원 ≥ 3,000원 + 건당 2.7km ≤ 3km"
+    fun `72 우세 묶음효율 reason 추출`() {
+        val raw = "우세: 묶음 효율 건당 3,040원 ≥ 3,000원 + 건당 2.7km ≤ 3km"
         // "묶음 효율"만 추출 (뒤에 "건당"이 붙지 않도록)
-        val match = Regex("""잡으세요:\s*([가-힣]+\s*[가-힣]+)""").find(raw)
+        val match = Regex("""우세:\s*([가-힣]+\s*[가-힣]+)""").find(raw)
         assertNotNull(match)
         assertEquals("묶음 효율", match!!.groupValues[1].trim())
         println("72 PASS: reason → '묶음 효율' 추출")
@@ -978,7 +978,7 @@ class CallSimulationTest {
         val call = DeliveryCall(price = 3000, distance = 1.0, isMulti = false, platform = "coupang")
         val result = CallFilter.judge(call, ctx)
         assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
-        assertTrue("추천 사유", result.reason.contains("추천"))
+        assertTrue("우세 사유", result.reason.contains("우세"))
         println("75 PASS: 쿠팡 3000원/1.0km → ${result.verdict} (${result.reason})")
     }
 
