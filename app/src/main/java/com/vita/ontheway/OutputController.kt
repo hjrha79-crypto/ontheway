@@ -95,24 +95,35 @@ object OutputController {
         val totalKm = pickupKm + dist
         val unitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
         val pickupUnknown = call.pickupDistanceKm == null || call.pickupDistanceKm <= 0.0
+
+        // 거리 미측정 → 보통 고정 (verdict 보류)
+        if (totalKm <= 0) {
+            OtwFileLogger.log(TAG, "verdict 보류: 거리 미측정 (dist=$dist, pickupKm=$pickupKm, ${call.price}원)")
+            return "보통"
+        }
+
+        // 외지 페널티: 픽업 ≥ 5km && 단가 < 1,500원/km → 주의 강제
+        if (pickupKm >= 5.0 && unitPrice < 1500) {
+            OtwFileLogger.log(TAG, "verdict 외지 페널티: pickupKm=$pickupKm, 단가=$unitPrice")
+            return "주의"
+        }
+
         val raw = when {
             call.price >= 8000 -> "우세"
-            dist > 0 && unitPrice >= 1700 -> "우세"
-            dist > 0 && unitPrice in 1400..1699 -> "보통"
-            dist == 0.0 && pickupKm > 0 && pickupKm <= 1.0 && call.price >= 3000 -> "우세"
-            dist == 0.0 && pickupKm >= 5.0 -> "주의"
-            else -> "보통"
+            unitPrice >= 2000 -> "우세"
+            unitPrice >= 1200 -> "보통"
+            else -> "주의"
         }
 
         // 멀티콜 보정: 단가 0.5x + 우세 강등
         if (call.isMulti) {
-            val effectiveUnitPrice = if (totalKm > 0) ((call.price / totalKm) * 0.5).toInt() else 0
+            val effectiveUnitPrice = ((call.price / totalKm) * 0.5).toInt()
             OtwFileLogger.log(TAG, "[VERDICT_MULTI] 멀티 보정: " +
-                "원래 단가=${if (totalKm > 0) (call.price / totalKm).toInt() else 0} → 보정 $effectiveUnitPrice")
+                "원래 단가=${(call.price / totalKm).toInt()} → 보정 $effectiveUnitPrice")
             // 멀티는 우세/보통 → 보통 강등
             val downgraded = if (raw == "우세") "보통" else raw
             // 보정 단가 < 1500 → 주의
-            if (totalKm > 0 && effectiveUnitPrice < 1500) {
+            if (effectiveUnitPrice < 1500) {
                 OtwFileLogger.log(TAG, "[VERDICT_MULTI] 보정단가 ${effectiveUnitPrice} < 1500 → 주의")
                 return "주의"
             }
