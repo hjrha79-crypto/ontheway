@@ -14,5 +14,7 @@ data class DeliveryCall(
     val point: Double? = null,          // 배민 포인트 (v2 2.0)
     val pickupDistanceKm: Double? = null, // v3.4: GPS 기반 픽업 거리
     val parsingMethod: String = V2Event.PARSING_UNKNOWN, // v2.2: 파싱 방식 라벨
-    val orderId: String? = null         // FIX-T2CN: 배민 주문번호 (T2CN...)
+    val orderId: String? = null,        // FIX-T2CN: 배민 주문번호 (T2CN...)
+    val distanceSource: String = "",    // "api", "cache", "fallback", "nls"
+    val distanceConfidence: Double = 0.0 // 0.0~1.0
 )

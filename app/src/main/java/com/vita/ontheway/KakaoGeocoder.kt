@@ -26,6 +26,25 @@ object KakaoGeocoder {
 
     data class LatLng(val lat: Double, val lng: Double)
 
+    /** 거리 계산 결과 (source 추적 포함) */
+    data class DistanceResult(
+        val km: Double,
+        val source: String,       // "api", "cache", "fallback"
+        val confidence: Double    // api=0.95, cache=0.9, fallback=0.1
+    ) {
+        companion object {
+            const val SOURCE_API = "api"
+            const val SOURCE_CACHE = "cache"
+            const val SOURCE_FALLBACK = "fallback"
+            const val SOURCE_NLS = "nls"
+
+            fun api(km: Double) = DistanceResult(km, SOURCE_API, 0.95)
+            fun cache(km: Double) = DistanceResult(km, SOURCE_CACHE, 0.9)
+            fun fallback(km: Double) = DistanceResult(km, SOURCE_FALLBACK, 0.1)
+            fun nls(km: Double) = DistanceResult(km, SOURCE_NLS, 1.0)
+        }
+    }
+
     /** API 키 조회 (AdvancedPrefs에서) */
     private fun getApiKey(ctx: Context): String? {
         val prefs = ctx.getSharedPreferences("advanced_prefs", Context.MODE_PRIVATE)
@@ -98,7 +117,7 @@ object KakaoGeocoder {
      * LocationTable 통합 거리 계산 (메인 스레드 안전).
      * 캐시 hit → 정확 좌표. 캐시 miss → LocationTable fallback + 백그라운드 API 사전 로딩.
      */
-    fun distanceTo(ctx: Context, currentLat: Double, currentLng: Double, address: String): Double? {
+    fun distanceTo(ctx: Context, currentLat: Double, currentLng: Double, address: String): DistanceResult? {
         if (address.isBlank()) return null
         val enabled = isEnabled(ctx)
         if (enabled) {
@@ -107,7 +126,7 @@ object KakaoGeocoder {
             if (cached != null) {
                 val dist = LocationTable.haversineKm(currentLat, currentLng, cached.lat, cached.lng)
                 OtwFileLogger.log(TAG, "캐시 hit: \"$address\" → ${"%.2f".format(dist)}km")
-                return dist
+                return DistanceResult.cache(dist)
             }
             // 캐시 miss → 백그라운드에서 API 호출 (다음 요청 시 캐시 hit)
             OtwFileLogger.log(TAG, "캐시 miss → 백그라운드 API 예약: \"$address\"")
@@ -119,7 +138,7 @@ object KakaoGeocoder {
         // Fallback: LocationTable (동 중심점)
         val fallback = LocationTable.distanceTo(currentLat, currentLng, address)
         OtwFileLogger.log(TAG, "fallback: \"$address\" → ${if (fallback != null) "${"%.2f".format(fallback)}km" else "null"} (enabled=$enabled)")
-        return fallback
+        return if (fallback != null) DistanceResult.fallback(fallback) else null
     }
 
     /**

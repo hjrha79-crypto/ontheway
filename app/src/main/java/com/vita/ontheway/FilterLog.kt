@@ -81,6 +81,7 @@ object FilterLog {
             if (baeminPoint != null) put("point", baeminPoint)
             if (call.point != null) put("point", call.point)
             if (call.pickupDistanceKm != null) put("pickupKm", call.pickupDistanceKm)
+            if (call.distanceSource.isNotEmpty()) put("distanceSource", call.distanceSource)
             if (eventId != null) put("eventId", eventId)
             if (sessionState != null) put("state", sessionState)
         }.toString()

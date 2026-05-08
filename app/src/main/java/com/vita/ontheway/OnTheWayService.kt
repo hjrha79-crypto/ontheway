@@ -925,10 +925,14 @@ class OnTheWayService : AccessibilityService() {
                                 bundleCall.destination
                             }
                             if (addr.isNotEmpty()) {
-                                val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
-                                pickupDistKm = validatePickupDistance(straight)
-                                if (pickupDistKm != null) {
-                                    enrichedBundle = enrichedBundle.copy(pickupDistanceKm = pickupDistKm)
+                                val distResult = validatePickupDistance(KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr))
+                                if (distResult != null) {
+                                    pickupDistKm = distResult.km
+                                    enrichedBundle = enrichedBundle.copy(
+                                        pickupDistanceKm = distResult.km,
+                                        distanceSource = distResult.source,
+                                        distanceConfidence = distResult.confidence
+                                    )
                                 }
                             }
                         }
@@ -1001,10 +1005,14 @@ class OnTheWayService : AccessibilityService() {
             if (gpsActive && currentLat != 0.0 &&
                 DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
                 val addr = call.storeName.ifEmpty { call.destination }
-                val straight = KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr)
-                pickupDistKm = validatePickupDistance(straight)
-                if (pickupDistKm != null) {
-                    enrichedCall = enrichedCall.copy(pickupDistanceKm = pickupDistKm)
+                val distResult = validatePickupDistance(KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr))
+                if (distResult != null) {
+                    pickupDistKm = distResult.km
+                    enrichedCall = enrichedCall.copy(
+                        pickupDistanceKm = distResult.km,
+                        distanceSource = distResult.source,
+                        distanceConfidence = distResult.confidence
+                    )
                 }
             }
             val result = CallFilter.judge(enrichedCall, this)
@@ -1278,6 +1286,7 @@ class OnTheWayService : AccessibilityService() {
         val dbBundleCount = call.bundleCount; val dbIsMultiPickup = call.isMultiPickup
         val dbStoreName = call.storeName; val dbDestination = call.destination
         val dbPickupKm = pickupDistKm; val dbTtsSuppressed = !ttsActuallySpoken
+        val dbDistanceSource = enrichedCall.distanceSource
         val dbSourceType = V2Event.mapSourceType(call.platform)
         val dbParsingMethod = call.parsingMethod
         val dbDriverAction = when (lastDeliveryVerdict) {
@@ -1301,7 +1310,8 @@ class OnTheWayService : AccessibilityService() {
                     sourceType = dbSourceType,
                     parsingMethod = dbParsingMethod,
                     driverAction = dbDriverAction,
-                    sessionId = dbSessionId
+                    sessionId = dbSessionId,
+                    distanceSource = dbDistanceSource
                 )
                 // 쿠팡: Accessibility에서 가게명 있으면 NLS 레코드도 업데이트
                 if (dbPlatform == "coupang" && dbStoreName.isNotBlank()) {
@@ -1369,14 +1379,14 @@ class OnTheWayService : AccessibilityService() {
     }
 
     /** 픽업 거리 검증: 직선거리 → 도로 보정 → 범위 필터 (0.05~10km) */
-    private fun validatePickupDistance(straightKm: Double?): Double? {
-        if (straightKm == null) return null
-        val road = straightKm * ROAD_DISTANCE_FACTOR
+    private fun validatePickupDistance(result: KakaoGeocoder.DistanceResult?): KakaoGeocoder.DistanceResult? {
+        if (result == null) return null
+        val road = result.km * ROAD_DISTANCE_FACTOR
         if (road < 0.05 || road > 10.0) {
-            OtwFileLogger.log("DistanceFilter", "비정상 거리: ${"%.2f".format(road)}km (직선 ${"%.2f".format(straightKm)}km) → null")
+            OtwFileLogger.log("DistanceFilter", "비정상 거리: ${"%.2f".format(road)}km (직선 ${"%.2f".format(result.km)}km) → null")
             return null
         }
-        return road
+        return KakaoGeocoder.DistanceResult(road, result.source, result.confidence)
     }
 
     /** v3.1: TTS 설정 반영 (속도, 볼륨 부스트) */

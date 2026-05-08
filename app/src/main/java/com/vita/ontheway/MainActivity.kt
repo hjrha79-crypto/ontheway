@@ -599,10 +599,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // FIX-PICKUP-DISTANCE: 픽업 거리 표시 (큰 글씨)
         val pickupKm = entry.optDouble("pickupKm", -1.0)
         if (pickupKm > 0) {
+            val distSource = entry.optString("distanceSource", "")
+            val isFallback = distSource == KakaoGeocoder.DistanceResult.SOURCE_FALLBACK
             headerRow.addView(TextView(this).apply {
-                text = "${"%.1f".format(pickupKm)}km"
+                text = if (isFallback) "약${"%.0f".format(pickupKm)}km" else "${"%.1f".format(pickupKm)}km"
                 textSize = 13f
-                setTextColor(Color.parseColor("#FFD700"))
+                setTextColor(if (isFallback) Color.parseColor("#AAAAAA") else Color.parseColor("#FFD700"))
                 setTypeface(null, Typeface.BOLD)
             }, lp(WC, WC).apply { marginEnd = dp(4) })
         }
@@ -741,7 +743,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // FIX-PICKUP-DISTANCE: 픽업 거리 표시
         val pickupKm = entry.optDouble("pickupKm", -1.0)
         if (pickupKm > 0) {
-            addInfoRow("픽업", "${"%.1f".format(pickupKm)}km")
+            val distSrc = entry.optString("distanceSource", "")
+            val pickupLabel = if (distSrc == KakaoGeocoder.DistanceResult.SOURCE_FALLBACK)
+                "약${"%.0f".format(pickupKm)}km (추정)" else "${"%.1f".format(pickupKm)}km"
+            addInfoRow("픽업", pickupLabel)
         }
 
         // 거리 (배달 거리)
@@ -1133,7 +1138,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         // 픽업/총거리
         if (pickupKm > 0) {
-            addSection("픽업", "${"%.1f".format(pickupKm)}km")
+            val detailDistSrc = entry.optString("distanceSource", "")
+            val detailPickupLabel = if (detailDistSrc == KakaoGeocoder.DistanceResult.SOURCE_FALLBACK)
+                "약${"%.0f".format(pickupKm)}km (추정)" else "${"%.1f".format(pickupKm)}km"
+            addSection("픽업", detailPickupLabel)
             if (dist > 0) {
                 val totalKm = pickupKm + dist
                 addSection("총거리", "${"%.1f".format(totalKm)}km (${nf.format((price / totalKm).toInt())}원/km)")

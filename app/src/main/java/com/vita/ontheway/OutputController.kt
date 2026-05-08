@@ -82,7 +82,9 @@ object OutputController {
         // ── 단일 (거리 없음 → 픽업 거리 있으면 활용) ──
         val pickupKm = call.pickupDistanceKm ?: 0.0
         if (pickupKm > 0) {
-            return validateMessage("$platform, ${price}원, 픽업 ${"%.1f".format(pickupKm)}km, $verdict")
+            val pickupLabel = if (call.distanceSource == KakaoGeocoder.DistanceResult.SOURCE_FALLBACK)
+                "픽업 약${"%.0f".format(pickupKm)}km" else "픽업 ${"%.1f".format(pickupKm)}km"
+            return validateMessage("$platform, ${price}원, $pickupLabel, $verdict")
         }
         return validateMessage("$platform, ${price}원, $verdict")
     }

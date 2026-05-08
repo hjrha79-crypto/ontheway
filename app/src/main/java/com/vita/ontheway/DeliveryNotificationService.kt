@@ -243,6 +243,7 @@ class DeliveryNotificationService : NotificationListenerService() {
             val notiDest = enrichedCall.destination; val notiBundleCount = enrichedCall.bundleCount
             val notiIsMultiPickup = enrichedCall.isMultiPickup
             val notiPickupKm = enrichedCall.pickupDistanceKm
+            val notiDistSource = enrichedCall.distanceSource
             val notiTotalKm = (notiPickupKm ?: 0.0) + (notiDist ?: 0.0)
             val notiUp = if (notiTotalKm > 0) (notiPrice / notiTotalKm).toInt() else 0
             ioExecutor.execute {
@@ -256,7 +257,8 @@ class DeliveryNotificationService : NotificationListenerService() {
                         destination = notiDest,
                         sourceType = V2Event.mapSourceType(notiPlatform),
                         parsingMethod = V2Event.PARSING_NOTIFICATION,
-                        pickupKm = notiPickupKm
+                        pickupKm = notiPickupKm,
+                        distanceSource = notiDistSource
                     )
                 } catch (e: Exception) { Log.w("DeliveryNoti", "DB 저장 실패: ${e.message}") }
             }
@@ -315,13 +317,17 @@ class DeliveryNotificationService : NotificationListenerService() {
             val addr = call.storeName.ifEmpty { call.destination }
             if (addr.isBlank()) return call
 
-            val straight = KakaoGeocoder.distanceTo(this, lat, lng, addr) ?: return call
-            val road = straight * OnTheWayService.ROAD_DISTANCE_FACTOR
+            val distResult = KakaoGeocoder.distanceTo(this, lat, lng, addr) ?: return call
+            val road = distResult.km * OnTheWayService.ROAD_DISTANCE_FACTOR
             // 동일 필터: 50m~10km 범위만 유효
             if (road < 0.05 || road > 10.0) return call
 
-            Log.d("DeliveryNoti", "GPS 픽업 거리: $addr → ${"%.1f".format(road)}km")
-            return call.copy(pickupDistanceKm = road)
+            Log.d("DeliveryNoti", "GPS 픽업 거리: $addr → ${"%.1f".format(road)}km (${distResult.source})")
+            return call.copy(
+                pickupDistanceKm = road,
+                distanceSource = distResult.source,
+                distanceConfidence = distResult.confidence
+            )
         } catch (e: Exception) {
             Log.w("DeliveryNoti", "GPS 픽업 거리 계산 실패: ${e.message}")
         }

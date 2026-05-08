@@ -8,7 +8,7 @@ import android.util.Log
 import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 8) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 9) {
 
     private val appCtx: Context = ctx.applicationContext
 
@@ -38,6 +38,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 8) {
                 storeName TEXT,
                 destination TEXT,
                 pickupKm REAL,
+                distance_source TEXT DEFAULT '',
                 accepted INTEGER DEFAULT 0,
                 completed INTEGER DEFAULT 0,
                 deliveryTimeMin INTEGER DEFAULT 0,
@@ -130,6 +131,10 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 8) {
             try { db.execSQL("ALTER TABLE location_trace ADD COLUMN speed_kmh REAL") } catch (_: Exception) {}
             Log.d("CallLogDb", "v7->v8: location_trace speed_kmh column added")
         }
+        if (old < 9) {
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN distance_source TEXT DEFAULT ''") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v8->v9: distance_source column added")
+        }
     }
 
     fun insert(
@@ -141,7 +146,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 8) {
         sourceType: String = V2Event.SOURCE_UNKNOWN,
         parsingMethod: String = V2Event.PARSING_UNKNOWN,
         driverAction: String = "unknown",
-        sessionId: String? = null
+        sessionId: String? = null,
+        distanceSource: String = ""
     ) {
         val cv = ContentValues().apply {
             put("timestamp", System.currentTimeMillis())
@@ -163,6 +169,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 8) {
             put("parsing_method", parsingMethod)
             put("driver_action", driverAction)
             put("session_id", sessionId)
+            put("distance_source", distanceSource)
         }
         val rowId = writableDatabase.insert(TABLE, null, cv)
 
@@ -190,6 +197,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 8) {
                 put("parsing_method", parsingMethod)
                 put("driver_action", driverAction)
                 put("session_id", sessionId ?: JSONObject.NULL)
+                put("distance_source", distanceSource)
             }
             SupabaseSync.uploadCallLog(appCtx, json)
         } catch (_: Exception) {}
