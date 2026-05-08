@@ -212,6 +212,20 @@ class OnTheWayService : AccessibilityService() {
         // v2.2: 진단 모드 — 모든 패키지별 이벤트 카운트
         packageEventCount[pkg] = (packageEventCount[pkg] ?: 0) + 1
 
+        // Ledger: RAW_ACCESSIBILITY_SEEN (배달앱 + 화면전환만 = 절제 정책)
+        if (isDeliveryApp && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            try {
+                val evTexts = event.text?.map { it.toString() } ?: emptyList()
+                com.vita.ontheway.ledger.LedgerAppender.appendAccessibility(
+                    this, pkg, event.eventType,
+                    event.className?.toString(),
+                    evTexts,
+                    event.contentDescription?.toString(),
+                    event.recordCount
+                )
+            } catch (_: Exception) {}
+        }
+
         // 쿠팡 진단 모드 — DiagnosticLog 별도 DB 기록 (v3.14)
         if (pkg == PKG_COUPANG && AdvancedPrefs.isCoupangDebugEnabled(this)) {
             val evTexts = event.text?.joinToString(" ") ?: ""

@@ -160,6 +160,13 @@ class DeliveryNotificationService : NotificationListenerService() {
         val title = extras.getCharSequence("android.title")?.toString() ?: ""
         val text = extras.getCharSequence("android.text")?.toString() ?: ""
         val bigText = extras.getCharSequence("android.bigText")?.toString() ?: ""
+
+        // Ledger: RAW_NOTIFICATION_SEEN 즉시 append (파싱 전 원본 보존)
+        try {
+            com.vita.ontheway.ledger.LedgerAppender.appendNotification(
+                this, pkg, sbn.key ?: "", sbn.id, sbn.postTime, title, text, bigText
+            )
+        } catch (_: Exception) {}
         val combined = "$title $text $bigText".trim()
 
         Log.d("DeliveryNoti", "알림 수신: pkg=$pkg, title=$title, text=$text")
