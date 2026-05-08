@@ -479,13 +479,15 @@ class DeliveryNotificationService : NotificationListenerService() {
 
     private fun extractLastStoreToken(before: String): String {
         // "멀티 페리카나 오포점" → "페리카나 오포점"
-        // 끝에서 한글+영문+숫자+공백+특수문자로 된 가게명 추출
+        // "[1건 단일] 가게명" → "가게명"
         val candidate = before
+            .replace(Regex("^\\[?\\d+건\\s*(단일|묶음)\\]?\\s*"), "")
             .replace(Regex("^(멀티|단일|일반|대량 주문,?)\\s*"), "")
             .trim()
         if (candidate.length in 2..30 &&
             Regex("[가-힣a-zA-Z]").containsMatchIn(candidate) &&
-            !candidate.contains("거리할증") && !candidate.contains("지원금")) {
+            !candidate.contains("거리할증") && !candidate.contains("지원금") &&
+            !candidate.startsWith("[") && !candidate.matches(Regex("^\\d+건.*"))) {
             Log.d("DeliveryNoti", "쿠팡 알림 가게명: '$candidate'")
             return candidate
         }

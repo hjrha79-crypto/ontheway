@@ -62,7 +62,22 @@ object CoupangParser {
         // FIX-STORE-BLACKLIST: contentDesc/UI 오염
         "지도", "NAVER", "배달목록", "신규 주문",
         "픽업", "복사", "매장찾기 팁", "매장찾기",
-        "매장 도착", "매장 픽업", "배정 취소하기"
+        "매장 도착", "매장 픽업", "배정 취소하기",
+        // FIX-COUPANG-STORENAME-V2: 헤더/상태 텍스트 오염
+        "가까운 주문을 찾는 중", "그린 달성 도전 중",
+        "주문을 수락해주세요"
+    )
+
+    // FIX-COUPANG-STORENAME-V2: 가게명 아닌 패턴 (정규식)
+    private val STORE_NAME_BLACKLIST_PATTERNS = listOf(
+        Regex("^\\[?\\d+건\\s*(단일|묶음)\\]?$"),      // [1건 단일], 2건 묶음
+        Regex("^주문\\s*수락\\s*\\d+초?$"),              // 주문 수락 33초
+        Regex("^주문\\s*\\d+건$"),                       // 주문 2건
+        Regex("^\\d+%$"),                                // 17%
+        Regex("^0?￦$"),                                  // 0￦
+        Regex("^배달거리.*km"),                           // 배달거리 4.1km(실제경로)
+        Regex("^\\*\\s"),                                // * 일부 매장의...
+        Regex("^\\[\\d+건")                              // [1건... (bracket header)
     )
 
     // 콜 화면 필수 버튼 텍스트: 이 중 하나는 있어야 진짜 콜
@@ -167,8 +182,12 @@ object CoupangParser {
                 !DISTANCE_PATTERN.containsMatchIn(t) &&
                 !MULTI_PATTERN.containsMatchIn(t) &&
                 !t.contains("km") && !t.contains("원") &&
+                !t.contains("￦") && !t.contains("%") &&
                 STORE_PATTERN.matches(t) &&
-                !STORE_NAME_BLACKLIST.contains(t)
+                !STORE_NAME_BLACKLIST.contains(t) &&
+                STORE_NAME_BLACKLIST_PATTERNS.none { it.containsMatchIn(t) } &&
+                // 공백 분리된 토큰 중 블랙리스트 단어가 없어야 함
+                t.split(" ").none { w -> STORE_NAME_BLACKLIST.contains(w) }
         }
 
         // 1순위: 개별 노드 패턴 매칭 (기존)
@@ -192,9 +211,16 @@ object CoupangParser {
         // 3순위: joined에서 "가게명 X,XXX원" 앞부분 추출
         val storeBeforePrice = Regex("([가-힣a-zA-Z0-9\\s&.]+?)\\s+[\\d,]+\\s*원")
             .find(joined)?.groupValues?.get(1)?.trim()
-        if (storeBeforePrice != null && isStoreCandidate(storeBeforePrice)) {
-            OtwFileLogger.log("CoupangParser", "가게명 3순위(가격앞): '$storeBeforePrice'")
-            return storeBeforePrice
+        if (storeBeforePrice != null) {
+            // 선행 블랙리스트 단어 제거 (e.g., "지도 NAVER 가게명" → "가게명")
+            var cleaned: String = storeBeforePrice
+            for (bl in STORE_NAME_BLACKLIST) {
+                cleaned = cleaned.replaceFirst(Regex("^${Regex.escape(bl)}\\s*"), "").trim()
+            }
+            if (cleaned.isNotEmpty() && isStoreCandidate(cleaned)) {
+                OtwFileLogger.log("CoupangParser", "가게명 3순위(가격앞): '$cleaned'")
+                return cleaned
+            }
         }
 
         return ""
