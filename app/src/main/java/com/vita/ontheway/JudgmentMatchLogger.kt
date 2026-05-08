@@ -165,6 +165,20 @@ object JudgmentMatchLogger {
 
             updateCounters(matchStatus, pending.judgment)
             writeEvent(ctx, event)
+
+            // Quarantine: LOW confidence 매칭 → STALE_TIMEOUT
+            if (confidence == MatchConfidence.LOW) {
+                try {
+                    val csId = pending.callSessionId
+                        ?: com.vita.ontheway.ledger.CallSessionRegistry.findSessionId(pending.eventId, pending.orderId)
+                    if (csId != null) {
+                        CallLogDb.get(ctx).markQuarantined(csId,
+                            com.vita.ontheway.ledger.QuarantineReason.STALE_TIMEOUT,
+                            "confidence=LOW, match_by=fingerprint")
+                    }
+                } catch (_: Exception) {}
+            }
+
             Log.d(TAG, "RESOLVED: ACCEPTED $matchStatus confidence=$confidence " +
                 "(${pending.judgment}→ACCEPTED, eventId=${pending.eventId.take(8)})")
             OtwFileLogger.log(TAG, "RESOLVED: ACCEPTED $matchStatus confidence=$confidence")

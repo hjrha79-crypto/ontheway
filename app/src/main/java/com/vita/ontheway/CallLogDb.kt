@@ -8,7 +8,7 @@ import android.util.Log
 import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 10) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) {
 
     private val appCtx: Context = ctx.applicationContext
 
@@ -59,7 +59,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 10) 
                 card_finalized_at INTEGER,
                 delivery_completed_at INTEGER,
                 next_call_wait_ms INTEGER,
-                join_eligible INTEGER DEFAULT 1
+                join_eligible INTEGER DEFAULT 1,
+                quarantine_reason TEXT
             )
         """)
         db.execSQL("CREATE INDEX idx_timestamp ON $TABLE(timestamp)")
@@ -169,6 +170,10 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 10) 
             try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_event_id ON $TABLE(event_id)") } catch (_: Exception) {}
             Log.d("CallLogDb", "v9->v10: 11 lifecycle columns + indexes added")
         }
+        if (old < 11) {
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN quarantine_reason TEXT") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v10->v11: quarantine_reason column added")
+        }
     }
 
     fun insert(
@@ -188,8 +193,10 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 10) 
         identityConfidence: Double = 0.0,
         distanceConfidence: Double = 0.0
     ) {
-        // join_eligible 자동 계산
+        // join_eligible 자동 계산 + quarantine 자동 분류
         val joinEligible = if (identityConfidence < 0.5) 0 else 1
+        val autoQuarantine = if (identityConfidence > 0 && identityConfidence < 0.5)
+            com.vita.ontheway.ledger.QuarantineReason.IDENTITY_LOW_CONFIDENCE.name else null
 
         val cv = ContentValues().apply {
             put("timestamp", System.currentTimeMillis())
@@ -218,6 +225,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 10) 
             put("identity_confidence", identityConfidence)
             put("distance_confidence", distanceConfidence)
             put("join_eligible", joinEligible)
+            put("quarantine_reason", autoQuarantine)
         }
         val rowId = writableDatabase.insert(TABLE, null, cv)
 
@@ -382,6 +390,106 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 10) 
         } catch (e: Exception) {
             Log.w("CallLogDb", "updateNextCallWaitMs 실패: ${e.message}")
         }
+    }
+
+    /**
+     * Quarantine: 데이터 학습 자격 격리.
+     * join_eligible=0 + quarantine_reason set + ledger QUARANTINED append.
+     */
+    fun markQuarantined(callSessionId: String, reason: com.vita.ontheway.ledger.QuarantineReason, context: String? = null) {
+        try {
+            val cv = ContentValues().apply {
+                put("join_eligible", 0)
+                put("quarantine_reason", reason.name)
+            }
+            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "markQuarantined 실패: ${e.message}")
+        }
+        // Ledger: QUARANTINED
+        try {
+            com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                appCtx, callSessionId, null, null, "",
+                com.vita.ontheway.ledger.LedgerEventType.QUARANTINED, "internal",
+                org.json.JSONObject().apply {
+                    put("reason", reason.name)
+                    if (context != null) put("context", context)
+                }.toString()
+            )
+        } catch (_: Exception) {}
+    }
+
+    /** regret 학습 가능한 콜만 (join_eligible=1 + quarantine 없음) */
+    fun getCallsForRegret(sinceMs: Long): List<ReviewEntry> {
+        val entries = mutableListOf<ReviewEntry>()
+        try {
+            val cursor = readableDatabase.rawQuery(
+                "SELECT timestamp, platform, price, verdict, reason, storeName, destination, distance, bundleCount " +
+                "FROM $TABLE WHERE timestamp >= ? AND join_eligible = 1 AND quarantine_reason IS NULL ORDER BY timestamp DESC",
+                arrayOf(sinceMs.toString())
+            )
+            cursor.use {
+                while (it.moveToNext()) {
+                    val dist = it.getDouble(7)
+                    entries.add(ReviewEntry(
+                        id = 0, callTs = it.getLong(0), platform = it.getString(1) ?: "",
+                        price = it.getInt(2), verdict = it.getString(3) ?: "",
+                        verdictMsg = it.getString(4) ?: "", userAction = "UNKNOWN",
+                        platformDistanceKm = null,
+                        storeName = it.getString(5) ?: "", destination = it.getString(6) ?: "",
+                        distance = if (dist < 0) null else dist, bundleCount = it.getInt(8)
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "getCallsForRegret 실패: ${e.message}")
+        }
+        return entries
+    }
+
+    /** quarantine 된 콜 (디버깅용) */
+    fun getQuarantinedCalls(sinceMs: Long): List<Pair<ReviewEntry, String>> {
+        val entries = mutableListOf<Pair<ReviewEntry, String>>()
+        try {
+            val cursor = readableDatabase.rawQuery(
+                "SELECT timestamp, platform, price, verdict, reason, storeName, quarantine_reason " +
+                "FROM $TABLE WHERE timestamp >= ? AND quarantine_reason IS NOT NULL ORDER BY timestamp DESC",
+                arrayOf(sinceMs.toString())
+            )
+            cursor.use {
+                while (it.moveToNext()) {
+                    val entry = ReviewEntry(
+                        id = 0, callTs = it.getLong(0), platform = it.getString(1) ?: "",
+                        price = it.getInt(2), verdict = it.getString(3) ?: "",
+                        verdictMsg = it.getString(4) ?: "", userAction = "UNKNOWN",
+                        platformDistanceKm = null, storeName = it.getString(5) ?: ""
+                    )
+                    entries.add(entry to (it.getString(6) ?: "UNKNOWN"))
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "getQuarantinedCalls 실패: ${e.message}")
+        }
+        return entries
+    }
+
+    /** quarantine 사유별 카운트 (디버깅용) */
+    fun getQuarantineSummary(sinceMs: Long): Map<String, Int> {
+        val summary = mutableMapOf<String, Int>()
+        try {
+            val cursor = readableDatabase.rawQuery(
+                "SELECT quarantine_reason, COUNT(*) FROM $TABLE WHERE timestamp >= ? AND quarantine_reason IS NOT NULL GROUP BY quarantine_reason",
+                arrayOf(sinceMs.toString())
+            )
+            cursor.use {
+                while (it.moveToNext()) {
+                    summary[it.getString(0) ?: "UNKNOWN"] = it.getInt(1)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "getQuarantineSummary 실패: ${e.message}")
+        }
+        return summary
     }
 
     fun insertLocationTrace(trace: LocationTrace): Long {

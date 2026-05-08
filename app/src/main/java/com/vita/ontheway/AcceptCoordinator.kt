@@ -94,7 +94,20 @@ object AcceptCoordinator {
             )
         } catch (_: Exception) {}
 
-        // 5. 로그
+        // 5. Quarantine 자동 분류
+        try {
+            val csId = com.vita.ontheway.ledger.CallSessionRegistry.findSessionId(
+                eventId.ifBlank { null }, orderId.ifBlank { null })
+            if (csId != null) {
+                if (source == AcceptSource.FALLBACK || (eventId.isBlank() && orderId.isBlank())) {
+                    CallLogDb.get(ctx).markQuarantined(csId,
+                        com.vita.ontheway.ledger.QuarantineReason.FALLBACK_ACCEPT,
+                        "source=$source")
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 6. 로그
         OtwFileLogger.log(TAG, "수락 확정: $source ${price}원 $platform store='$storeName' eventId='$eventId' orderId='$orderId'")
         Log.d(TAG, "수락 확정: $source ${price}원 $platform store='$storeName' eventId='$eventId' orderId='$orderId'")
     }

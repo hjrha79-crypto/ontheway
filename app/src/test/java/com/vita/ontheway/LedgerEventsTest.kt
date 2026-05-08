@@ -19,8 +19,8 @@ class LedgerEventsTest {
     // ── LedgerEventType: 16개 정의 확인 ──
 
     @Test
-    fun `LedgerEventType 16개 정의`() {
-        assertEquals(16, LedgerEventType.entries.size)
+    fun `LedgerEventType 17개 정의`() {
+        assertEquals(17, LedgerEventType.entries.size)
     }
 
     @Test
@@ -33,7 +33,8 @@ class LedgerEventsTest {
             "PICKED_UP", "DELIVERY_COMPLETED",
             "RETURN_STARTED", "NEXT_CALL_DETECTED",
             "IDLE_STARTED", "SESSION_ENDED",
-            "ORPHAN_CLASSIFIED", "CORRECTION_ISSUED"
+            "ORPHAN_CLASSIFIED", "CORRECTION_ISSUED",
+            "QUARANTINED"
         )
         val actual = LedgerEventType.entries.map { it.name }
         assertEquals(expected, actual)
