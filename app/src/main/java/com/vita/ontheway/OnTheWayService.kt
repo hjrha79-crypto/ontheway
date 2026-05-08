@@ -277,9 +277,12 @@ class OnTheWayService : AccessibilityService() {
                 }
                 // lastDeliveryCall null이면 FilterLog에서 금액 추출
                 if (lastDeliveryCall == null) {
-                    val fallback = AcceptCoordinator.getRecentPrice(this)
+                    val fallback = AcceptCoordinator.getRecentCall(this)
                     if (fallback != null) {
-                        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.FALLBACK, fallback.first, fallback.second)
+                        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.FALLBACK,
+                            fallback.price, fallback.platform,
+                            storeName = fallback.storeName,
+                            eventId = fallback.eventId, orderId = fallback.orderId)
                     }
                 }
             }
@@ -815,10 +818,15 @@ class OnTheWayService : AccessibilityService() {
                 screen.type != ScreenTypeDetector.ScreenType.BUNDLE_SESSION) {
                 // 배민 배달 진행 화면 = 수락 확정
                 if (screen.type == ScreenTypeDetector.ScreenType.IN_PROGRESS) {
-                    val acceptPrice = lastDeliveryCall?.price
+                    val ldc = lastDeliveryCall
+                    val acceptPrice = ldc?.price
                         ?: AcceptCoordinator.getRecentPrice(this)?.first ?: 0
                     if (acceptPrice > 0) {
-                        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS, acceptPrice, "baemin", lastDeliveryCall?.storeName ?: "")
+                        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS,
+                            acceptPrice, "baemin",
+                            storeName = ldc?.storeName ?: "",
+                            eventId = lastDeliverySessionId ?: "",
+                            orderId = ldc?.orderId ?: "")
                     }
                 }
                 Log.d("ScreenFilter", "[$platformName] skip: ${screen.type} (${screen.confidence})")
@@ -851,7 +859,11 @@ class OnTheWayService : AccessibilityService() {
                 val acceptPrice = call?.price
                     ?: AcceptCoordinator.getRecentPrice(this)?.first ?: 0
                 if (acceptPrice > 0) {
-                    AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.COUPANG_PICKUP, acceptPrice, "coupang", call?.storeName ?: "")
+                    AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.COUPANG_PICKUP,
+                        acceptPrice, "coupang",
+                        storeName = call?.storeName ?: "",
+                        eventId = lastDeliverySessionId ?: "",
+                        orderId = call?.orderId ?: "")
                 }
                 return  // 픽업 진행 화면은 콜 화면이 아니므로 return
             }

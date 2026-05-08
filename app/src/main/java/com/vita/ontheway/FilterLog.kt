@@ -234,14 +234,18 @@ object FilterLog {
         return file.absolutePath
     }
 
-    /** v3.0: 수락 기록 추가 */
-    fun recordAccepted(ctx: Context, price: Int, platform: String) {
+    /** v3.0: 수락 기록 추가 (eventId/orderId 포함) */
+    fun recordAccepted(ctx: Context, price: Int, platform: String,
+                       eventId: String = "", orderId: String = "", storeName: String = "") {
         val entryStr = JSONObject().apply {
             put("ts", System.currentTimeMillis())
             put("platform", platform)
             put("price", price)
             put("verdict", "ACCEPTED")
             put("reason", "수락됨")
+            if (eventId.isNotBlank()) put("eventId", eventId)
+            if (orderId.isNotBlank()) put("orderId", orderId)
+            if (storeName.isNotBlank()) put("storeName", storeName)
         }.toString()
 
         val appCtx = ctx.applicationContext

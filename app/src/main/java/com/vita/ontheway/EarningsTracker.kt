@@ -65,8 +65,7 @@ object EarningsTracker {
                 .apply()
         }
 
-        // FilterLog에도 수락 기록 추가
-        FilterLog.recordAccepted(ctx, price, platform)
+        // FilterLog 수락 기록은 AcceptCoordinator에서 eventId/orderId 포함하여 처리
         Log.d(TAG, "수락 기록: ${price}원 ($platform), 오늘 누적 ${getToday(ctx).totalRevenue}원")
         OtwFileLogger.log(TAG, "수락 기록: ${price}원 ($platform), 오늘 누적 ${getToday(ctx).totalRevenue}원")
 
