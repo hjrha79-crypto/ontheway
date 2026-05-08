@@ -640,19 +640,15 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 text = verdictKr; textSize = 11f; setTextColor(verdictColor)
                 setTypeface(null, Typeface.BOLD)
             }, lp(WC, WC).apply { marginEnd = dp(8) })
-            val shortReason = extractShortReason(reason, entry.optString("verdict", ""))
+            val shortReason = extractShortReason(
+                reason, entry.optString("verdict", ""),
+                entry, pickupKm, entry.optString("distanceSource", "")
+            )
             if (shortReason.isNotBlank()) {
                 subRow.addView(TextView(this).apply {
                     text = shortReason; textSize = 10f; setTextColor(C_SUB)
                     maxLines = 1
                 }, lp(0, WC, 1f))
-            } else {
-                val unitPrice = entry.optInt("unitPrice", 0)
-                if (unitPrice > 0) {
-                    subRow.addView(TextView(this).apply {
-                        text = "단가 ${fmt(unitPrice)}원/km"; textSize = 10f; setTextColor(C_SUB)
-                    }, lp(WC, WC))
-                }
             }
             card.addView(subRow)
         }
@@ -962,21 +958,50 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun extractShortReason(reason: String, verdict: String): String {
-        if (reason.isBlank()) return ""
-        return when {
-            reason.contains("묶음 효율") -> "묶음 효율"
-            reason.contains("고단가 근거리") -> "고단가 근거리"
-            reason.contains("단거리 고단가") -> "단거리 고단가"
-            reason.contains("최소기준") || reason.contains("최소 기준") -> "최소 기준 미달"
-            reason.contains("기준 미달") -> {
-                Regex("""단가\s*([\d,]+)원/km""").find(reason)?.let { "단가 ${it.groupValues[1]}원/km 미달" }
-                    ?: "기준 미달"
-            }
-            reason.contains("묶음 최소") -> "묶음 최소 미달"
-            reason.contains("블랙리스트") -> "블랙리스트"
-            reason.contains("구간 기준") -> "구간 기준 미달"
-            else -> ""
+        return extractShortReason(reason, verdict, null, -1.0, "")
+    }
+
+    /**
+     * 판정 사유 간결 표시.
+     * 모든 verdict에 단가/픽업/외지/거리미측정 표시.
+     */
+    private fun extractShortReason(reason: String, verdict: String, entry: org.json.JSONObject?, pickupKm: Double, distSource: String): String {
+        // 1. 특수 사유 (우선)
+        if (reason.contains("블랙리스트")) return "블랙리스트"
+        if (reason.contains("거리 미측정")) return "거리 미측정"
+        if (reason.contains("외지 페널티")) return "외지 페널티"
+
+        val parts = mutableListOf<String>()
+
+        // 2. 핵심 사유 태그
+        when {
+            reason.contains("묶음 효율") -> parts.add("묶음 효율")
+            reason.contains("고단가 근거리") -> parts.add("고단가 근거리")
+            reason.contains("단거리 고단가") -> parts.add("단거리 고단가")
+            reason.contains("묶음 최소") -> parts.add("묶음 최소 미달")
+            reason.contains("최소기준") || reason.contains("최소 기준") -> parts.add("최소 기준 미달")
+            reason.contains("구간 기준") || reason.contains("구간기준") -> parts.add("구간 기준 미달")
         }
+
+        // 3. 단가 (reason에서 추출, 또는 entry에서 직접)
+        val unitPriceMatch = Regex("""단가\s*([\d,]+)원/km""").find(reason)
+        val upFromEntry = entry?.optInt("unitPrice", 0) ?: 0
+        val upStr = unitPriceMatch?.groupValues?.get(1)
+            ?: if (upFromEntry > 0) fmt(upFromEntry) else null
+        if (upStr != null && parts.none { it.contains("단가") || it.contains("기준") }) {
+            parts.add("단가 ${upStr}원/km")
+        }
+
+        // 4. 픽업 거리
+        val pk = if (pickupKm > 0) pickupKm else entry?.optDouble("pickupKm", -1.0) ?: -1.0
+        if (pk > 0) {
+            val ds = distSource.ifEmpty { entry?.optString("distanceSource", "") ?: "" }
+            val isFallback = ds == KakaoGeocoder.DistanceResult.SOURCE_FALLBACK
+            val label = if (isFallback) "픽업 약${"%.0f".format(pk)}km" else "픽업 ${"%.1f".format(pk)}km"
+            if (pk >= 5.0) parts.add("$label(외지)") else parts.add(label)
+        }
+
+        return parts.joinToString(" · ")
     }
 
     /** v3.15: 콜 상세 다이얼로그 — 판정 컬러 + 섹션 구조 + 사유 간결화 */
