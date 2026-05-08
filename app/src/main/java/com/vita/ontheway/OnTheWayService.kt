@@ -1351,6 +1351,12 @@ class OnTheWayService : AccessibilityService() {
         val dbTotalKm = (dbPickupKm ?: 0.0) + (dbDistance ?: 0.0)
         val dbUp = if (dbTotalKm > 0) (dbPrice / dbTotalKm).toInt() else 0
         val dbSessionId = DrivingModeManager.getSessionId(ctx)
+        val dbEventId = callSessionEvt?.eventId
+        val dbOrderId = call.orderId
+        val dbCallSessionId = com.vita.ontheway.ledger.CallSessionRegistry.findSessionId(
+            callSessionEvt?.eventId, call.orderId)
+        val dbIdentConf = enrichedCall.distanceConfidence
+        val dbDistConf = enrichedCall.distanceConfidence
         dbExecutor.execute {
             try {
                 CallLogDb.get(ctx).insert(
@@ -1365,7 +1371,12 @@ class OnTheWayService : AccessibilityService() {
                     parsingMethod = dbParsingMethod,
                     driverAction = dbDriverAction,
                     sessionId = dbSessionId,
-                    distanceSource = dbDistanceSource
+                    distanceSource = dbDistanceSource,
+                    eventId = dbEventId,
+                    orderId = dbOrderId,
+                    callSessionId = dbCallSessionId,
+                    identityConfidence = dbIdentConf,
+                    distanceConfidence = dbDistConf
                 )
                 // 쿠팡: Accessibility에서 가게명 있으면 NLS 레코드도 업데이트
                 if (dbPlatform == "coupang" && dbStoreName.isNotBlank()) {

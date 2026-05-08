@@ -8,7 +8,7 @@ import android.util.Log
 import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 9) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 10) {
 
     private val appCtx: Context = ctx.applicationContext
 
@@ -48,11 +48,24 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 9) {
                 parsing_method TEXT DEFAULT 'unknown',
                 driver_action TEXT DEFAULT 'unknown',
                 session_id TEXT,
-                ai_reason TEXT
+                ai_reason TEXT,
+                event_id TEXT,
+                order_id TEXT,
+                call_session_id TEXT,
+                identity_confidence REAL DEFAULT 0.0,
+                distance_confidence REAL DEFAULT 0.0,
+                action_source TEXT,
+                accepted_at INTEGER,
+                card_finalized_at INTEGER,
+                delivery_completed_at INTEGER,
+                next_call_wait_ms INTEGER,
+                join_eligible INTEGER DEFAULT 1
             )
         """)
         db.execSQL("CREATE INDEX idx_timestamp ON $TABLE(timestamp)")
         db.execSQL("CREATE INDEX idx_platform ON $TABLE(platform)")
+        db.execSQL("CREATE INDEX idx_call_session ON $TABLE(call_session_id)")
+        db.execSQL("CREATE INDEX idx_event_id ON $TABLE(event_id)")
 
         createLocationTraceTable(db)
         createReviewLogTable(db)
@@ -135,6 +148,27 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 9) {
             try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN distance_source TEXT DEFAULT ''") } catch (_: Exception) {}
             Log.d("CallLogDb", "v8->v9: distance_source column added")
         }
+        if (old < 10) {
+            val cols = listOf(
+                "event_id TEXT",
+                "order_id TEXT",
+                "call_session_id TEXT",
+                "identity_confidence REAL DEFAULT 0.0",
+                "distance_confidence REAL DEFAULT 0.0",
+                "action_source TEXT",
+                "accepted_at INTEGER",
+                "card_finalized_at INTEGER",
+                "delivery_completed_at INTEGER",
+                "next_call_wait_ms INTEGER",
+                "join_eligible INTEGER DEFAULT 1"
+            )
+            for (col in cols) {
+                try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN $col") } catch (_: Exception) {}
+            }
+            try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_call_session ON $TABLE(call_session_id)") } catch (_: Exception) {}
+            try { db.execSQL("CREATE INDEX IF NOT EXISTS idx_event_id ON $TABLE(event_id)") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v9->v10: 11 lifecycle columns + indexes added")
+        }
     }
 
     fun insert(
@@ -147,8 +181,16 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 9) {
         parsingMethod: String = V2Event.PARSING_UNKNOWN,
         driverAction: String = "unknown",
         sessionId: String? = null,
-        distanceSource: String = ""
+        distanceSource: String = "",
+        eventId: String? = null,
+        orderId: String? = null,
+        callSessionId: String? = null,
+        identityConfidence: Double = 0.0,
+        distanceConfidence: Double = 0.0
     ) {
+        // join_eligible 자동 계산
+        val joinEligible = if (identityConfidence < 0.5) 0 else 1
+
         val cv = ContentValues().apply {
             put("timestamp", System.currentTimeMillis())
             put("platform", platform)
@@ -170,6 +212,12 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 9) {
             put("driver_action", driverAction)
             put("session_id", sessionId)
             put("distance_source", distanceSource)
+            put("event_id", eventId)
+            put("order_id", orderId)
+            put("call_session_id", callSessionId)
+            put("identity_confidence", identityConfidence)
+            put("distance_confidence", distanceConfidence)
+            put("join_eligible", joinEligible)
         }
         val rowId = writableDatabase.insert(TABLE, null, cv)
 
@@ -198,6 +246,12 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 9) {
                 put("driver_action", driverAction)
                 put("session_id", sessionId ?: JSONObject.NULL)
                 put("distance_source", distanceSource)
+                put("event_id", eventId ?: JSONObject.NULL)
+                put("order_id", orderId ?: JSONObject.NULL)
+                put("call_session_id", callSessionId ?: JSONObject.NULL)
+                put("identity_confidence", identityConfidence)
+                put("distance_confidence", distanceConfidence)
+                put("join_eligible", joinEligible == 1)
             }
             SupabaseSync.uploadCallLog(appCtx, json)
         } catch (_: Exception) {}
@@ -252,6 +306,81 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 9) {
             )
         } catch (e: Exception) {
             Log.w("CallLogDb", "markCompleted 실패: ${e.message}")
+        }
+    }
+
+    /**
+     * 카드 수집 종료 시점 기록 (기존 completed=1과 구분).
+     * card_finalized_at = 판정 카드 닫힘 시점.
+     */
+    fun markCardFinalized(callSessionId: String, ts: Long = System.currentTimeMillis()) {
+        try {
+            val cv = ContentValues().apply {
+                put("card_finalized_at", ts)
+            }
+            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "markCardFinalized 실패: ${e.message}")
+        }
+        // Ledger: CARD_FINALIZED
+        try {
+            com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                appCtx, callSessionId, null, null, "",
+                com.vita.ontheway.ledger.LedgerEventType.CARD_FINALIZED, "internal"
+            )
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * 실제 배달 완료 시점 기록.
+     * delivery_completed_at ≠ card_finalized_at.
+     */
+    fun markDeliveryCompleted(callSessionId: String, ts: Long = System.currentTimeMillis()) {
+        try {
+            val cv = ContentValues().apply {
+                put("delivery_completed_at", ts)
+                put("completed", 1)
+            }
+            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "markDeliveryCompleted 실패: ${e.message}")
+        }
+        // Ledger: DELIVERY_COMPLETED
+        try {
+            com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                appCtx, callSessionId, null, null, "",
+                com.vita.ontheway.ledger.LedgerEventType.DELIVERY_COMPLETED, "internal"
+            )
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * 수락 시점 + source 기록 (AcceptCoordinator에서 호출).
+     */
+    fun markAcceptedWithSource(callSessionId: String, actionSource: String, ts: Long = System.currentTimeMillis()) {
+        try {
+            val cv = ContentValues().apply {
+                put("accepted", 1)
+                put("accepted_at", ts)
+                put("action_source", actionSource)
+            }
+            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "markAcceptedWithSource 실패: ${e.message}")
+        }
+    }
+
+    /**
+     * 다음 콜 대기 시간 기록 (연결성 분석용).
+     */
+    fun updateNextCallWaitMs(callSessionId: String, waitMs: Long) {
+        try {
+            val cv = ContentValues().apply {
+                put("next_call_wait_ms", waitMs)
+            }
+            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "updateNextCallWaitMs 실패: ${e.message}")
         }
     }
 
