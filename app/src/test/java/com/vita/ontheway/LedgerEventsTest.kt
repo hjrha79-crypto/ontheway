@@ -19,8 +19,8 @@ class LedgerEventsTest {
     // ── LedgerEventType: 16개 정의 확인 ──
 
     @Test
-    fun `LedgerEventType 17개 정의`() {
-        assertEquals(17, LedgerEventType.entries.size)
+    fun `LedgerEventType 27개 정의`() {
+        assertEquals(27, LedgerEventType.entries.size)
     }
 
     @Test
@@ -34,7 +34,12 @@ class LedgerEventsTest {
             "RETURN_STARTED", "NEXT_CALL_DETECTED",
             "IDLE_STARTED", "SESSION_ENDED",
             "ORPHAN_CLASSIFIED", "CORRECTION_ISSUED",
-            "QUARANTINED"
+            "QUARANTINED", "DUPLICATE_ACCEPT_BLOCKED",
+            "DUPLICATE_ACCEPT_SUSPECTED", "ACCEPT_SUSPECTED",
+            "ACCEPT_CANDIDATE", "ACCEPT_CONFIRMED",
+            "ACCEPT_UNCONFIRMED", "ACCEPT_REJECTED_FALSE",
+            "PICKUP_DISTANCE_LATE_UPDATED",
+            "STALE_PENDING_BLOCKED", "ORPHAN_ACCEPT"
         )
         val actual = LedgerEventType.entries.map { it.name }
         assertEquals(expected, actual)
@@ -143,7 +148,7 @@ class LedgerEventsTest {
     @Test
     fun `DB 이름과 버전`() {
         assertEquals("ledger.db", LedgerEventsDb.DB_NAME)
-        assertEquals(1, LedgerEventsDb.DB_VERSION)
+        assertEquals(3, LedgerEventsDb.DB_VERSION)
         assertEquals("ledger_events", LedgerEventsDb.TABLE)
     }
 

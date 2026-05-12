@@ -1082,9 +1082,11 @@ class OnTheWayService : AccessibilityService() {
                         }
                         val result = CallFilter.judge(enrichedBundle, this)
                         val pendingCall = PendingCall(bundleCall, enrichedBundle, result, bundleCall.point, pickupDistKm, bundlePickupDistSrc, bundlePendingReason)
-                        lastCallDetectedTime = System.currentTimeMillis()
-                        lastAccessibilityCallTime = System.currentTimeMillis()
-                        processDeliveryCall(pendingCall, System.currentTimeMillis())
+                        val bundleNow = System.currentTimeMillis()
+                        lastCallDetectedTime = bundleNow
+                        lastAccessibilityCallTime = bundleNow
+                        AcceptCoordinator.recordCallDetected(bundleCall.platform, bundleNow)
+                        processDeliveryCall(pendingCall, bundleNow)
                     }
                 } else {
                     scheduleBundleTimeout()
@@ -1285,9 +1287,11 @@ class OnTheWayService : AccessibilityService() {
                     }
                     val result = CallFilter.judge(enrichedTimeout, this)
                     val pendingCall = PendingCall(bundleCall, enrichedTimeout, result, bundleCall.point, timeoutPickupKm, timeoutPickupSrc, timeoutPendingReason)
-                    lastCallDetectedTime = System.currentTimeMillis()
-                    lastAccessibilityCallTime = System.currentTimeMillis()
-                    processDeliveryCall(pendingCall, System.currentTimeMillis())
+                    val timeoutNow = System.currentTimeMillis()
+                    lastCallDetectedTime = timeoutNow
+                    lastAccessibilityCallTime = timeoutNow
+                    AcceptCoordinator.recordCallDetected(bundleCall.platform, timeoutNow)
+                    processDeliveryCall(pendingCall, timeoutNow)
                 }
             }
         }
@@ -1385,6 +1389,7 @@ class OnTheWayService : AccessibilityService() {
         // 마지막 감지 시각 기록 (상태 표시용)
         lastCallDetectedTime = now
         lastAccessibilityCallTime = now
+        AcceptCoordinator.recordCallDetected(platformName, now)
 
         // 단가 계산 (FIX-BAEMIN-DISTANCE: 플랫폼별 정책 적용)
         val effectiveDist = PlatformDistancePolicy.effectiveDistanceKm(

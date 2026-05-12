@@ -370,4 +370,12 @@ object JudgmentMatchLogger {
 
     /** 디버그: 현재 pending 수 */
     fun pendingCount(): Int = pendingEvents.size
+
+    /**
+     * Fix Y v2: 매칭 가능한 pending이 있는지 검사 (ORPHAN 사전 판별).
+     * promoteConfirmed 전에 호출하여 no_pending_match 시 ORPHAN_ACCEPT로 분리.
+     */
+    fun hasPendingMatch(
+        eventId: String?, orderId: String?, price: Int, storeName: String?, platform: String?
+    ): Boolean = findMatch(eventId, orderId, price, storeName, platform) != null
 }

@@ -291,6 +291,7 @@ class DeliveryNotificationService : NotificationListenerService() {
                         put("parsingMethod", enrichedCall.parsingMethod)
                         put("pickup_distance_status", nlsPickupStatus)
                         put("pickup_distance_confidence", nlsPickupConfidence)
+                        put("vehicle_type", EarningManager.getVehicleType(this@DeliveryNotificationService))
                     }.toString()
                 )
                 com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
@@ -356,7 +357,8 @@ class DeliveryNotificationService : NotificationListenerService() {
                         callSessionId = notiSessionId,
                         identityConfidence = notiIdentityConf,
                         bundleCountConfidence = enrichedCall.bundleCountConfidence,
-                        bundleCountSource = enrichedCall.bundleCountSource
+                        bundleCountSource = enrichedCall.bundleCountSource,
+                        vehicleType = EarningManager.getVehicleType(ctx)
                     )
                 } catch (e: Exception) { Log.w("DeliveryNoti", "DB 저장 실패: ${e.message}") }
             }
@@ -368,6 +370,7 @@ class DeliveryNotificationService : NotificationListenerService() {
 
             // OnTheWayService의 lastCallDetectedTime도 갱신
             OnTheWayService.instance?.lastCallDetectedTime = now
+            AcceptCoordinator.recordCallDetected(enrichedCall.platform, now)
 
             if (!TtsDeduplicator.shouldSpeak(enrichedCall.platform, enrichedCall.price)) {
                 Log.d("DeliveryNoti", "TtsDeduplicator 중복 스킵: ${enrichedCall.platform} ${enrichedCall.price}원")
@@ -519,6 +522,7 @@ class DeliveryNotificationService : NotificationListenerService() {
             val result = CallFilter.judge(call, this)
             FilterLog.record(this, call, result)
             OnTheWayService.instance?.lastCallDetectedTime = now
+            AcceptCoordinator.recordCallDetected("kakaot", now)
 
             if (!TtsDeduplicator.shouldSpeak("kakaot", call.price)) continue
 
