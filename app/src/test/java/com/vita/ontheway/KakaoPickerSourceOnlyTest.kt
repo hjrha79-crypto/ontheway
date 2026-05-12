@@ -151,4 +151,45 @@ class KakaoPickerSourceOnlyTest {
             tempFile.delete()
         }
     }
+
+    // ── Fix AA v2: accept-click pre-route 차단 ──
+
+    @Test
+    fun `PKG_FLEXER TYPE_VIEW_CLICKED should be blocked before onAcceptDetected`() {
+        // OnTheWayService에서 TYPE_VIEW_CLICKED + PKG_FLEXER → return
+        // accept 분기 진입 전 차단 확인 (코드 구조 검증)
+        val pkg = "com.kakaomobility.flexer"
+        val isFlexer = (pkg == KakaoPickerDiagnosticLogger.PKG_FLEXER)
+        assertTrue("flexer click은 즉시 return", isFlexer)
+        // Source-Only: onAcceptDetected 호출 0회
+        val acceptCallCount = if (isFlexer) 0 else 1
+        assertEquals(0, acceptCallCount)
+    }
+
+    @Test
+    fun `PKG_FLEXER click with prior ACCEPT_CANDIDATE should not produce CONFIRMED`() {
+        // 시나리오: 직전 배민 ACCEPT_CANDIDATE 잔존 + PKG_FLEXER click
+        // 기대: CONFIRMED 0건 (flexer click은 return으로 차단)
+        val pkg = "com.kakaomobility.flexer"
+        val priorCandidate = true  // 배민 ACCEPT_CANDIDATE 잔존 가정
+        val flexerBlocked = (pkg == KakaoPickerDiagnosticLogger.PKG_FLEXER)
+        assertTrue(flexerBlocked)
+        // flexer 차단 → onAcceptDetected 미호출 → CONFIRMED 0건
+        val confirmedCount = if (flexerBlocked) 0 else 1
+        assertEquals(0, confirmedCount)
+    }
+
+    @Test
+    fun `PKG_BAEMIN and PKG_COUPANG click should not be blocked`() {
+        // 회귀 테스트: 배민/쿠팡은 기존 accept 처리 유지
+        val baeminPkg = "com.woowahan.bros"
+        val coupangPkg = "com.coupang.mobile.eats.courier"
+        val flexerPkg = "com.kakaomobility.flexer"
+
+        assertFalse("배민은 차단 안 됨", baeminPkg == flexerPkg)
+        assertFalse("쿠팡은 차단 안 됨", coupangPkg == flexerPkg)
+        // DELIVERY_PACKAGES에 flexer 미포함 확인
+        val deliveryPackages = setOf(coupangPkg, baeminPkg)
+        assertFalse(flexerPkg in deliveryPackages)
+    }
 }

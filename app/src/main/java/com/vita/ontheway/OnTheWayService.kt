@@ -304,6 +304,9 @@ class OnTheWayService : AccessibilityService() {
 
         // v3.0: 수락 버튼 클릭 감지 (수익 트래킹)
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            // [Fix AA v2] kakao_picker는 accept-click 분기도 차단 (Source-Only 100% 격리)
+            if (pkg == PKG_FLEXER) return
+
             val clickedText = event.text?.joinToString("") ?: event.contentDescription?.toString() ?: ""
             if (pkg in DELIVERY_PACKAGES && clickedText.isNotBlank()) {
                 OtwFileLogger.log("CLICK", "pkg=$pkg text=${event.text} desc=${event.contentDescription}")
@@ -1436,6 +1439,7 @@ class OnTheWayService : AccessibilityService() {
                     if (pending.pickupPendingReason != null) {
                         put("pickup_distance_pending_reason", pending.pickupPendingReason)
                     }
+                    put("vehicle_type", EarningManager.getVehicleType(this@OnTheWayService))
                 }.toString()
             )
             com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
@@ -1585,6 +1589,7 @@ class OnTheWayService : AccessibilityService() {
             callSessionEvt?.eventId, call.orderId)
         val dbIdentConf = enrichedCall.distanceConfidence
         val dbDistConf = enrichedCall.distanceConfidence
+        val dbVehicleType = EarningManager.getVehicleType(ctx)
         dbExecutor.execute {
             try {
                 CallLogDb.get(ctx).insert(
@@ -1608,7 +1613,8 @@ class OnTheWayService : AccessibilityService() {
                     distanceConfidence = dbDistConf,
                     shadowVerdict = dbShadowVerdict,
                     bundleCountConfidence = dbBundleConf,
-                    bundleCountSource = dbBundleSrc
+                    bundleCountSource = dbBundleSrc,
+                    vehicleType = dbVehicleType
                 )
                 // 쿠팡: Accessibility에서 가게명 있으면 NLS 레코드도 업데이트
                 if (dbPlatform == "coupang" && dbStoreName.isNotBlank()) {
