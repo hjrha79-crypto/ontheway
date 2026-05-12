@@ -37,6 +37,7 @@ object FeatureFlags {
     var screenFilterLogging = true  // 5번째 슬롯: 화면 필터 skip 로그 수집
     var coupangDiagnosticLogging = true  // v3.19.3: 쿠팡 Flutter 접근성 진단
     var baeminDiagnosticLogging = true  // v3.21: 배민 접근성 트리 진단 (거리 탐색용)
+    var kakaoPickerDiagnosticLogging = true  // Fix AA: 카카오T 픽커 접근성 raw 로깅 (Source-Only)
 
     // 🟡 UI Control
     var devMode = false  // 개발자 모드 (false=사용자 모드, 로고 5탭으로 전환)

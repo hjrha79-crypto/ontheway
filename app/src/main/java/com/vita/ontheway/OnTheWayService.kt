@@ -118,6 +118,7 @@ class OnTheWayService : AccessibilityService() {
 
     // v3.0: 마지막 판정 정보 (수락 감지용 + 오버레이 피드백)
     var lastDeliveryCall: DeliveryCall? = null
+    var lastDeliveryCallAt: Long = 0L  // Fix V+: stale 감지용 타임스탬프
     var lastDeliveryVerdict: String = ""  // "우세", "보통", "주의"
     var lastDeliveryPlatform: String = ""
     var lastDeliveryReason: String? = null
@@ -129,7 +130,7 @@ class OnTheWayService : AccessibilityService() {
     private var lastAcceptTime: Long = 0
 
     // 배민 묶음 debounce (2초 윈도우)
-    private data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?)
+    private data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?, val pickupDistSource: String = "")
     private val baeminBuffer = mutableListOf<PendingCall>()
     private var baeminDebounceRunnable: Runnable? = null
     private var bundleTimeoutRunnable: Runnable? = null
@@ -267,6 +268,33 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
+        // [Source-Only 원칙 v1.0]
+        // kakao_picker는 raw 로깅만. 분기 추가 금지.
+        // 검증 종료: 2026-07-12 또는 10건 누적 후 평가.
+        if (pkg == PKG_FLEXER && FeatureFlags.kakaoPickerDiagnosticLogging) {
+            // Ledger: RAW_ACCESSIBILITY_SEEN (platform=kakao_picker)
+            try {
+                val evTexts = event.text?.map { it.toString() } ?: emptyList()
+                com.vita.ontheway.ledger.LedgerAppender.appendAccessibility(
+                    this, pkg, event.eventType,
+                    event.className?.toString(),
+                    evTexts,
+                    event.contentDescription?.toString(),
+                    event.recordCount
+                )
+            } catch (_: Exception) {}
+
+            // 진단 파일 로깅: kakao_picker_diagnostic.jsonl
+            try {
+                val diagRoot = rootInActiveWindow ?: event.source
+                if (diagRoot != null) {
+                    com.vita.ontheway.diagnostic.KakaoPickerDiagnosticLogger.logEvent(diagRoot, event.eventType)
+                }
+            } catch (e: Exception) {
+                Log.w("KakaoPickerDiag", "진단 로깅 실패: ${e.message}")
+            }
+        }
+
         // 카카오 관련 패키지는 별도 경고 로그
         if (pkg.contains("kakaomobility") || pkg.contains("flexer") || pkg.contains("kakao")) {
             Log.w("OTW_KAKAO", "★ 카카오: pkg=$pkg, type=${event.eventType}, count=${packageEventCount[pkg]}, source=${event.source != null}, root=${rootInActiveWindow != null}")
@@ -372,6 +400,14 @@ class OnTheWayService : AccessibilityService() {
             } else {
                 handleDeliveryPlatform(root, pkg)
             }
+            return
+        }
+
+        // [Source-Only 원칙 v1.0]
+        // kakao_picker는 raw 로깅만. 분기 추가 금지.
+        // CALL_DETECTED 생성 X, JUDGMENT_ISSUED X, TTS X, lifecycle 처리 일체 X
+        if (pkg == PKG_FLEXER) {
+            Log.d("OTW_ROUTE", "kakao_picker: Source-Only noop (raw logging only)")
             return
         }
 
@@ -811,6 +847,67 @@ class OnTheWayService : AccessibilityService() {
         }, delayMs)
     }
 
+    // Q-0b: 쿠팡 state event 텍스트 판별 (비콜 필터 전에 사용)
+    private fun isCoupangStateText(text: String): Boolean {
+        return text.contains("매장 도착") || text.contains("매장 픽업") || text.contains("픽업 완료")
+    }
+
+    // Q-0c: 쿠팡 단일 canonical accept 경로
+    private fun handleCoupangStateEvent(joined: String, texts: List<String>) {
+        Log.d("DeliveryFilter", "[Q-0c] state event: ${joined.take(50)}")
+        OtwFileLogger.log("DeliveryFilter", "[Q-0c] state event: ${joined.take(50)}")
+
+        // Fix W++: platform+sessionId 매칭 state signal
+        val coupangSessionId = AcceptCoordinator.getRecentCall(this, "coupang", 60_000)?.eventId
+        try { AcceptLifecycle.onStateSignal(this, joined.take(20), "coupang", coupangSessionId) } catch (_: Exception) {}
+
+        // 1. detector 우선: candidate 매칭 시 detector identity로 confirm
+        val promoted = CoupangAcceptDetector.onCoupangStateEvent(joined)
+        if (promoted > 0) {
+            OtwFileLogger.log("DeliveryFilter", "[Q-0c] detector path: promoted $promoted")
+            // 가게명 사후 추출 (detector 성공 시에도)
+            enrichCoupangStoreName(texts)
+            return  // detector 성공 = 끝 (screen fallback 불필요)
+        }
+
+        // 2. fallback: candidate 없고 HIGH state ("매장 도착"/"매장 픽업")만 screen accept
+        if (joined.contains("매장 도착") || joined.contains("매장 픽업")) {
+            enrichCoupangStoreName(texts)
+            val recentCall = AcceptCoordinator.getRecentCall(this, "coupang", 60_000)
+            if (recentCall != null) {
+                AcceptCoordinator.recordAcceptCandidate(this, AcceptCoordinator.AcceptSource.COUPANG_PICKUP,
+                    recentCall.price, "coupang",
+                    storeName = recentCall.storeName,
+                    eventId = recentCall.eventId,
+                    orderId = recentCall.orderId)
+                OtwFileLogger.log("DeliveryFilter", "[Q-0c] fallback screen accept: ${recentCall.price}원")
+            } else {
+                OtwFileLogger.log("DeliveryFilter", "[Q-0c] no recent coupang call for fallback")
+            }
+            return
+        }
+
+        // 3. "픽업 완료"는 detector path만 (screen fallback X) — promoted=0이면 noop
+        OtwFileLogger.log("DeliveryFilter", "[Q-0c] 픽업완료 detector miss → noop")
+    }
+
+    /** 쿠팡 가게명 사후 추출 (platform+시간 안전 검증) */
+    private fun enrichCoupangStoreName(texts: List<String>) {
+        val call = lastDeliveryCall ?: return
+        if (call.platform != "coupang") return
+        if (call.storeName.isNotBlank()) return
+        val now = System.currentTimeMillis()
+        if (lastDeliveryCallAt > 0 && now - lastDeliveryCallAt > 60_000) return  // 60초 초과 = stale
+
+        val storeName = CoupangParser.extractStoreFromProgress(texts)
+        if (storeName.isNotBlank()) {
+            lastDeliveryCall = call.copy(storeName = storeName)
+            lastDeliveryCallAt = now
+            FilterLog.updateLastStoreName(this, storeName, "coupang")
+            OtwFileLogger.log("CoupangParser", "사후 추출: store='$storeName'")
+        }
+    }
+
     // ── 배달 플랫폼 처리 (쿠팡이츠/배민커넥트) ─────────
     private fun handleDeliveryPlatform(root: AccessibilityNodeInfo, pkg: String) {
         val texts = mutableListOf<String>()
@@ -833,17 +930,40 @@ class OnTheWayService : AccessibilityService() {
             }
             if (screen.type != ScreenTypeDetector.ScreenType.NEW_CALL &&
                 screen.type != ScreenTypeDetector.ScreenType.BUNDLE_SESSION) {
-                // 배민 배달 진행 화면 = 수락 확정
+                // 배민 배달 진행 화면 = 수락 확정 (Fix V: 검증 게이트 추가)
                 if (screen.type == ScreenTypeDetector.ScreenType.IN_PROGRESS) {
+                    // Fix W++: platform+sessionId 매칭 state signal
+                    try { AcceptLifecycle.onStateSignal(this, "baemin_in_progress", "baemin", lastDeliverySessionId) } catch (_: Exception) {}
+
+                    // Fix V+: stale 체크 (5분 초과 시 lastDeliveryCall 무효화)
+                    val now = System.currentTimeMillis()
+                    if (lastDeliveryCallAt > 0 && now - lastDeliveryCallAt > 5 * 60_000) {
+                        OtwFileLogger.log("DeliveryFilter", "FIX-V+: lastDeliveryCall stale (${(now - lastDeliveryCallAt) / 1000}s)")
+                        lastDeliveryCall = null
+                    }
+
                     val ldc = lastDeliveryCall
                     val acceptPrice = ldc?.price
                         ?: AcceptCoordinator.getRecentPrice(this)?.first ?: 0
                     if (acceptPrice > 0) {
-                        AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS,
-                            acceptPrice, "baemin",
-                            storeName = ldc?.storeName ?: "",
-                            eventId = lastDeliverySessionId ?: "",
-                            orderId = ldc?.orderId ?: "")
+                        val store = ldc?.storeName ?: ""
+                        val evtId = lastDeliverySessionId ?: ""
+                        val oid = ldc?.orderId ?: ""
+                        val vResult = AcceptCoordinator.verifyAcceptCandidate(
+                            this, "baemin", acceptPrice, store, evtId, oid, lastCallDetectedTime
+                        )
+                        if (vResult.verified) {
+                            // Fix W+: 운영 경로 → recordAcceptCandidate
+                            AcceptCoordinator.recordAcceptCandidate(this, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS,
+                                acceptPrice, "baemin",
+                                storeName = store,
+                                eventId = evtId,
+                                orderId = oid)
+                        } else {
+                            AcceptCoordinator.recordUnverifiedAccept(
+                                this, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS,
+                                acceptPrice, "baemin", store, evtId, oid)
+                        }
                     }
                 }
                 Log.d("ScreenFilter", "[$platformName] skip: ${screen.type} (${screen.confidence})")
@@ -857,32 +977,13 @@ class OnTheWayService : AccessibilityService() {
             }
         }
         if (pkg == PKG_COUPANG) {
-            if (joined.isBlank() || Regex("(NAVER|YouTube|Chrome|카카오톡|Samsung|배달 현황|출근하기)").containsMatchIn(joined)) {
+            // Q-0b: state event 사전 분기 (비콜 필터 전에 먼저 검사)
+            if (isCoupangStateText(joined)) {
+                handleCoupangStateEvent(joined, texts)
                 return
             }
-            // 쿠팡 픽업 진행 화면 감지 → 수락 확정 + 가게명 사후 추출
-            if (joined.contains("매장 도착") || joined.contains("매장 픽업")) {
-                val call = lastDeliveryCall
-                // 가게명 사후 추출
-                if (call != null && call.platform == "coupang" && call.storeName.isBlank()) {
-                    val storeName = CoupangParser.extractStoreFromProgress(texts)
-                    if (storeName.isNotBlank()) {
-                        lastDeliveryCall = call.copy(storeName = storeName)
-                        FilterLog.updateLastStoreName(this, storeName)
-                        OtwFileLogger.log("CoupangParser", "사후 추출: store='$storeName'")
-                    }
-                }
-                // 수락 확정 (픽업 화면 = 수락 완료 증거)
-                val acceptPrice = call?.price
-                    ?: AcceptCoordinator.getRecentPrice(this)?.first ?: 0
-                if (acceptPrice > 0) {
-                    AcceptCoordinator.handleAccept(this, AcceptCoordinator.AcceptSource.COUPANG_PICKUP,
-                        acceptPrice, "coupang",
-                        storeName = call?.storeName ?: "",
-                        eventId = lastDeliverySessionId ?: "",
-                        orderId = call?.orderId ?: "")
-                }
-                return  // 픽업 진행 화면은 콜 화면이 아니므로 return
+            if (joined.isBlank() || Regex("(NAVER|YouTube|Chrome|카카오톡|Samsung|배달 현황|출근하기)").containsMatchIn(joined)) {
+                return
             }
         }
 
@@ -948,25 +1049,27 @@ class OnTheWayService : AccessibilityService() {
                     if (bundleCall != null) {
                         var enrichedBundle = bundleCall
                         var pickupDistKm: Double? = null
+                        var bundlePickupDistSrc = ""
                         if (gpsActive && currentLat != 0.0 &&
                             DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
                             val addr = (bundleCall.storeName.split("+").firstOrNull() ?: "").ifEmpty {
                                 bundleCall.destination
                             }
                             if (addr.isNotEmpty()) {
-                                val distResult = validatePickupDistance(KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr))
+                                // Fix X v1.2: distanceTo → distanceToSync(500ms)
+                                val distResult = validatePickupDistance(KakaoGeocoder.distanceToSync(this, currentLat, currentLng, addr, 500))
                                 if (distResult != null) {
                                     pickupDistKm = distResult.km
+                                    bundlePickupDistSrc = distResult.source
                                     enrichedBundle = enrichedBundle.copy(
                                         pickupDistanceKm = distResult.km,
-                                        distanceSource = distResult.source,
                                         distanceConfidence = distResult.confidence
                                     )
                                 }
                             }
                         }
                         val result = CallFilter.judge(enrichedBundle, this)
-                        val pendingCall = PendingCall(bundleCall, enrichedBundle, result, bundleCall.point, pickupDistKm)
+                        val pendingCall = PendingCall(bundleCall, enrichedBundle, result, bundleCall.point, pickupDistKm, bundlePickupDistSrc)
                         lastCallDetectedTime = System.currentTimeMillis()
                         lastAccessibilityCallTime = System.currentTimeMillis()
                         processDeliveryCall(pendingCall, System.currentTimeMillis())
@@ -1028,24 +1131,39 @@ class OnTheWayService : AccessibilityService() {
 
         // 콜별 enrichment + 판정
         val pendingCalls = activeCalls.map { call ->
-            var enrichedCall = call  // 포인트 환산거리 주입 폐기 (v3.6)
+            var enrichedCall = call
+
+            // Fix B: NLS cross-source distance enrichment (배민 accessibility → NLS 거리 활용)
+            if (call.platform == "baemin" && call.distance == null) {
+                val nlsDist = BaeminParser.getCachedNlsDistance("baemin", call.price)
+                if (nlsDist != null) {
+                    enrichedCall = enrichedCall.copy(
+                        distance = nlsDist,
+                        distanceSource = "nls_cross"
+                    )
+                    OtwFileLogger.log("DeliveryFilter", "NLS cross-source distance: ${call.price}원 → ${nlsDist}km")
+                }
+            }
 
             var pickupDistKm: Double? = null
+            var pickupDistSource = ""
             if (gpsActive && currentLat != 0.0 &&
                 DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
                 val addr = call.storeName.ifEmpty { call.destination }
-                val distResult = validatePickupDistance(KakaoGeocoder.distanceTo(this, currentLat, currentLng, addr))
+                // Fix X v1.2: distanceTo → distanceToSync(500ms)
+                val distResult = validatePickupDistance(KakaoGeocoder.distanceToSync(this, currentLat, currentLng, addr, 500))
                 if (distResult != null) {
                     pickupDistKm = distResult.km
+                    pickupDistSource = distResult.source
+                    // Fix B: pickup enrichment → distanceSource 덮어쓰기 X
                     enrichedCall = enrichedCall.copy(
                         pickupDistanceKm = distResult.km,
-                        distanceSource = distResult.source,
                         distanceConfidence = distResult.confidence
                     )
                 }
             }
             val result = CallFilter.judge(enrichedCall, this)
-            PendingCall(call, enrichedCall, result, baeminPoint, pickupDistKm)
+            PendingCall(call, enrichedCall, result, baeminPoint, pickupDistKm, pickupDistSource)
         }
 
         // ── 배민: 2초 debounce (묶음 중복 방지) ──
@@ -1221,10 +1339,11 @@ class OnTheWayService : AccessibilityService() {
         lastCallDetectedTime = now
         lastAccessibilityCallTime = now
 
-        // 단가 계산
-        val effectiveDist = enrichedCall.distance
-            val unitPrice = if (effectiveDist != null && effectiveDist > 0)
-                (call.price / effectiveDist).toInt() else 0
+        // 단가 계산 (FIX-BAEMIN-DISTANCE: 플랫폼별 정책 적용)
+        val effectiveDist = PlatformDistancePolicy.effectiveDistanceKm(
+            call.platform, enrichedCall.distance, enrichedCall.pickupDistanceKm)
+        val unitPrice = PlatformDistancePolicy.unitPrice(
+            call.price, call.platform, enrichedCall.distance, enrichedCall.pickupDistanceKm, call.bundleCount)
         val pName = if (call.platform == "coupang") "쿠팡" else "배민"
         val priceStr = formatPrice(call.price)
         val unitKorean = toKoreanNumber(unitPrice)
@@ -1233,41 +1352,104 @@ class OnTheWayService : AccessibilityService() {
         callSpeakHistory[callKey] = now
         TtsDeduplicator.recordProcessed(call.platform, call.price)
         // FIX-NLS-CROSS-SOURCE-DEDUP: Accessibility 처리 완료 등록
-        CrossSourceDedup.markProcessed(
+        CrossSourceCallDetectionDedup.markProcessed(
             eventId = callSessionEvt?.eventId, orderId = call.orderId,
             platform = call.platform, price = call.price,
             storeName = call.storeName,
-            source = CrossSourceDedup.SOURCE_A11Y)
+            source = CrossSourceCallDetectionDedup.SOURCE_A11Y)
         lastDeliveryReason = result.reason
         lastDeliverySessionId = callSessionEvt?.eventId
 
         // Ledger: CALL_DETECTED + JUDGMENT_ISSUED
-        try {
-            val csId = com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
+        val csId: String? = try {
+            val id = com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
                 eventId = callSessionEvt?.eventId,
                 orderId = call.orderId,
                 fingerprint = com.vita.ontheway.ledger.CallSessionRegistry.buildFingerprint(
                     call.storeName, call.price, call.platform)
             )
+            val storeSource = "${call.platform}_screen"
+            // Fix X v1.1: pickup_distance_status/confidence in CALL_DETECTED payload
+            val pickupStatus = when {
+                pickupDistKm != null -> pending.pickupDistSource.ifEmpty { "sync" }
+                else -> "pending"
+            }
+            val pickupConfidence = when {
+                pickupDistKm != null && pending.pickupDistSource.startsWith("api") -> 1.0
+                pickupDistKm != null && pending.pickupDistSource.startsWith("cache") -> 0.8
+                pickupDistKm != null -> 0.1
+                else -> 0.0
+            }
             com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
-                this, csId, callSessionEvt?.eventId, call.orderId, call.platform,
+                this, id, callSessionEvt?.eventId, call.orderId, call.platform,
                 com.vita.ontheway.ledger.LedgerEventType.CALL_DETECTED, "accessibility",
                 org.json.JSONObject().apply {
                     put("price", call.price); put("storeName", call.storeName)
+                    put("storeName_source", storeSource)
+                    put("parsingMethod", call.parsingMethod)
+                    put("pickup_distance_status", pickupStatus)
+                    put("pickup_distance_confidence", pickupConfidence)
                 }.toString()
             )
             com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
-                this, csId, callSessionEvt?.eventId, call.orderId, call.platform,
+                this, id, callSessionEvt?.eventId, call.orderId, call.platform,
                 com.vita.ontheway.ledger.LedgerEventType.JUDGMENT_ISSUED, "internal",
                 org.json.JSONObject().apply {
                     put("verdict", result.verdict.name); put("reason", result.reason)
                 }.toString()
             )
-        } catch (_: Exception) {}
+            id
+        } catch (_: Exception) { null }
+
+        // Fix X v1.2: 비동기 픽업 거리 보강 + skip-safe (sync 캐시 miss 시)
+        if (pickupDistKm == null && gpsActive && currentLat != 0.0 && csId != null) {
+            val addr = call.storeName.ifEmpty { call.destination }
+            if (addr.isNotBlank()) {
+                val appCtx = this.applicationContext
+                val capturedPlatform = call.platform
+                KakaoGeocoder.distanceToAsync(this, currentLat, currentLng, addr) { asyncResult ->
+                    val road = asyncResult.km * ROAD_DISTANCE_FACTOR
+                    if (road < 0.05 || road > 10.0) return@distanceToAsync
+                    try {
+                        // skip-safe: accept_state 확인 (finalized session → noop)
+                        val acceptState = AcceptLifecycle.getState(csId)
+                        if (acceptState == AcceptLifecycle.AcceptState.CONFIRMED_ACCEPT ||
+                            acceptState == AcceptLifecycle.AcceptState.REJECTED_FALSE) {
+                            Log.w("DeliveryFilter", "late callback: already finalized state=$acceptState csId=${csId.take(8)}")
+                            return@distanceToAsync
+                        }
+
+                        val db = CallLogDb.get(appCtx)
+                        val updated = db.updatePickupDistanceBySessionId(csId, road, asyncResult.source)
+                        if (updated > 0) {
+                            Log.i("DeliveryFilter", "late pickup update: csId=${csId.take(8)} km=${"%.2f".format(road)} source=${asyncResult.source}")
+                            OtwFileLogger.log("DeliveryFilter", "async pickup update: $csId → ${"%.2f".format(road)}km (${asyncResult.source})")
+                            // ledger: PICKUP_DISTANCE_LATE_UPDATED
+                            try {
+                                com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                                    appCtx, csId, null, null, capturedPlatform,
+                                    com.vita.ontheway.ledger.LedgerEventType.PICKUP_DISTANCE_LATE_UPDATED, "async_callback",
+                                    org.json.JSONObject().apply {
+                                        put("km", "%.2f".format(road))
+                                        put("source", asyncResult.source)
+                                        put("confidence", asyncResult.confidence)
+                                    }.toString()
+                                )
+                            } catch (_: Exception) {}
+                        } else {
+                            Log.w("DeliveryFilter", "late callback: row not updated (already has pickupKm) csId=${csId.take(8)}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w("DeliveryFilter", "async pickup DB 실패: ${e.message}")
+                    }
+                }
+            }
+        }
 
         // 내부 verdict (데이터/JudgmentMatch용 — 사용자에게는 노출 X)
         if (result.verdict == CallFilter.Verdict.REJECT) {
             lastDeliveryCall = call
+            lastDeliveryCallAt = System.currentTimeMillis()
             lastDeliveryVerdict = "주의"
             lastDeliveryPlatform = platformName
         } else {
@@ -1282,6 +1464,7 @@ class OnTheWayService : AccessibilityService() {
                 else -> false
             }
             lastDeliveryCall = call
+            lastDeliveryCallAt = System.currentTimeMillis()
             lastDeliveryPlatform = platformName
             lastDeliveryVerdict = if (isTopAccept) "우세" else "보통"
         }
@@ -1338,18 +1521,23 @@ class OnTheWayService : AccessibilityService() {
         val dbDistance = enrichedCall.distance; val dbPoint = baeminPoint
         val dbVerdict = result.verdict.name; val dbReason = result.reason
         val dbBundleCount = call.bundleCount; val dbIsMultiPickup = call.isMultiPickup
+        val dbBundleConf = call.bundleCountConfidence; val dbBundleSrc = call.bundleCountSource
         val dbStoreName = call.storeName; val dbDestination = call.destination
         val dbPickupKm = pickupDistKm; val dbTtsSuppressed = !ttsActuallySpoken
-        val dbDistanceSource = enrichedCall.distanceSource
+        val dbDistanceSource = enrichedCall.distanceSource.ifEmpty {
+            if (enrichedCall.distance != null && enrichedCall.distance > 0) "screen" else ""
+        }
+        val dbPickupDistSource = pending.pickupDistSource
         val dbSourceType = V2Event.mapSourceType(call.platform)
         val dbParsingMethod = call.parsingMethod
-        val dbDriverAction = when (lastDeliveryVerdict) {
-            "우세", "보통" -> "simulated_accept"
-            "주의" -> "simulated_reject"
-            else -> "unknown"
+        val dbDriverAction = "no_action"
+        val dbShadowVerdict = when (lastDeliveryVerdict) {
+            "우세", "보통" -> "recommended_accept"
+            "주의" -> "recommended_reject"
+            else -> null
         }
-        val dbTotalKm = (dbPickupKm ?: 0.0) + (dbDistance ?: 0.0)
-        val dbUp = if (dbTotalKm > 0) (dbPrice / dbTotalKm).toInt() else 0
+        val dbUp = PlatformDistancePolicy.unitPrice(
+            dbPrice, dbPlatform, dbDistance, dbPickupKm, dbBundleCount)
         val dbSessionId = DrivingModeManager.getSessionId(ctx)
         val dbEventId = callSessionEvt?.eventId
         val dbOrderId = call.orderId
@@ -1372,11 +1560,15 @@ class OnTheWayService : AccessibilityService() {
                     driverAction = dbDriverAction,
                     sessionId = dbSessionId,
                     distanceSource = dbDistanceSource,
+                    pickupDistanceSource = dbPickupDistSource,
                     eventId = dbEventId,
                     orderId = dbOrderId,
                     callSessionId = dbCallSessionId,
                     identityConfidence = dbIdentConf,
-                    distanceConfidence = dbDistConf
+                    distanceConfidence = dbDistConf,
+                    shadowVerdict = dbShadowVerdict,
+                    bundleCountConfidence = dbBundleConf,
+                    bundleCountSource = dbBundleSrc
                 )
                 // 쿠팡: Accessibility에서 가게명 있으면 NLS 레코드도 업데이트
                 if (dbPlatform == "coupang" && dbStoreName.isNotBlank()) {
@@ -1637,6 +1829,7 @@ class OnTheWayService : AccessibilityService() {
         try { DiagnosticLog.init(this) } catch (e: Exception) { Log.w("OnTheWay", "DiagnosticLog 초기화 실패: ${e.message}") }
         try { com.vita.ontheway.diagnostic.CoupangDiagnosticLogger.init(this) } catch (e: Exception) { Log.w("OnTheWay", "CoupangDiagnosticLogger 초기화 실패: ${e.message}") }
         try { com.vita.ontheway.diagnostic.BaeminDiagnosticLogger.init(this) } catch (e: Exception) { Log.w("OnTheWay", "BaeminDiagnosticLogger 초기화 실패: ${e.message}") }
+        try { com.vita.ontheway.diagnostic.KakaoPickerDiagnosticLogger.init(this) } catch (e: Exception) { Log.w("OnTheWay", "KakaoPickerDiagnosticLogger 초기화 실패: ${e.message}") }
         try {
             val transitionLog = StateTransitionLog(this)
             sessionManager = SessionManager(transitionLog)
@@ -1700,6 +1893,8 @@ class OnTheWayService : AccessibilityService() {
             gpsActive = true
             Log.d("OTW_GPS", "위치: $currentLat, $currentLng, 속도: ${currentSpeed}m/s")
             try { ProximityDetector.onLocationUpdate(loc.latitude, loc.longitude) } catch (_: Exception) {}
+            // Fix W: AcceptLifecycle GPS 피드 (변위 + 속도)
+            try { AcceptLifecycle.onGpsUpdate(this@OnTheWayService, loc.latitude, loc.longitude, loc.speed) } catch (_: Exception) {}
         }
         override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
         override fun onProviderEnabled(provider: String) {}
@@ -1820,6 +2015,12 @@ class OnTheWayService : AccessibilityService() {
 
     private fun setupProximityListener() {
         ProximityDetector.listener = { event, target ->
+            // Fix W: ProximityDetector → AcceptLifecycle 승격 신호
+            // Fix W++: proximity target platform 전달
+            val proxPlatform = lastDeliveryPlatform.ifEmpty { null }
+            val proxSession = lastDeliverySessionId
+            try { AcceptLifecycle.onProximityEvent(this@OnTheWayService, event.name, proxPlatform, proxSession) } catch (_: Exception) {}
+
             when (event) {
                 ProximityDetector.ProximityEvent.PICKUP_NEAR -> {
                     if (FeatureFlags.ttsPreset.ordinal >= TtsPreset.HIGH.ordinal) {
