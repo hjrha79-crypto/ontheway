@@ -99,6 +99,8 @@ class OnTheWayService : AccessibilityService() {
         var currentLng: Double = 0.0
         var currentSpeed: Float = 0f  // m/s
         var gpsActive: Boolean = false
+        /** Fix X v1.3: 마지막 위치 업데이트 시각 (locationAge 기반 gate 완화) */
+        var lastLocationTime: Long = 0L
 
         // v2.2: 진단 모드 — 패키지별 이벤트 카운트
         val packageEventCount = mutableMapOf<String, Int>()
@@ -130,7 +132,7 @@ class OnTheWayService : AccessibilityService() {
     private var lastAcceptTime: Long = 0
 
     // 배민 묶음 debounce (2초 윈도우)
-    private data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?, val pickupDistSource: String = "")
+    private data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?, val pickupDistSource: String = "", val pickupPendingReason: String? = null)
     private val baeminBuffer = mutableListOf<PendingCall>()
     private var baeminDebounceRunnable: Runnable? = null
     private var bundleTimeoutRunnable: Runnable? = null
@@ -1050,26 +1052,33 @@ class OnTheWayService : AccessibilityService() {
                         var enrichedBundle = bundleCall
                         var pickupDistKm: Double? = null
                         var bundlePickupDistSrc = ""
-                        if (gpsActive && currentLat != 0.0 &&
-                            DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
-                            val addr = (bundleCall.storeName.split("+").firstOrNull() ?: "").ifEmpty {
-                                bundleCall.destination
+                        var bundlePendingReason: String? = null
+                        // Fix X v1.3: gpsActive/DrivingMode 단독 의존 제거 → hasUsableLocation
+                        val bundleAddr = (bundleCall.storeName.split("+").firstOrNull() ?: "").ifEmpty {
+                            bundleCall.destination
+                        }
+                        val bundleResolve = PickupDistanceResolver.resolveSyncOrPending(
+                            this, currentLat, currentLng, lastLocationTime,
+                            bundleAddr, bundleCall.destination, 500
+                        )
+                        when (bundleResolve) {
+                            is PickupDistanceResolver.Result.Success -> {
+                                pickupDistKm = bundleResolve.km
+                                bundlePickupDistSrc = bundleResolve.source
+                                enrichedBundle = enrichedBundle.copy(
+                                    pickupDistanceKm = bundleResolve.km,
+                                    distanceConfidence = bundleResolve.confidence
+                                )
                             }
-                            if (addr.isNotEmpty()) {
-                                // Fix X v1.2: distanceTo → distanceToSync(500ms)
-                                val distResult = validatePickupDistance(KakaoGeocoder.distanceToSync(this, currentLat, currentLng, addr, 500))
-                                if (distResult != null) {
-                                    pickupDistKm = distResult.km
-                                    bundlePickupDistSrc = distResult.source
-                                    enrichedBundle = enrichedBundle.copy(
-                                        pickupDistanceKm = distResult.km,
-                                        distanceConfidence = distResult.confidence
-                                    )
-                                }
+                            is PickupDistanceResolver.Result.Pending -> {
+                                bundlePendingReason = bundleResolve.reason.name
+                            }
+                            is PickupDistanceResolver.Result.Rejected -> {
+                                bundlePendingReason = bundleResolve.reason.name
                             }
                         }
                         val result = CallFilter.judge(enrichedBundle, this)
-                        val pendingCall = PendingCall(bundleCall, enrichedBundle, result, bundleCall.point, pickupDistKm, bundlePickupDistSrc)
+                        val pendingCall = PendingCall(bundleCall, enrichedBundle, result, bundleCall.point, pickupDistKm, bundlePickupDistSrc, bundlePendingReason)
                         lastCallDetectedTime = System.currentTimeMillis()
                         lastAccessibilityCallTime = System.currentTimeMillis()
                         processDeliveryCall(pendingCall, System.currentTimeMillis())
@@ -1147,23 +1156,30 @@ class OnTheWayService : AccessibilityService() {
 
             var pickupDistKm: Double? = null
             var pickupDistSource = ""
-            if (gpsActive && currentLat != 0.0 &&
-                DrivingModeManager.getMode(this) == DrivingMode.DRIVING) {
-                val addr = call.storeName.ifEmpty { call.destination }
-                // Fix X v1.2: distanceTo → distanceToSync(500ms)
-                val distResult = validatePickupDistance(KakaoGeocoder.distanceToSync(this, currentLat, currentLng, addr, 500))
-                if (distResult != null) {
-                    pickupDistKm = distResult.km
-                    pickupDistSource = distResult.source
-                    // Fix B: pickup enrichment → distanceSource 덮어쓰기 X
+            var pickupPendingReason: String? = null
+            // Fix X v1.3: gpsActive/DrivingMode 단독 의존 제거 → hasUsableLocation
+            val resolveResult = PickupDistanceResolver.resolveSyncOrPending(
+                this, currentLat, currentLng, lastLocationTime,
+                call.storeName, call.destination, 500
+            )
+            when (resolveResult) {
+                is PickupDistanceResolver.Result.Success -> {
+                    pickupDistKm = resolveResult.km
+                    pickupDistSource = resolveResult.source
                     enrichedCall = enrichedCall.copy(
-                        pickupDistanceKm = distResult.km,
-                        distanceConfidence = distResult.confidence
+                        pickupDistanceKm = resolveResult.km,
+                        distanceConfidence = resolveResult.confidence
                     )
+                }
+                is PickupDistanceResolver.Result.Pending -> {
+                    pickupPendingReason = resolveResult.reason.name
+                }
+                is PickupDistanceResolver.Result.Rejected -> {
+                    pickupPendingReason = resolveResult.reason.name
                 }
             }
             val result = CallFilter.judge(enrichedCall, this)
-            PendingCall(call, enrichedCall, result, baeminPoint, pickupDistKm, pickupDistSource)
+            PendingCall(call, enrichedCall, result, baeminPoint, pickupDistKm, pickupDistSource, pickupPendingReason)
         }
 
         // ── 배민: 2초 debounce (묶음 중복 방지) ──
@@ -1236,8 +1252,36 @@ class OnTheWayService : AccessibilityService() {
                 sessionManager?.finalizeActiveSession("bundle_timeout")
                 val bundleCall = BaeminBundleSession.finalizeOnTimeout()
                 if (bundleCall != null) {
-                    val result = CallFilter.judge(bundleCall, this)
-                    val pendingCall = PendingCall(bundleCall, bundleCall, result, bundleCall.point, null)
+                    // Fix X v1.3: 타임아웃 경로에도 거리 보강 추가
+                    var enrichedTimeout = bundleCall
+                    var timeoutPickupKm: Double? = null
+                    var timeoutPickupSrc = ""
+                    var timeoutPendingReason: String? = null
+                    val timeoutAddr = (bundleCall.storeName.split("+").firstOrNull() ?: "").ifEmpty {
+                        bundleCall.destination
+                    }
+                    val timeoutResolve = PickupDistanceResolver.resolveSyncOrPending(
+                        this, currentLat, currentLng, lastLocationTime,
+                        timeoutAddr, bundleCall.destination, 500
+                    )
+                    when (timeoutResolve) {
+                        is PickupDistanceResolver.Result.Success -> {
+                            timeoutPickupKm = timeoutResolve.km
+                            timeoutPickupSrc = timeoutResolve.source
+                            enrichedTimeout = enrichedTimeout.copy(
+                                pickupDistanceKm = timeoutResolve.km,
+                                distanceConfidence = timeoutResolve.confidence
+                            )
+                        }
+                        is PickupDistanceResolver.Result.Pending -> {
+                            timeoutPendingReason = timeoutResolve.reason.name
+                        }
+                        is PickupDistanceResolver.Result.Rejected -> {
+                            timeoutPendingReason = timeoutResolve.reason.name
+                        }
+                    }
+                    val result = CallFilter.judge(enrichedTimeout, this)
+                    val pendingCall = PendingCall(bundleCall, enrichedTimeout, result, bundleCall.point, timeoutPickupKm, timeoutPickupSrc, timeoutPendingReason)
                     lastCallDetectedTime = System.currentTimeMillis()
                     lastAccessibilityCallTime = System.currentTimeMillis()
                     processDeliveryCall(pendingCall, System.currentTimeMillis())
@@ -1369,7 +1413,7 @@ class OnTheWayService : AccessibilityService() {
                     call.storeName, call.price, call.platform)
             )
             val storeSource = "${call.platform}_screen"
-            // Fix X v1.1: pickup_distance_status/confidence in CALL_DETECTED payload
+            // Fix X v1.3: pickup_distance_status/confidence/pending_reason
             val pickupStatus = when {
                 pickupDistKm != null -> pending.pickupDistSource.ifEmpty { "sync" }
                 else -> "pending"
@@ -1389,6 +1433,9 @@ class OnTheWayService : AccessibilityService() {
                     put("parsingMethod", call.parsingMethod)
                     put("pickup_distance_status", pickupStatus)
                     put("pickup_distance_confidence", pickupConfidence)
+                    if (pending.pickupPendingReason != null) {
+                        put("pickup_distance_pending_reason", pending.pickupPendingReason)
+                    }
                 }.toString()
             )
             com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
@@ -1401,38 +1448,31 @@ class OnTheWayService : AccessibilityService() {
             id
         } catch (_: Exception) { null }
 
-        // Fix X v1.2: 비동기 픽업 거리 보강 + skip-safe (sync 캐시 miss 시)
-        if (pickupDistKm == null && gpsActive && currentLat != 0.0 && csId != null) {
+        // Fix X v1.3: 비동기 픽업 거리 보강 (게이트 완화 — usableLocation 기반)
+        // 판정 변경 금지, 거리 factual update만 허용 (수락 후에도 Shadow 분석에 필요)
+        if (pickupDistKm == null && csId != null &&
+            PickupDistanceResolver.hasUsableLocation(currentLat, currentLng, lastLocationTime)) {
             val addr = call.storeName.ifEmpty { call.destination }
             if (addr.isNotBlank()) {
                 val appCtx = this.applicationContext
                 val capturedPlatform = call.platform
-                KakaoGeocoder.distanceToAsync(this, currentLat, currentLng, addr) { asyncResult ->
-                    val road = asyncResult.km * ROAD_DISTANCE_FACTOR
-                    if (road < 0.05 || road > 10.0) return@distanceToAsync
+                PickupDistanceResolver.resolveAsync(this, currentLat, currentLng, call.storeName, call.destination) { asyncRes ->
+                    if (asyncRes !is PickupDistanceResolver.Result.Success) return@resolveAsync
                     try {
-                        // skip-safe: accept_state 확인 (finalized session → noop)
-                        val acceptState = AcceptLifecycle.getState(csId)
-                        if (acceptState == AcceptLifecycle.AcceptState.CONFIRMED_ACCEPT ||
-                            acceptState == AcceptLifecycle.AcceptState.REJECTED_FALSE) {
-                            Log.w("DeliveryFilter", "late callback: already finalized state=$acceptState csId=${csId.take(8)}")
-                            return@distanceToAsync
-                        }
-
                         val db = CallLogDb.get(appCtx)
-                        val updated = db.updatePickupDistanceBySessionId(csId, road, asyncResult.source)
+                        val updated = db.updatePickupDistanceBySessionId(csId, asyncRes.km, asyncRes.source, asyncRes.confidence)
                         if (updated > 0) {
-                            Log.i("DeliveryFilter", "late pickup update: csId=${csId.take(8)} km=${"%.2f".format(road)} source=${asyncResult.source}")
-                            OtwFileLogger.log("DeliveryFilter", "async pickup update: $csId → ${"%.2f".format(road)}km (${asyncResult.source})")
+                            Log.i("DeliveryFilter", "late pickup update: csId=${csId.take(8)} km=${"%.2f".format(asyncRes.km)} source=${asyncRes.source}")
+                            OtwFileLogger.log("DeliveryFilter", "async pickup update: $csId → ${"%.2f".format(asyncRes.km)}km (${asyncRes.source})")
                             // ledger: PICKUP_DISTANCE_LATE_UPDATED
                             try {
                                 com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
                                     appCtx, csId, null, null, capturedPlatform,
                                     com.vita.ontheway.ledger.LedgerEventType.PICKUP_DISTANCE_LATE_UPDATED, "async_callback",
                                     org.json.JSONObject().apply {
-                                        put("km", "%.2f".format(road))
-                                        put("source", asyncResult.source)
-                                        put("confidence", asyncResult.confidence)
+                                        put("km", "%.2f".format(asyncRes.km))
+                                        put("source", asyncRes.source)
+                                        put("confidence", asyncRes.confidence)
                                     }.toString()
                                 )
                             } catch (_: Exception) {}
@@ -1891,6 +1931,7 @@ class OnTheWayService : AccessibilityService() {
             currentLng = loc.longitude
             currentSpeed = loc.speed
             gpsActive = true
+            lastLocationTime = System.currentTimeMillis()
             Log.d("OTW_GPS", "위치: $currentLat, $currentLng, 속도: ${currentSpeed}m/s")
             try { ProximityDetector.onLocationUpdate(loc.latitude, loc.longitude) } catch (_: Exception) {}
             // Fix W: AcceptLifecycle GPS 피드 (변위 + 속도)

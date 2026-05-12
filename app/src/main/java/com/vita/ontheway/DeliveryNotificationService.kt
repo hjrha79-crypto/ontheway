@@ -48,6 +48,8 @@ class DeliveryNotificationService : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         try { OtwFileLogger.init(this) } catch (_: Exception) {}
+        // P0-1: CoupangAcceptDetector context 설정
+        CoupangAcceptDetector.setContext(this)
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.KOREAN
@@ -66,6 +68,7 @@ class DeliveryNotificationService : NotificationListenerService() {
         tts?.shutdown()
         tts = null
         ttsReady = false
+        CoupangAcceptDetector.resetForTest() // P1-4: context + tick 정리
         try { ioExecutor.shutdown() } catch (_: Exception) {}
         super.onDestroy()
     }
@@ -82,6 +85,8 @@ class DeliveryNotificationService : NotificationListenerService() {
         Log.d(TAG_LIFECYCLE, "NLS connected (rebindCount=$rebindCount)")
         OtwFileLogger.log(TAG_LIFECYCLE, "NLS connected (rebindCount=$rebindCount)")
         Log.d("DeliveryNoti", "알림 서비스 연결됨")
+        // P0-1: onListenerConnected에서도 context 보장
+        CoupangAcceptDetector.setContext(this)
         Log.d("COUPANG_DBG", "onListenerConnected at $listenerConnectedAt")
         Log.d("COUPANG_DBG", "TARGET_PACKAGES=$TARGET_PACKAGES")
 
@@ -188,6 +193,17 @@ class DeliveryNotificationService : NotificationListenerService() {
             logCoupangNotifRaw(title, text, bigText)
         }
 
+        // COUPANG-NOTIFICATION-FIRST: 쿠팡 알림 파서 + candidate 등록
+        if (pkg == PKG_COUPANG) {
+            val parsed = CoupangNotificationParser.parse(
+                title, text, bigText,
+                sbnKey = sbn.key ?: "", postTime = sbn.postTime
+            )
+            if (parsed != null) {
+                CoupangAcceptDetector.onNotificationReceived(parsed)
+            }
+        }
+
         // 플랫폼별 파싱 (배민 + 쿠팡 병행)
         val calls = when (pkg) {
             PKG_BAEMIN -> parseBaeminNotification(combined, title, text)
@@ -204,10 +220,10 @@ class DeliveryNotificationService : NotificationListenerService() {
         // 판정 + TTS
         for (call in calls) {
             // FIX-NLS-CROSS-SOURCE-DEDUP + PP-GUARD: cross-source dedup
-            if (CrossSourceDedup.isProcessed(
+            if (CrossSourceCallDetectionDedup.isProcessed(
                     orderId = call.orderId, platform = call.platform,
                     price = call.price, storeName = call.storeName,
-                    source = CrossSourceDedup.SOURCE_NLS)) {
+                    source = CrossSourceCallDetectionDedup.SOURCE_NLS)) {
                 Log.d("DeliveryNoti", "CrossSourceDedup → 알림 스킵: ${call.platform} ${call.price}원")
                 DropReason.recordDrop(DropReason.DROP_DUPLICATE, "cross_source_dedup ${call.platform}_${call.price}")
                 continue
@@ -229,16 +245,18 @@ class DeliveryNotificationService : NotificationListenerService() {
             )
 
             // FIX-PICKUP-DISTANCE: NLS 경로에서도 픽업 거리 계산
-            val enrichedCall = enrichWithPickupDistance(call)
+            val pickupEnrichResult = enrichWithPickupDistance(call)
+            val enrichedCall = pickupEnrichResult.first
+            val notiPickupDistSrc = pickupEnrichResult.second
 
             val result = CallFilter.judge(enrichedCall, this)
             TtsDeduplicator.recordProcessed(enrichedCall.platform, enrichedCall.price)
             // FIX-NLS-CROSS-SOURCE-DEDUP: NLS 처리 완료 등록
-            CrossSourceDedup.markProcessed(
+            CrossSourceCallDetectionDedup.markProcessed(
                 eventId = session?.eventId, orderId = enrichedCall.orderId,
                 platform = enrichedCall.platform, price = enrichedCall.price,
                 storeName = enrichedCall.storeName,
-                source = CrossSourceDedup.SOURCE_NLS)
+                source = CrossSourceCallDetectionDedup.SOURCE_NLS)
             Log.d("DeliveryNoti", "파싱 결과: price=${enrichedCall.price}, result=${result.verdict} (${result.reason})")
             FilterLog.record(this, enrichedCall, result, eventId = session?.eventId, sessionState = session?.state?.name)
 
@@ -250,12 +268,29 @@ class DeliveryNotificationService : NotificationListenerService() {
                     fingerprint = com.vita.ontheway.ledger.CallSessionRegistry.buildFingerprint(
                         enrichedCall.storeName, enrichedCall.price, enrichedCall.platform)
                 )
+                val notiStoreSource = "${enrichedCall.platform}_nls"
+                // Fix X v1.2: pickup_distance_status/confidence 통일
+                val nlsPickupKm = enrichedCall.pickupDistanceKm
+                val nlsPickupStatus = when {
+                    nlsPickupKm != null && nlsPickupKm > 0 -> notiPickupDistSrc.ifEmpty { "sync" }
+                    else -> "pending"
+                }
+                val nlsPickupConfidence = when {
+                    nlsPickupKm != null && notiPickupDistSrc.startsWith("api") -> 1.0
+                    nlsPickupKm != null && notiPickupDistSrc.startsWith("cache") -> 0.8
+                    nlsPickupKm != null && nlsPickupKm > 0 -> 0.1
+                    else -> 0.0
+                }
                 com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
                     this, csId, session?.eventId, enrichedCall.orderId, enrichedCall.platform,
                     com.vita.ontheway.ledger.LedgerEventType.CALL_DETECTED, "notification",
                     org.json.JSONObject().apply {
                         put("price", enrichedCall.price)
                         put("storeName", enrichedCall.storeName)
+                        put("storeName_source", notiStoreSource)
+                        put("parsingMethod", enrichedCall.parsingMethod)
+                        put("pickup_distance_status", nlsPickupStatus)
+                        put("pickup_distance_confidence", nlsPickupConfidence)
                     }.toString()
                 )
                 com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
@@ -276,9 +311,32 @@ class DeliveryNotificationService : NotificationListenerService() {
             val notiDest = enrichedCall.destination; val notiBundleCount = enrichedCall.bundleCount
             val notiIsMultiPickup = enrichedCall.isMultiPickup
             val notiPickupKm = enrichedCall.pickupDistanceKm
-            val notiDistSource = enrichedCall.distanceSource
-            val notiTotalKm = (notiPickupKm ?: 0.0) + (notiDist ?: 0.0)
-            val notiUp = if (notiTotalKm > 0) (notiPrice / notiTotalKm).toInt() else 0
+            val notiDistSource = if (enrichedCall.distanceSource.isNotEmpty()) enrichedCall.distanceSource
+                else if (enrichedCall.distance != null && enrichedCall.distance > 0) "nls" else ""
+            val notiUp = PlatformDistancePolicy.unitPrice(
+                notiPrice, notiPlatform, notiDist, notiPickupKm, enrichedCall.bundleCount)
+            // P0-3 + Fix 1 (v70.8.1): NLS identity 전달 + session null fallback
+            val notiEventId = session?.eventId
+            val notiOrderId = enrichedCall.orderId
+            // Fix H-2: 결정론적 postTime fallback (재현성 보장)
+            val now = System.currentTimeMillis()
+            val notiPostTime = if (sbn.postTime > 0) sbn.postTime else (now + (sbn.id % 1000))
+            val notiSessionId = (session?.let {
+                com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
+                    eventId = notiEventId, orderId = notiOrderId)
+            }) ?: run {
+                val fallbackKey = notiOrderId?.takeIf { it.isNotBlank() }
+                    ?: "noti_${notiPlatform}_$notiPostTime"
+                com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
+                    eventId = notiEventId, orderId = notiOrderId,
+                    fingerprint = "fallback_$fallbackKey")
+            }
+            val notiIdentityConf = when {
+                !notiOrderId.isNullOrBlank() -> 0.9
+                !notiEventId.isNullOrBlank() -> 0.7
+                notiStore.isNotBlank() -> 0.5
+                else -> 0.3
+            }
             ioExecutor.execute {
                 try {
                     CallLogDb.get(ctx).insert(
@@ -291,7 +349,14 @@ class DeliveryNotificationService : NotificationListenerService() {
                         sourceType = V2Event.mapSourceType(notiPlatform),
                         parsingMethod = V2Event.PARSING_NOTIFICATION,
                         pickupKm = notiPickupKm,
-                        distanceSource = notiDistSource
+                        distanceSource = notiDistSource,
+                        pickupDistanceSource = notiPickupDistSrc,
+                        eventId = notiEventId,
+                        orderId = notiOrderId,
+                        callSessionId = notiSessionId,
+                        identityConfidence = notiIdentityConf,
+                        bundleCountConfidence = enrichedCall.bundleCountConfidence,
+                        bundleCountSource = enrichedCall.bundleCountSource
                     )
                 } catch (e: Exception) { Log.w("DeliveryNoti", "DB 저장 실패: ${e.message}") }
             }
@@ -336,35 +401,35 @@ class DeliveryNotificationService : NotificationListenerService() {
      * FIX-PICKUP-DISTANCE: NLS 경로에서도 픽업 거리 계산.
      * OnTheWayService의 GPS 좌표 + KakaoGeocoder 활용.
      */
-    private fun enrichWithPickupDistance(call: DeliveryCall): DeliveryCall {
+    /**
+     * @return Pair(enrichedCall, pickupDistanceSource)
+     */
+    private fun enrichWithPickupDistance(call: DeliveryCall): Pair<DeliveryCall, String> {
         // FIX-NLS-DISTANCE-V2: NLS 거리(총거리)와 GPS 픽업거리는 별도 필드
         // NLS distance = call.distance (단가 판정용, 총거리)
         // GPS pickup = call.pickupDistanceKm (UI/TTS 픽업 표시용)
-        // → 둘 다 계산, skip 하지 않음
-
         try {
+            // Fix X v1.3: PickupDistanceResolver 통합 (usableLocation 기반)
             val lat = OnTheWayService.currentLat
             val lng = OnTheWayService.currentLng
-            if (lat == 0.0 || lng == 0.0) return call
-
-            val addr = call.storeName.ifEmpty { call.destination }
-            if (addr.isBlank()) return call
-
-            val distResult = KakaoGeocoder.distanceTo(this, lat, lng, addr) ?: return call
-            val road = distResult.km * OnTheWayService.ROAD_DISTANCE_FACTOR
-            // 동일 필터: 50m~10km 범위만 유효
-            if (road < 0.05 || road > 10.0) return call
-
-            Log.d("DeliveryNoti", "GPS 픽업 거리: $addr → ${"%.1f".format(road)}km (${distResult.source})")
-            return call.copy(
-                pickupDistanceKm = road,
-                distanceSource = distResult.source,
-                distanceConfidence = distResult.confidence
+            val resolveResult = PickupDistanceResolver.resolveSyncOrPending(
+                this, lat, lng, OnTheWayService.lastLocationTime,
+                call.storeName, call.destination, 500
             )
+            when (resolveResult) {
+                is PickupDistanceResolver.Result.Success -> {
+                    Log.d("DeliveryNoti", "GPS 픽업 거리: ${call.storeName.ifEmpty { call.destination }} → ${"%.1f".format(resolveResult.km)}km (${resolveResult.source})")
+                    return call.copy(
+                        pickupDistanceKm = resolveResult.km,
+                        distanceConfidence = resolveResult.confidence
+                    ) to resolveResult.source
+                }
+                else -> { /* pending/rejected → 거리 없음 */ }
+            }
         } catch (e: Exception) {
             Log.w("DeliveryNoti", "GPS 픽업 거리 계산 실패: ${e.message}")
         }
-        return call
+        return call to ""
     }
 
     /**
@@ -398,7 +463,23 @@ class DeliveryNotificationService : NotificationListenerService() {
         }
     }
 
-    override fun onNotificationRemoved(sbn: StatusBarNotification?) { /* no-op */ }
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        sbn ?: return
+        if (sbn.packageName == PKG_COUPANG) {
+            CoupangAcceptDetector.onNotificationDismissed(sbn.key ?: "", sbn.postTime)
+            // pending candidates 체크 + 처리
+            val results = CoupangAcceptDetector.checkPending(this)
+            for ((candidate, result) in results) {
+                when (result) {
+                    CoupangAcceptDetector.AcceptResult.MATCHED ->
+                        CoupangAcceptDetector.processMatched(this, candidate)
+                    CoupangAcceptDetector.AcceptResult.SUSPECTED ->
+                        CoupangAcceptDetector.processSuspected(this, candidate)
+                    else -> {}
+                }
+            }
+        }
+    }
 
     // ── v2.2: 카카오T 알림 파싱 ──
     private fun parseKakaoTNotification(text: String): List<DeliveryCall> {
@@ -484,11 +565,16 @@ class DeliveryNotificationService : NotificationListenerService() {
         // "멀티 [가게명] [가격]원" 또는 "[가게명] [가격]원" 패턴
         val storeName = extractCoupangStoreFromNotif(text, price)
 
+        // v70.9.2.1: 쿠팡 픽업 추정 주입 (Phase 1)
+        val estimatedPickup = PlatformDistancePolicy.calculatePickupKm("coupang", null)
+        val pickupSource = PlatformDistancePolicy.pickupDistanceSource("coupang", null)
         return listOf(DeliveryCall(
             price = price, distance = distance, isMulti = isMulti,
             platform = "coupang", rawText = text,
             storeName = storeName,
-            parsingMethod = V2Event.PARSING_NOTIFICATION
+            parsingMethod = V2Event.PARSING_NOTIFICATION,
+            pickupDistanceKm = estimatedPickup,
+            distanceSource = if (distance != null && distance > 0) "nls" else ""
         ))
     }
 
@@ -577,6 +663,8 @@ class DeliveryNotificationService : NotificationListenerService() {
         val nlsDistance = BaeminParser.parseNlsDistance(text)
         if (nlsDistance != null) {
             Log.d("DeliveryNoti", "배민 NLS 거리: ${nlsDistance}km")
+            // Fix B: NLS 거리를 캐시 → 접근성 경로에서 cross-source 활용
+            BaeminParser.cacheNlsDistance("baemin", price, nlsDistance)
         }
 
         // 묶음 감지: "[N건 묶음]" 패턴
@@ -590,7 +678,8 @@ class DeliveryNotificationService : NotificationListenerService() {
             platform = "baemin", rawText = text,
             storeName = storeName,
             orderId = orderId,
-            parsingMethod = V2Event.PARSING_NOTIFICATION
+            parsingMethod = V2Event.PARSING_NOTIFICATION,
+            distanceSource = if (nlsDistance != null) "nls" else ""
         ))
     }
 

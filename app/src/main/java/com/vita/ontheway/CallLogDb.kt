@@ -8,7 +8,7 @@ import android.util.Log
 import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 16) {
 
     private val appCtx: Context = ctx.applicationContext
 
@@ -20,6 +20,53 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
             return instance!!
         }
     }
+
+    // P0-2 (v70.8): ALTER TABLE graceful — 존재하는 컬럼만 insert
+    private var cachedColumns: Set<String>? = null
+
+    fun getColumns(): Set<String> {
+        cachedColumns?.let { return it }
+        val cols = mutableSetOf<String>()
+        try {
+            val cursor = readableDatabase.rawQuery("PRAGMA table_info($TABLE)", null)
+            cursor.use {
+                while (it.moveToNext()) {
+                    cols.add(it.getString(it.getColumnIndexOrThrow("name")))
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "PRAGMA table_info 실패: ${e.message}")
+        }
+        cachedColumns = cols
+        return cols
+    }
+
+    fun safeContentValues(cv: ContentValues): ContentValues {
+        val columns = getColumns()
+        if (columns.isEmpty()) return cv  // PRAGMA 실패 시 원본 반환
+        val safe = ContentValues()
+        for (key in cv.keySet()) {
+            if (key in columns) {
+                // Fix 3 (v70.8.1): 타입 보존
+                when (val v = cv.get(key)) {
+                    is Long -> safe.put(key, v)
+                    is Int -> safe.put(key, v)
+                    is Double -> safe.put(key, v)
+                    is Float -> safe.put(key, v)
+                    is Boolean -> safe.put(key, if (v) 1 else 0)
+                    is ByteArray -> safe.put(key, v)
+                    null -> safe.putNull(key)
+                    else -> safe.put(key, v.toString())
+                }
+            } else {
+                Log.w("CallLogDb", "safeCV: column '$key' missing, skipping")
+            }
+        }
+        return safe
+    }
+
+    /** 컬럼 캐시 무효화 (ALTER TABLE 후 호출) */
+    fun invalidateColumnCache() { cachedColumns = null }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -39,6 +86,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
                 destination TEXT,
                 pickupKm REAL,
                 distance_source TEXT DEFAULT '',
+                pickup_distance_source TEXT DEFAULT '',
                 accepted INTEGER DEFAULT 0,
                 completed INTEGER DEFAULT 0,
                 deliveryTimeMin INTEGER DEFAULT 0,
@@ -46,7 +94,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
                 tts_suppressed INTEGER DEFAULT 0,
                 source_type TEXT DEFAULT 'unknown',
                 parsing_method TEXT DEFAULT 'unknown',
-                driver_action TEXT DEFAULT 'unknown',
+                driver_action TEXT DEFAULT 'no_action',
+                shadow_verdict TEXT,
                 session_id TEXT,
                 ai_reason TEXT,
                 event_id TEXT,
@@ -60,7 +109,13 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
                 delivery_completed_at INTEGER,
                 next_call_wait_ms INTEGER,
                 join_eligible INTEGER DEFAULT 1,
-                quarantine_reason TEXT
+                quarantine_reason TEXT,
+                store_name_first_source TEXT,
+                store_name_last_source TEXT,
+                store_name_change_count INTEGER DEFAULT 0,
+                bundle_count_confidence REAL DEFAULT 1.0,
+                bundle_count_source TEXT DEFAULT '',
+                accept_state TEXT DEFAULT 'UNKNOWN'
             )
         """)
         db.execSQL("CREATE INDEX idx_timestamp ON $TABLE(timestamp)")
@@ -174,7 +229,164 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
             try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN quarantine_reason TEXT") } catch (_: Exception) {}
             Log.d("CallLogDb", "v10->v11: quarantine_reason column added")
         }
+        if (old < 12) {
+            // Fix 1 (v70.9): storeName provenance 분리 필드
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN store_name_first_source TEXT") } catch (_: Exception) {}
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN store_name_last_source TEXT") } catch (_: Exception) {}
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN store_name_change_count INTEGER DEFAULT 0") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v11->v12: storeName provenance columns added")
+        }
+        if (old < 13) {
+            // Fix A (v70.10): driver_action/shadow_verdict 분리
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN shadow_verdict TEXT") } catch (_: Exception) {}
+            // 기존 simulated_* 값을 shadow_verdict로 이관
+            try {
+                db.execSQL("UPDATE $TABLE SET shadow_verdict = CASE " +
+                    "WHEN driver_action = 'simulated_accept' THEN 'recommended_accept' " +
+                    "WHEN driver_action = 'simulated_reject' THEN 'recommended_reject' " +
+                    "ELSE driver_action END " +
+                    "WHERE driver_action IS NOT NULL AND driver_action != 'unknown'")
+            } catch (_: Exception) {}
+            // driver_action 리셋 (이후 real_accepted만 기록)
+            try {
+                db.execSQL("UPDATE $TABLE SET driver_action = 'no_action'")
+            } catch (_: Exception) {}
+            // ledger DRIVER_ACCEPTED backfill
+            try { backfillRealAccepted(db) } catch (e: Exception) {
+                Log.w("CallLogDb", "v12->v13 backfill 실패: ${e.message}")
+            }
+            Log.d("CallLogDb", "v12->v13: shadow_verdict + driver_action 분리")
+        }
+        if (old < 14) {
+            // Fix B (v70.10): distance_source 의미 분리
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN pickup_distance_source TEXT DEFAULT ''") } catch (_: Exception) {}
+            // 기존 data 정리: pickup enrichment가 distance_source를 오염한 경우
+            try {
+                // distance=-1 (배달거리 없음) + distance_source='fallback' = pickup source 오염
+                db.execSQL("UPDATE $TABLE SET pickup_distance_source = distance_source, distance_source = 'failed' " +
+                    "WHERE distance < 0 AND distance_source IN ('fallback', 'estimated', 'gps_calculated')")
+                // distance>0 + distance_source가 pickup source = NLS/screen 원본 복구 불가 → 'mixed' 표시
+                db.execSQL("UPDATE $TABLE SET pickup_distance_source = distance_source " +
+                    "WHERE distance > 0 AND distance_source IN ('fallback', 'estimated', 'gps_calculated')")
+            } catch (_: Exception) {}
+            Log.d("CallLogDb", "v13->v14: pickup_distance_source 분리")
+        }
+        if (old < 15) {
+            // Fix D (v70.10): bundleCount confidence + source
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN bundle_count_confidence REAL DEFAULT 1.0") } catch (_: Exception) {}
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN bundle_count_source TEXT DEFAULT ''") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v14->v15: bundle_count_confidence/source columns added")
+        }
+        if (old < 16) {
+            // Fix W (v70.11.6): accept lifecycle 3단계
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN accept_state TEXT DEFAULT 'UNKNOWN'") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v15->v16: accept_state column added")
+        }
+        invalidateColumnCache()
     }
+
+    /**
+     * Ledger ACCEPT_CONFIRMED / DRIVER_ACCEPTED 기반으로 call_logs.driver_action = 'real_accepted' backfill.
+     * Fix W+: ACCEPT_CONFIRMED 우선, 없으면 legacy DRIVER_ACCEPTED fallback.
+     * 우선순위: call_session_id > event_id > order_id
+     */
+    private fun backfillRealAccepted(db: SQLiteDatabase) {
+        try {
+            val ledgerDb = com.vita.ontheway.ledger.LedgerEventsDb.get(appCtx).readableDatabase
+            val cursor = ledgerDb.rawQuery(
+                "SELECT call_session_id, event_id, order_id, occurred_at_wall FROM ${com.vita.ontheway.ledger.LedgerEventsDb.TABLE} " +
+                "WHERE event_type IN ('ACCEPT_CONFIRMED', 'DRIVER_ACCEPTED') " +
+                "ORDER BY CASE event_type WHEN 'ACCEPT_CONFIRMED' THEN 0 ELSE 1 END", null
+            )
+            var count = 0
+            cursor.use {
+                while (it.moveToNext()) {
+                    val csId = it.getString(0)
+                    val evId = it.getString(1)
+                    val ordId = it.getString(2)
+                    val ts = it.getLong(3)
+
+                    val updated = when {
+                        !csId.isNullOrBlank() -> {
+                            db.execSQL("UPDATE $TABLE SET driver_action = 'real_accepted', accepted_at = ? WHERE call_session_id = ? AND driver_action != 'real_accepted'",
+                                arrayOf(ts.toString(), csId))
+                            true
+                        }
+                        !evId.isNullOrBlank() -> {
+                            db.execSQL("UPDATE $TABLE SET driver_action = 'real_accepted', accepted_at = ? WHERE event_id = ? AND driver_action != 'real_accepted'",
+                                arrayOf(ts.toString(), evId))
+                            true
+                        }
+                        !ordId.isNullOrBlank() -> {
+                            db.execSQL("UPDATE $TABLE SET driver_action = 'real_accepted', accepted_at = ? WHERE order_id = ? AND driver_action != 'real_accepted'",
+                                arrayOf(ts.toString(), ordId))
+                            true
+                        }
+                        else -> false
+                    }
+                    if (updated) count++
+                }
+            }
+            Log.d("CallLogDb", "backfillRealAccepted: ${count}건 처리")
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "backfillRealAccepted 실패: ${e.message}")
+        }
+    }
+
+    /**
+     * Ledger ACCEPT_CONFIRMED / DRIVER_ACCEPTED → call_logs.accepted_at 시간 기반 backfill.
+     * Fix W+: ACCEPT_CONFIRMED 우선, DRIVER_ACCEPTED legacy fallback.
+     * 조건: 동일 platform, timestamp -5분~+30초, verdict='ACCEPT', accepted_at IS NULL
+     */
+    fun backfillAcceptedAt(): BackfillResult {
+        var matched = 0
+        var skipped = 0
+        try {
+            val ledgerDb = com.vita.ontheway.ledger.LedgerEventsDb.get(appCtx).readableDatabase
+            val cursor = ledgerDb.rawQuery(
+                "SELECT platform, occurred_at_wall FROM ${com.vita.ontheway.ledger.LedgerEventsDb.TABLE} " +
+                "WHERE event_type IN ('ACCEPT_CONFIRMED', 'DRIVER_ACCEPTED') " +
+                "ORDER BY CASE event_type WHEN 'ACCEPT_CONFIRMED' THEN 0 ELSE 1 END, occurred_at_wall ASC", null
+            )
+            val db = writableDatabase
+            cursor.use {
+                while (it.moveToNext()) {
+                    val platform = it.getString(0) ?: continue
+                    val wallTs = it.getLong(1)
+
+                    val windowStart = wallTs - 5 * 60_000L  // -5분
+                    val windowEnd = wallTs + 30_000L         // +30초
+
+                    val match = db.rawQuery(
+                        "SELECT id, timestamp FROM $TABLE " +
+                        "WHERE platform = ? AND verdict = 'ACCEPT' AND accepted_at IS NULL " +
+                        "AND timestamp >= ? AND timestamp <= ? " +
+                        "ORDER BY ABS(timestamp - ?) ASC LIMIT 1",
+                        arrayOf(platform, windowStart.toString(), windowEnd.toString(), wallTs.toString())
+                    )
+                    match.use { m ->
+                        if (m.moveToFirst()) {
+                            val id = m.getLong(0)
+                            val cv = ContentValues().apply {
+                                put("accepted_at", wallTs)
+                                put("action_source", "ledger_backfill")
+                            }
+                            db.update(TABLE, cv, "id = ?", arrayOf(id.toString()))
+                            matched++
+                        } else {
+                            skipped++
+                        }
+                    }
+                }
+            }
+            Log.i("CallLogDb", "backfillAcceptedAt: matched=$matched, skipped=$skipped")
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "backfillAcceptedAt 실패: ${e.message}")
+        }
+        return BackfillResult(matched, skipped)
+    }
+
+    data class BackfillResult(val matched: Int, val skipped: Int)
 
     fun insert(
         platform: String, price: Int, distance: Double?, unitPrice: Int,
@@ -184,18 +396,22 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
         ttsSuppressed: Boolean = false,
         sourceType: String = V2Event.SOURCE_UNKNOWN,
         parsingMethod: String = V2Event.PARSING_UNKNOWN,
-        driverAction: String = "unknown",
+        driverAction: String = "no_action",
         sessionId: String? = null,
         distanceSource: String = "",
         eventId: String? = null,
         orderId: String? = null,
         callSessionId: String? = null,
         identityConfidence: Double = 0.0,
-        distanceConfidence: Double = 0.0
+        distanceConfidence: Double = 0.0,
+        shadowVerdict: String? = null,
+        pickupDistanceSource: String = "",
+        bundleCountConfidence: Double = 1.0,
+        bundleCountSource: String = ""
     ) {
-        // join_eligible 자동 계산 + quarantine 자동 분류
-        val joinEligible = if (identityConfidence < 0.5) 0 else 1
-        val autoQuarantine = if (identityConfidence > 0 && identityConfidence < 0.5)
+        // join_eligible 자동 계산 + quarantine 자동 분류 (v70.6: 0.5→0.7 통일)
+        val joinEligible = if (identityConfidence < 0.7) 0 else 1
+        val autoQuarantine = if (identityConfidence > 0 && identityConfidence < 0.7)
             com.vita.ontheway.ledger.QuarantineReason.IDENTITY_LOW_CONFIDENCE.name else null
 
         val cv = ContentValues().apply {
@@ -217,8 +433,10 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
             put("source_type", sourceType)
             put("parsing_method", parsingMethod)
             put("driver_action", driverAction)
+            put("shadow_verdict", shadowVerdict)
             put("session_id", sessionId)
             put("distance_source", distanceSource)
+            put("pickup_distance_source", pickupDistanceSource)
             put("event_id", eventId)
             put("order_id", orderId)
             put("call_session_id", callSessionId)
@@ -226,8 +444,18 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
             put("distance_confidence", distanceConfidence)
             put("join_eligible", joinEligible)
             put("quarantine_reason", autoQuarantine)
+            put("bundle_count_confidence", bundleCountConfidence)
+            put("bundle_count_source", bundleCountSource)
+            // Fix H-3: 초기 insert 시 storeName 출처 자동 설정
+            if (storeName.isNotBlank()) {
+                val initialSource = "${platform}_${parsingMethod}"
+                put("store_name_first_source", initialSource)
+                put("store_name_last_source", initialSource)
+                put("store_name_change_count", 0)
+            }
         }
-        val rowId = writableDatabase.insert(TABLE, null, cv)
+        val safeCv = safeContentValues(cv)
+        val rowId = writableDatabase.insert(TABLE, null, safeCv)
 
         // Supabase 업로드 (백그라운드, 실패해도 로컬 저장 완료)
         try {
@@ -252,8 +480,10 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
                 put("source_type", sourceType)
                 put("parsing_method", parsingMethod)
                 put("driver_action", driverAction)
+                put("shadow_verdict", shadowVerdict ?: JSONObject.NULL)
                 put("session_id", sessionId ?: JSONObject.NULL)
                 put("distance_source", distanceSource)
+                put("pickup_distance_source", pickupDistanceSource)
                 put("event_id", eventId ?: JSONObject.NULL)
                 put("order_id", orderId ?: JSONObject.NULL)
                 put("call_session_id", callSessionId ?: JSONObject.NULL)
@@ -266,12 +496,27 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
     }
 
 
-    /** 시뮬레이션 ACCEPT 콜 조회 (driver_action == "simulated_accept") */
-    fun getSimulatedAcceptCalls(sinceMs: Long): List<SimCallRow> {
+    /** 추천 ACCEPT 콜 조회 (shadow_verdict == "recommended_accept") */
+    fun getRecommendedAcceptCalls(sinceMs: Long): List<SimCallRow> {
+        val rows = mutableListOf<SimCallRow>()
+        val cursor = readableDatabase.rawQuery(
+            "SELECT timestamp, price FROM $TABLE WHERE shadow_verdict = ? AND timestamp >= ? ORDER BY timestamp ASC",
+            arrayOf("recommended_accept", sinceMs.toString())
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                rows.add(SimCallRow(ts = it.getLong(0), price = it.getInt(1)))
+            }
+        }
+        return rows
+    }
+
+    /** 실제 수락 콜 조회 (driver_action == "real_accepted") */
+    fun getRealAcceptedCalls(sinceMs: Long): List<SimCallRow> {
         val rows = mutableListOf<SimCallRow>()
         val cursor = readableDatabase.rawQuery(
             "SELECT timestamp, price FROM $TABLE WHERE driver_action = ? AND timestamp >= ? ORDER BY timestamp ASC",
-            arrayOf("simulated_accept", sinceMs.toString())
+            arrayOf("real_accepted", sinceMs.toString())
         )
         cursor.use {
             while (it.moveToNext()) {
@@ -283,15 +528,15 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
 
     data class SimCallRow(val ts: Long, val price: Int)
 
-    /** v1: 사용자 [수락]/[거절] 탭 시 driver_action 덮어쓰기 */
-    fun updateDriverAction(price: Int, platform: String, action: String) {
+    /** v1: 사용자 [수락]/[거절] 탭 시 shadow_verdict 덮어쓰기 */
+    fun updateShadowVerdict(price: Int, platform: String, verdict: String) {
         try {
             writableDatabase.execSQL(
-                "UPDATE $TABLE SET driver_action=? WHERE id=(SELECT id FROM $TABLE WHERE price=? AND platform=? ORDER BY timestamp DESC LIMIT 1)",
-                arrayOf(action, price.toString(), platform)
+                "UPDATE $TABLE SET shadow_verdict=? WHERE id=(SELECT id FROM $TABLE WHERE price=? AND platform=? ORDER BY timestamp DESC LIMIT 1)",
+                arrayOf(verdict, price.toString(), platform)
             )
         } catch (e: Exception) {
-            Log.w("CallLogDb", "updateDriverAction 실패: ${e.message}")
+            Log.w("CallLogDb", "updateShadowVerdict 실패: ${e.message}")
         }
     }
 
@@ -326,7 +571,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
             val cv = ContentValues().apply {
                 put("card_finalized_at", ts)
             }
-            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+            writableDatabase.update(TABLE, safeContentValues(cv), "call_session_id = ?", arrayOf(callSessionId))
         } catch (e: Exception) {
             Log.w("CallLogDb", "markCardFinalized 실패: ${e.message}")
         }
@@ -349,7 +594,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
                 put("delivery_completed_at", ts)
                 put("completed", 1)
             }
-            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+            writableDatabase.update(TABLE, safeContentValues(cv), "call_session_id = ?", arrayOf(callSessionId))
         } catch (e: Exception) {
             Log.w("CallLogDb", "markDeliveryCompleted 실패: ${e.message}")
         }
@@ -371,8 +616,9 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
                 put("accepted", 1)
                 put("accepted_at", ts)
                 put("action_source", actionSource)
+                put("driver_action", "real_accepted")
             }
-            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+            writableDatabase.update(TABLE, safeContentValues(cv), "call_session_id = ?", arrayOf(callSessionId))
         } catch (e: Exception) {
             Log.w("CallLogDb", "markAcceptedWithSource 실패: ${e.message}")
         }
@@ -386,7 +632,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
             val cv = ContentValues().apply {
                 put("next_call_wait_ms", waitMs)
             }
-            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+            writableDatabase.update(TABLE, safeContentValues(cv), "call_session_id = ?", arrayOf(callSessionId))
         } catch (e: Exception) {
             Log.w("CallLogDb", "updateNextCallWaitMs 실패: ${e.message}")
         }
@@ -396,13 +642,77 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
      * Quarantine: 데이터 학습 자격 격리.
      * join_eligible=0 + quarantine_reason set + ledger QUARANTINED append.
      */
+    /** Fix W+: accept_state 업데이트 (call_session_id 기준) */
+    fun updateAcceptState(callSessionId: String, state: String, confirmedAt: Long? = null) {
+        try {
+            val cv = ContentValues().apply {
+                put("accept_state", state)
+                if (confirmedAt != null) put("accepted_at", confirmedAt)
+            }
+            writableDatabase.update(TABLE, safeContentValues(cv), "call_session_id = ?", arrayOf(callSessionId))
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "updateAcceptState 실패: ${e.message}")
+        }
+    }
+
+    /**
+     * Fix W+++: accept_state legacy backfill (1회성).
+     * call_logs의 accept_state='UNKNOWN' 행에 대해 ledger에서 상태 역산.
+     */
+    fun backfillAcceptStateFromLedger(): Int {
+        var count = 0
+        try {
+            val db = writableDatabase
+            val ledgerDb = com.vita.ontheway.ledger.LedgerEventsDb.get(appCtx).readableDatabase
+
+            // accept_state가 UNKNOWN인 call_session_id 수집
+            val unknowns = mutableListOf<String>()
+            val cursor = db.rawQuery(
+                "SELECT DISTINCT call_session_id FROM $TABLE WHERE accept_state IN ('UNKNOWN', '') AND call_session_id IS NOT NULL AND call_session_id != ''",
+                null
+            )
+            cursor.use { while (it.moveToNext()) unknowns.add(it.getString(0)) }
+
+            for (csId in unknowns) {
+                // ledger에서 해당 session의 event_type 목록 조회
+                val types = mutableSetOf<String>()
+                val lCursor = ledgerDb.rawQuery(
+                    "SELECT event_type FROM ${com.vita.ontheway.ledger.LedgerEventsDb.TABLE} WHERE call_session_id = ?",
+                    arrayOf(csId)
+                )
+                lCursor.use { while (it.moveToNext()) types.add(it.getString(0)) }
+
+                // 우선순위: FALSE > UNCONFIRMED > CONFIRMED > DRIVER_ACCEPTED(legacy)
+                val newState = when {
+                    "ACCEPT_REJECTED_FALSE" in types -> "REJECTED_FALSE"
+                    "ACCEPT_UNCONFIRMED" in types -> "UNCONFIRMED"
+                    "ACCEPT_CONFIRMED" in types -> "CONFIRMED"
+                    "DRIVER_ACCEPTED" in types -> "CONFIRMED"  // legacy
+                    else -> null  // UNKNOWN 유지
+                }
+                if (newState != null) {
+                    val cv = ContentValues().apply {
+                        put("accept_state", newState)
+                        if (newState == "CONFIRMED") put("driver_action", "real_accepted")
+                    }
+                    db.update(TABLE, safeContentValues(cv), "call_session_id = ?", arrayOf(csId))
+                    count++
+                }
+            }
+            Log.d("CallLogDb", "backfillAcceptStateFromLedger: ${count}건 업데이트 (총 ${unknowns.size}건 검사)")
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "backfillAcceptStateFromLedger 실패: ${e.message}")
+        }
+        return count
+    }
+
     fun markQuarantined(callSessionId: String, reason: com.vita.ontheway.ledger.QuarantineReason, context: String? = null) {
         try {
             val cv = ContentValues().apply {
                 put("join_eligible", 0)
                 put("quarantine_reason", reason.name)
             }
-            writableDatabase.update(TABLE, cv, "call_session_id = ?", arrayOf(callSessionId))
+            writableDatabase.update(TABLE, safeContentValues(cv), "call_session_id = ?", arrayOf(callSessionId))
         } catch (e: Exception) {
             Log.w("CallLogDb", "markQuarantined 실패: ${e.message}")
         }
@@ -535,9 +845,13 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
         } catch (e: Exception) { 0 }
     }
 
-    /** 쿠팡 Accessibility에서 가게명 파싱 시 NLS 레코드 업데이트 */
+    /**
+     * @deprecated Use [updateStoreNameBySessionId] instead.
+     * 가격 기반 매칭은 오매칭 위험.
+     */
     fun updateStoreNameIfEmpty(platform: String, price: Int, storeName: String) {
         if (storeName.isBlank()) return
+        Log.w("CallLogDb", "DEPRECATED updateStoreNameIfEmpty: use updateStoreNameBySessionId")
         try {
             writableDatabase.execSQL(
                 "UPDATE $TABLE SET storeName=? WHERE id=(SELECT id FROM $TABLE WHERE platform=? AND price=? AND (storeName IS NULL OR storeName='') ORDER BY timestamp DESC LIMIT 1)",
@@ -545,6 +859,67 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 11) 
             )
         } catch (e: Exception) {
             Log.w("CallLogDb", "updateStoreNameIfEmpty 실패: ${e.message}")
+        }
+    }
+
+    /**
+     * FIX-ENRICHMENT-IDENTITY + storeName provenance (v70.9):
+     * callSessionId 기반 가게명 보강 + 출처 추적.
+     */
+    fun updateStoreNameBySessionId(callSessionId: String, storeName: String, source: String = "enrichment") {
+        if (storeName.isBlank() || callSessionId.isBlank()) return
+        try {
+            val db = writableDatabase
+            // storeName 설정 (빈 값만)
+            db.execSQL(
+                "UPDATE $TABLE SET storeName=? WHERE call_session_id=? AND (storeName IS NULL OR storeName='')",
+                arrayOf(storeName, callSessionId)
+            )
+            // provenance 추적
+            val cv = ContentValues().apply {
+                put("store_name_last_source", source)
+            }
+            val safeCv = safeContentValues(cv)
+            db.update(TABLE, safeCv, "call_session_id = ?", arrayOf(callSessionId))
+
+            // first_source 설정 (NULL일 때만)
+            db.execSQL(
+                "UPDATE $TABLE SET store_name_first_source=? WHERE call_session_id=? AND store_name_first_source IS NULL",
+                arrayOf(source, callSessionId)
+            )
+            // change_count 증가
+            db.execSQL(
+                "UPDATE $TABLE SET store_name_change_count = COALESCE(store_name_change_count, 0) + 1 WHERE call_session_id=?",
+                arrayOf(callSessionId)
+            )
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "updateStoreNameBySessionId 실패: ${e.message}")
+        }
+    }
+
+    /**
+     * Fix X v1.1: 비동기 픽업 거리 업데이트 (callSessionId 기준).
+     * 조건: pickupKm IS NULL (덮어쓰기 방지).
+     * @param source "api_keyword" | "api_address" | "cache_mem" | "cache_prefs" | "fallback_location_table"
+     * @return 업데이트된 행 수
+     */
+    fun updatePickupDistanceBySessionId(callSessionId: String, km: Double, source: String, confidence: Double = -1.0): Int {
+        if (callSessionId.isBlank()) return 0
+        return try {
+            val cv = ContentValues().apply {
+                put("pickupKm", km)
+                put("pickup_distance_source", source)
+                if (confidence >= 0) put("distance_confidence", confidence)
+            }
+            val safeCv = safeContentValues(cv)
+            writableDatabase.update(
+                TABLE, safeCv,
+                "call_session_id = ? AND (pickupKm IS NULL OR pickupKm < 0)",
+                arrayOf(callSessionId)
+            )
+        } catch (e: Exception) {
+            Log.w("CallLogDb", "updatePickupDistanceBySessionId 실패: ${e.message}")
+            0
         }
     }
 
