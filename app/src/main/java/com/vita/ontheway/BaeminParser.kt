@@ -20,6 +20,13 @@ object BaeminParser {
      */
     private val DISTANCE_PATTERN = Regex("""배달료기준거리\s*\(([0-9,]+)m\)""")
 
+    // FIX-BAEMIN-DISTANCE: 화면 텍스트 "약 5km", "1.2km" 패턴
+    private val SCREEN_DISTANCE_PATTERN = Regex("""(?:약\s*)?(\d+(?:\.\d+)?)\s*km""", RegexOption.IGNORE_CASE)
+    // m 단위: "약 800m", "1,200m" (배달료기준거리 외)
+    private val SCREEN_DISTANCE_M_PATTERN = Regex("""(?:약\s*)?(\d{2,5})\s*m(?!\w)""")
+    // 거리 false positive 제거: "5분", "5,000원", "5P" 등의 컨텍스트
+    private val DISTANCE_EXCLUDE_CONTEXT = Regex("""(?:배달료|금액|할증|포인트|가격|합계)\s*[\d,]+\s*원""")
+
     private val PRICE_PATTERN = Regex("배달료\\s*([\\d,]+)\\s*원")
     private val AMOUNT_PATTERN = Regex("^([\\d,]+)\\s*원$")
     private val POINT_PATTERN = Regex("([\\d.]+)\\s*P", RegexOption.IGNORE_CASE)
@@ -42,9 +49,30 @@ object BaeminParser {
     // FIX-MULTI-SPLIT: 마지막 파싱 결과의 isMulti 상태
     private var lastParseMulti: Boolean = false
 
+    // Fix B: NLS 거리 캐시 — 접근성 path에서 NLS 거리를 cross-source 활용
+    private const val NLS_DISTANCE_CACHE_TTL_MS = 120_000L // 2분
+    private var nlsDistanceCacheKey: String = ""
+    private var nlsDistanceCacheKm: Double = -1.0
+    private var nlsDistanceCacheTs: Long = 0
+
+    /** NLS 거리 캐시 저장 (DeliveryNotificationService에서 호출) */
+    fun cacheNlsDistance(platform: String, price: Int, km: Double) {
+        nlsDistanceCacheKey = "$platform:$price"
+        nlsDistanceCacheKm = km
+        nlsDistanceCacheTs = System.currentTimeMillis()
+    }
+
+    /** NLS 거리 캐시 조회 (OnTheWayService에서 호출) */
+    fun getCachedNlsDistance(platform: String, price: Int): Double? {
+        if (nlsDistanceCacheKey != "$platform:$price") return null
+        if (System.currentTimeMillis() - nlsDistanceCacheTs > NLS_DISTANCE_CACHE_TTL_MS) return null
+        return if (nlsDistanceCacheKm > 0) nlsDistanceCacheKm else null
+    }
+
     /** 테스트용: dedup 캐시 초기화 */
     fun resetDedupCache() {
         lastParseTs = 0; lastParsePrice = 0; lastParseStore = ""; lastParseMulti = false
+        nlsDistanceCacheKey = ""; nlsDistanceCacheKm = -1.0; nlsDistanceCacheTs = 0
     }
 
     // 이전내역(완료된 배달 목록) 화면 키워드 — 신규 콜 오인 방지
@@ -145,6 +173,62 @@ object BaeminParser {
     }
 
     /**
+     * FIX-BAEMIN-DISTANCE: 화면 텍스트에서 거리(km) 추출.
+     *
+     * 우선순위:
+     * 1. "배달료기준거리 (X,XXXm)" — 가장 정확 (기존 extractActualDistance)
+     * 2. "약 Xkm" 또는 "X.Xkm" — 화면 UI 텍스트
+     * 3. "약 X00m" — m 단위 (km로 변환)
+     *
+     * false positive 방지:
+     * - "5분", "5P", "5,000원" 등 km 외 단위 무시
+     * - "배달료 7,010원" 뒤의 km 숫자 = 가격이므로 제외
+     * - 0.1~50km 범위만 유효
+     */
+    fun extractScreenDistance(texts: List<String>): Double? {
+        // 1순위: 기존 "배달료기준거리" 패턴
+        val actual = extractActualDistance(texts)
+        if (actual != null) return actual
+
+        // 각 텍스트 노드에서 km 패턴 검색
+        for (text in texts) {
+            val t = text.trim()
+            // false positive 제외: 가격 텍스트, 포인트, 시간
+            if (t.contains("원") && !t.contains("km")) continue
+            if (t.endsWith("분") || t.endsWith("초")) continue
+            if (t.endsWith("P") || t.endsWith("p")) continue
+
+            // 2순위: km 패턴
+            val kmMatch = SCREEN_DISTANCE_PATTERN.find(t)
+            if (kmMatch != null) {
+                // "배달료 7,010원 / 1.2km" 형식은 NLS 전용이므로 여기서는 OK
+                val km = kmMatch.groupValues[1].toDoubleOrNull()
+                if (km != null && km in 0.1..50.0) {
+                    OtwFileLogger.log("BaeminDistance", "screen: ${km}km from '$t'")
+                    return km
+                }
+            }
+        }
+
+        // 3순위: m 단위 (개별 노드)
+        for (text in texts) {
+            val t = text.trim()
+            if (t.contains("원") || t.endsWith("분") || t.endsWith("초")) continue
+            val mMatch = SCREEN_DISTANCE_M_PATTERN.find(t)
+            if (mMatch != null) {
+                val meters = mMatch.groupValues[1].toIntOrNull()
+                if (meters != null && meters in 100..50000) {
+                    val km = meters / 1000.0
+                    OtwFileLogger.log("BaeminDistance", "screen: ${meters}m = ${km}km from '$t'")
+                    return km
+                }
+            }
+        }
+
+        return null
+    }
+
+    /**
      * 가게명에서 UI 컴포넌트 오염 토큰 제거.
      * "+" 구분자로 split → 블랙리스트 토큰 제거 → 재조합.
      */
@@ -228,7 +312,7 @@ object BaeminParser {
             val price = match.groupValues[1].replace(",", "").toIntOrNull() ?: continue
             if (price in 500..100000 && results.none { it.price == price }) {
                 results.add(DeliveryCall(
-                    price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
+                    price = price, distance = extractScreenDistance(texts), isMulti = false, platform = "baemin",
                     rawText = joined, storeName = storeName, destination = destination,
                     point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
                     orderId = orderId
@@ -247,7 +331,7 @@ object BaeminParser {
                 val price = match.groupValues[1].replace(",", "").toIntOrNull() ?: continue
                 if (price in 500..100000 && results.none { it.price == price }) {
                     results.add(DeliveryCall(
-                        price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
+                        price = price, distance = extractScreenDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
                         point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
                         orderId = orderId
@@ -265,7 +349,7 @@ object BaeminParser {
                 val price = match.groupValues[1].replace(",", "").toIntOrNull()
                 if (price != null && price in 500..100000) {
                     results.add(DeliveryCall(
-                        price = price, distance = extractActualDistance(texts), isMulti = false, platform = "baemin",
+                        price = price, distance = extractScreenDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
                         point = point, parsingMethod = V2Event.PARSING_TEXT_REGEX,
                         orderId = orderId
@@ -298,7 +382,7 @@ object BaeminParser {
             lastParseMulti = true
             return listOf(DeliveryCall(
                 price = totalPrice,
-                distance = extractActualDistance(texts),
+                distance = extractScreenDistance(texts),
                 isMulti = true,
                 platform = "baemin",
                 rawText = joined,
@@ -308,7 +392,9 @@ object BaeminParser {
                 isMultiPickup = isMultiPickup,
                 point = point,
                 parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
-                orderId = orderId
+                orderId = orderId,
+                bundleCountConfidence = 1.0,
+                bundleCountSource = "reason"
             ))
         }
 
@@ -318,7 +404,8 @@ object BaeminParser {
             OtwFileLogger.log("BaeminParser", "rawText 멀티 검출: store='${r.storeName}', price=${r.price}")
             // FIX-MULTI-SPLIT: 멀티 검출 시 dedup 캐시 갱신
             lastParseMulti = true
-            return listOf(r.copy(isMulti = true, bundleCount = 2))
+            return listOf(r.copy(isMulti = true, bundleCount = 2,
+                bundleCountConfidence = 0.8, bundleCountSource = "rawText"))
         }
 
         // ── FIX2: 파싱 dedup — 동일 store+price 5분 내 재파싱 방지 ──
@@ -647,5 +734,14 @@ object BaeminParser {
             }
         }
         return null
+    }
+
+    /**
+     * Memory M1: 고객 요청사항 분류.
+     * parseCustomerRequest 결과를 DeliveryRequestClassifier로 분류.
+     */
+    fun classifyRequest(texts: List<String>): DeliveryRequestClassifier.Result {
+        val request = parseCustomerRequest(texts)
+        return DeliveryRequestClassifier.classify(request)
     }
 }

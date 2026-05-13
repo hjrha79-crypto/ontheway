@@ -46,8 +46,8 @@ class QuarantinePolicyTest {
     }
 
     @Test
-    fun `LedgerEventType 27개`() {
-        assertEquals(27, LedgerEventType.entries.size)
+    fun `LedgerEventType 28개`() {
+        assertEquals(28, LedgerEventType.entries.size)
     }
 
     // ── join_eligible 자동 계산 ──

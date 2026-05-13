@@ -8,7 +8,7 @@ import android.util.Log
 import org.json.JSONObject
 
 /** v3.5 SQLite 영구 저장 (Room 대안 - 추가 플러그인 불필요) */
-class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 16) {
+class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 19) {
 
     private val appCtx: Context = ctx.applicationContext
 
@@ -115,7 +115,13 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 16) 
                 store_name_change_count INTEGER DEFAULT 0,
                 bundle_count_confidence REAL DEFAULT 1.0,
                 bundle_count_source TEXT DEFAULT '',
-                accept_state TEXT DEFAULT 'UNKNOWN'
+                accept_state TEXT DEFAULT 'UNKNOWN',
+                vehicle_type TEXT DEFAULT '',
+                location_snapshot_lat REAL,
+                location_snapshot_lng REAL,
+                location_snapshot_age_ms INTEGER,
+                location_snapshot_accuracy REAL,
+                request_classification TEXT
             )
         """)
         db.execSQL("CREATE INDEX idx_timestamp ON $TABLE(timestamp)")
@@ -282,6 +288,24 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 16) 
             try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN accept_state TEXT DEFAULT 'UNKNOWN'") } catch (_: Exception) {}
             Log.d("CallLogDb", "v15->v16: accept_state column added")
         }
+        if (old < 17) {
+            // Fix BB (v70.12): vehicle_type per-call 기록
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN vehicle_type TEXT DEFAULT ''") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v16->v17: vehicle_type column added")
+        }
+        if (old < 18) {
+            // Fix IT-1 (v70.12.IT-1): LocationSnapshot 기록
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN location_snapshot_lat REAL") } catch (_: Exception) {}
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN location_snapshot_lng REAL") } catch (_: Exception) {}
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN location_snapshot_age_ms INTEGER") } catch (_: Exception) {}
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN location_snapshot_accuracy REAL") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v17->v18: location_snapshot columns added")
+        }
+        if (old < 19) {
+            // Memory M1: 요청사항 분류
+            try { db.execSQL("ALTER TABLE $TABLE ADD COLUMN request_classification TEXT") } catch (_: Exception) {}
+            Log.d("CallLogDb", "v18->v19: request_classification column added")
+        }
         invalidateColumnCache()
     }
 
@@ -407,7 +431,13 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 16) 
         shadowVerdict: String? = null,
         pickupDistanceSource: String = "",
         bundleCountConfidence: Double = 1.0,
-        bundleCountSource: String = ""
+        bundleCountSource: String = "",
+        vehicleType: String = "",
+        locationSnapshotLat: Double? = null,
+        locationSnapshotLng: Double? = null,
+        locationSnapshotAgeMs: Long? = null,
+        locationSnapshotAccuracy: Float? = null,
+        requestClassification: String? = null
     ) {
         // join_eligible 자동 계산 + quarantine 자동 분류 (v70.6: 0.5→0.7 통일)
         val joinEligible = if (identityConfidence < 0.7) 0 else 1
@@ -446,6 +476,14 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 16) 
             put("quarantine_reason", autoQuarantine)
             put("bundle_count_confidence", bundleCountConfidence)
             put("bundle_count_source", bundleCountSource)
+            put("vehicle_type", vehicleType)
+            // Fix IT-1: LocationSnapshot 기록
+            if (locationSnapshotLat != null) put("location_snapshot_lat", locationSnapshotLat)
+            if (locationSnapshotLng != null) put("location_snapshot_lng", locationSnapshotLng)
+            if (locationSnapshotAgeMs != null) put("location_snapshot_age_ms", locationSnapshotAgeMs)
+            if (locationSnapshotAccuracy != null) put("location_snapshot_accuracy", locationSnapshotAccuracy.toDouble())
+            // Memory M1: 요청사항 분류
+            if (requestClassification != null) put("request_classification", requestClassification)
             // Fix H-3: 초기 insert 시 storeName 출처 자동 설정
             if (storeName.isNotBlank()) {
                 val initialSource = "${platform}_${parsingMethod}"
@@ -490,6 +528,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 16) 
                 put("identity_confidence", identityConfidence)
                 put("distance_confidence", distanceConfidence)
                 put("join_eligible", joinEligible == 1)
+                put("vehicle_type", vehicleType)
             }
             SupabaseSync.uploadCallLog(appCtx, json)
         } catch (_: Exception) {}
@@ -898,8 +937,8 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 16) 
     }
 
     /**
-     * Fix X v1.1: 비동기 픽업 거리 업데이트 (callSessionId 기준).
-     * 조건: pickupKm IS NULL (덮어쓰기 방지).
+     * Fix IT-1: 비동기 픽업 거리 업데이트 (callSessionId 기준).
+     * 조건: pickupKm 없음 OR low-trust source (fallback overwrite 허용).
      * @param source "api_keyword" | "api_address" | "cache_mem" | "cache_prefs" | "fallback_location_table"
      * @return 업데이트된 행 수
      */
@@ -914,7 +953,7 @@ class CallLogDb(ctx: Context) : SQLiteOpenHelper(ctx, "call_logs.db", null, 16) 
             val safeCv = safeContentValues(cv)
             writableDatabase.update(
                 TABLE, safeCv,
-                "call_session_id = ? AND (pickupKm IS NULL OR pickupKm < 0)",
+                "call_session_id = ? AND (pickupKm IS NULL OR pickupKm < 0 OR pickup_distance_source IN ('fallback', 'fallback_location_table', 'estimated', ''))",
                 arrayOf(callSessionId)
             )
         } catch (e: Exception) {

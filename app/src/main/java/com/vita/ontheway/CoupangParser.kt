@@ -28,7 +28,7 @@ object CoupangParser {
     val NON_CALL_KEYWORDS = setOf(
         // UI 상태 화면
         "배달 현황", "출근하기", "퇴근하기", "배달 완료",
-        "고객에게 전달", "픽업 완료", "가게 도착", "고객 도착",
+        "고객에게 전달", "가게 도착", "고객 도착",
         "배달 중", "픽업 중", "주문 현황", "정산", "공지사항",
         "배달 내역", "수입 현황", "내 정보", "설정",
         "주문을 기다리는 중", "대기 중",
@@ -83,9 +83,22 @@ object CoupangParser {
     // 콜 화면 필수 버튼 텍스트: 이 중 하나는 있어야 진짜 콜
     private val CALL_SCREEN_BUTTONS = setOf("거절", "주문 수락", "주문수락")
 
+    // Fix Z: 신규 콜 화면 "주문 수락\nN초" 카운트다운 패턴
+    private val ACCEPT_COUNTDOWN_PATTERN = Regex("주문\\s*수락\\s*\\n\\s*(\\d+)\\s*초")
+    // Fix Z: 개별 노드 가격 (joined가 아닌 단일 cd에서)
+    private val NODE_PRICE_PATTERN = Regex("^[\\d,]+\\s*원$")
+    // Fix Z: 개별 노드 거리
+    private val NODE_DISTANCE_PATTERN = Regex("(\\d+\\.?\\d*)\\s*km")
     fun parse(texts: List<String>): List<DeliveryCall> {
         val results = mutableListOf<DeliveryCall>()
         val joined = texts.joinToString(" ")
+
+        // Fix Z: 신규 콜 화면 강제 감지 (NON_CALL_KEYWORDS보다 우선)
+        val newCallResult = parseNewCallScreen(texts)
+        if (newCallResult != null) {
+            results.add(newCallResult)
+            return results
+        }
 
         // 비콜 필터링: 배달 진행/완료/메뉴 화면이면 빈 리스트 반환
         if (NON_CALL_KEYWORDS.any { joined.contains(it) }) {
@@ -117,9 +130,13 @@ object CoupangParser {
                 // FIX-COUPANG-MULTI: 명시적 묶음 키워드 감지 (보수적)
                 val bundleMatch = BUNDLE_EXPLICIT_PATTERN.find(joined)
                 var bundleCount = 1
+                var bundleConf = 1.0
+                var bundleSrc = ""
                 if (bundleMatch != null) {
                     isMulti = true
                     bundleCount = (bundleMatch.groupValues.drop(1).firstOrNull { it.isNotEmpty() }?.toIntOrNull()) ?: 2
+                    bundleConf = 0.8
+                    bundleSrc = "contentDesc"
                     OtwFileLogger.log("CoupangParser", "MULTI_EXPLICIT: '${bundleMatch.value}' → bundleCount=$bundleCount")
                 }
 
@@ -140,7 +157,11 @@ object CoupangParser {
                     rawText = joined,
                     storeName = storeName,
                     parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
-                    bundleCount = bundleCount
+                    bundleCount = bundleCount,
+                    pickupDistanceKm = PlatformDistancePolicy.calculatePickupKm("coupang", null),
+                    distanceSource = if (distance != null && distance > 0) "screen" else "",
+                    bundleCountConfidence = bundleConf,
+                    bundleCountSource = bundleSrc
                 ))
                 Log.d("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti, bundle=$bundleCount, store='${storeName.ifEmpty { "(없음)" }}'")
                 OtwFileLogger.log("CoupangParser", "파싱: ${price}원, ${distance}km, multi=$isMulti, bundle=$bundleCount, store='${storeName.ifEmpty { "(없음)" }}'")
@@ -160,12 +181,80 @@ object CoupangParser {
 
             val d = DISTANCE_PATTERN.find(text)?.groupValues?.get(1)?.toDoubleOrNull()
             val m = MULTI_PATTERN.containsMatchIn(text)
-            results.add(DeliveryCall(price = p, distance = d, isMulti = m, platform = "coupang", rawText = text, storeName = storeName, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT))
+            results.add(DeliveryCall(price = p, distance = d, isMulti = m, platform = "coupang", rawText = text, storeName = storeName, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
+                pickupDistanceKm = PlatformDistancePolicy.calculatePickupKm("coupang", null),
+                distanceSource = if (d != null && d > 0) "screen" else ""))
             Log.d("CoupangParser", "추가 파싱: ${p}원, ${d}km, multi=$m")
             OtwFileLogger.log("CoupangParser", "추가 파싱: ${p}원, ${d}km, multi=$m")
         }
 
         return results
+    }
+
+    /**
+     * Fix Z: 신규 콜 화면 식별.
+     * 조건 (AND): "주문 수락\nN초" 카운트다운 + 가격("원") + 거리("km")
+     * NON_CALL_KEYWORDS보다 우선하여 감지.
+     */
+    fun parseNewCallScreen(texts: List<String>): DeliveryCall? {
+        // 조건1: "주문 수락\nN초" 카운트다운 텍스트
+        val hasCountdown = texts.any { ACCEPT_COUNTDOWN_PATTERN.containsMatchIn(it) }
+        if (!hasCountdown) return null
+
+        // 조건2: 가격 텍스트 — NODE_PRICE_PATTERN(anchored) 우선, fallback PRICE_PATTERN
+        val nodePrice = texts.firstOrNull { NODE_PRICE_PATTERN.matches(it.trim()) }
+        val price: Int
+        if (nodePrice != null) {
+            price = nodePrice.trim().replace("원", "").replace(",", "").replace(" ", "").toIntOrNull() ?: return null
+        } else {
+            val fallbackText = texts.firstOrNull { PRICE_PATTERN.containsMatchIn(it) && it.contains("원") } ?: return null
+            price = PRICE_PATTERN.find(fallbackText)!!.groupValues[1].replace(",", "").toIntOrNull() ?: return null
+        }
+        if (price !in 1000..100000) return null
+
+        // 조건3: 거리 텍스트 ("km") — 필수 (3종 세트 강제)
+        val distText = texts.firstOrNull { NODE_DISTANCE_PATTERN.containsMatchIn(it) }
+        val distance = distText?.let { NODE_DISTANCE_PATTERN.find(it)?.groupValues?.get(1)?.toDoubleOrNull() }
+        if (distance == null) {
+            Log.d("CoupangParser", "Fix Z v2: NEW_CALL no distance, skipping")
+            OtwFileLogger.log("CoupangParser", "Fix Z v2: NEW_CALL no distance, skipping (countdown+price only)")
+            return null
+        }
+
+        // 가게명 추출: 기존 extractStoreName 재사용 (3순위 fallback)
+        val storeName = extractStoreName(texts, texts.joinToString(" "))
+
+        // 멀티/묶음 감지
+        val joined = texts.joinToString(" ")
+        var isMulti = MULTI_PATTERN.containsMatchIn(joined)
+        val bundleMatch = BUNDLE_EXPLICIT_PATTERN.find(joined)
+        var bundleCount = 1
+        var bundleConf = 1.0
+        var bundleSrc = ""
+        if (bundleMatch != null) {
+            isMulti = true
+            bundleCount = bundleMatch.groupValues.drop(1).firstOrNull { it.isNotEmpty() }?.toIntOrNull() ?: 2
+            bundleConf = 0.8
+            bundleSrc = "contentDesc"
+        }
+
+        Log.d("CoupangParser", "신규콜 감지: ${price}원, ${distance}km, store='$storeName', multi=$isMulti")
+        OtwFileLogger.log("CoupangParser", "NEW_CALL: ${price}원, ${distance}km, store='$storeName', multi=$isMulti, bundle=$bundleCount")
+
+        return DeliveryCall(
+            price = price,
+            distance = distance,
+            isMulti = isMulti,
+            platform = "coupang",
+            rawText = joined,
+            storeName = storeName,
+            parsingMethod = V2Event.PARSING_ACCESSIBILITY_NEW_CALL,
+            bundleCount = bundleCount,
+            pickupDistanceKm = PlatformDistancePolicy.calculatePickupKm("coupang", null),
+            distanceSource = if (distance > 0) "screen" else "",
+            bundleCountConfidence = bundleConf,
+            bundleCountSource = bundleSrc
+        )
     }
 
     /**
@@ -277,5 +366,23 @@ object CoupangParser {
                 fos.fd.sync()
             }
         } catch (_: Exception) {}
+    }
+
+    /**
+     * Memory M1: 고객 요청사항 분류.
+     * 쿠팡 화면 텍스트에서 요청사항 키워드 매칭 → 분류.
+     */
+    fun classifyRequest(texts: List<String>): DeliveryRequestClassifier.Result {
+        for (text in texts) {
+            val trimmed = text.trim()
+            if (trimmed.length in 3..100) {
+                val result = DeliveryRequestClassifier.classify(trimmed)
+                if (result.classification != DeliveryRequestClassifier.Classification.IGNORE
+                    || result.matchedKeywords.isNotEmpty()) {
+                    return result
+                }
+            }
+        }
+        return DeliveryRequestClassifier.classify(null)
     }
 }
