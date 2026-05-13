@@ -17,6 +17,7 @@ object CallFilter {
     // 실데이터 기반: 2건 4,315원 MISMATCH, 3건 2,803원 MISMATCH
     private const val BUNDLE_PER_ITEM_MIN_2 = 4500   // 2건 묶음: 건당 4,500원 이상
     private const val BUNDLE_PER_ITEM_MIN_3 = 5000   // 3건+ 묶음: 건당 5,000원 이상
+    private const val BUNDLE_HIGH_MIN_UNIT = 1500     // 고액 묶음 단가 검문 최소 (원/km)
 
     // v3.6: 연속 REJECT 자동 기준 하향
     private var consecutiveRejectCount: Int = 0
@@ -52,11 +53,17 @@ object CallFilter {
         Log.d("JudgeLogic", "call: platform=${call.platform}, price=${call.price}, distance=${call.distance}, point=${call.point}, isMulti=${call.isMulti}, storeName=${call.storeName}")
 
         val hasDist = call.distance != null && call.distance > 0
-        val pickupKm = call.pickupDistanceKm ?: 0.0
+        // Fix IT-1: low-trust pickup distance는 판정에 사용하지 않음
+        val isPickupLowTrust = (call.distanceConfidence > 0.0 && call.distanceConfidence < 0.8)
+        val pickupKm = if (isPickupLowTrust) 0.0 else (call.pickupDistanceKm ?: 0.0)
         val deliveryKm = call.distance ?: 0.0
         val totalKm = pickupKm + deliveryKm
-        val unitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
-        val gpsTag = if (pickupKm > 0) ", 픽업 ${"%.1f".format(pickupKm)}km + 배달 ${"%.1f".format(deliveryKm)}km = 총 ${"%.1f".format(totalKm)}km, 단가 ${fmt.format(unitPrice)}원/km" else ""
+        val unitPrice = PlatformDistancePolicy.unitPrice(
+            call.price, call.platform, call.distance,
+            if (isPickupLowTrust) null else call.pickupDistanceKm, call.bundleCount)
+        val lowTrustTag = if (isPickupLowTrust && call.pickupDistanceKm != null)
+            ", (추정거리 ${"%.1f".format(call.pickupDistanceKm)}km, 신뢰도 낮음)" else ""
+        val gpsTag = if (pickupKm > 0) ", 픽업 ${"%.1f".format(pickupKm)}km + 배달 ${"%.1f".format(deliveryKm)}km = 총 ${"%.1f".format(totalKm)}km, 단가 ${fmt.format(unitPrice)}원/km" else "$lowTrustTag"
 
         // v3.4: 자동 방향 판별
         var autoDirectionTag = ""
@@ -139,10 +146,14 @@ object CallFilter {
             val effectiveMin = maxOf(bundleMin, multiPickupMin, settingMultiMin)
             val multiPickupTag = if (call.isMultiPickup) ", 다중 픽업" else ""
 
-            // 고액 묶음 보호
+            // 고액 묶음 보호 + 단가 검문 (Fix 70.10.1)
             if (call.price >= bundleHigh) {
-                return FilterResult(Verdict.ACCEPT,
-                    "고액 묶음 ${fmt.format(call.price)}원 ≥ ${fmt.format(bundleHigh)}원 ($bundleTag$multiPickupTag)")
+                if (!hasDist || unitPrice >= BUNDLE_HIGH_MIN_UNIT) {
+                    return FilterResult(Verdict.ACCEPT,
+                        "고액 묶음 ${fmt.format(call.price)}원 ≥ ${fmt.format(bundleHigh)}원 ($bundleTag$multiPickupTag)")
+                }
+                // 단가 미달 → 고액이어도 즉시 통과 X, 아래 판정으로 fall through
+                OtwFileLogger.log("JudgeLogic", "고액 묶음 단가 검문: ${fmt.format(unitPrice)}원/km < ${fmt.format(BUNDLE_HIGH_MIN_UNIT)}원/km")
             }
 
             // v3.9: 설정 묶음 최소금액 미달 시 명확한 사유
@@ -172,9 +183,8 @@ object CallFilter {
             }
 
             // v3.11: 묶음 효율 판정 (건당 3,000원+ + 건당 거리 3km 이하 → 추천)
-            val bundleDist = if (hasDist) call.distance!!
-                else if (call.point != null && call.point > 0) BaeminParser.convertPointToKm(call.point)
-                else null
+            // Fix IT-3: point*0.15 heuristic 사용 금지 — 실측 거리만 사용
+            val bundleDist = if (hasDist) call.distance!! else null
             if (bundleDist != null && bundleDist > 0) {
                 val distPerItem = bundleDist / bundleCount
                 if (perPrice >= 3000 && distPerItem <= 3.0) {
@@ -191,35 +201,25 @@ object CallFilter {
         // ── 포인트 참고: Dialog 거리 필드에서 표시하므로 사유에서는 제거 ──
         val pointTag = ""
 
-        // ── 배민 거리 없는 콜: minPrice + 포인트 환산 단가 판정 ──
+        // ── 배민 거리 없는 콜: minPrice 기준만 판정 ──
+        // Fix IT-3: point*0.15 heuristic 제거 — 거리 미측정 시 가격 기반만 사용
         if (call.platform == "baemin" && !hasDist) {
-            // 포인트 → 거리 환산 (보조 판정용, 부정확할 수 있음)
-            val estimatedKm = if (call.point != null && call.point > 0) BaeminParser.convertPointToKm(call.point) else 0.0
-            val estimatedUnitPrice = if (estimatedKm > 0) (call.price / estimatedKm).toInt() else 0
-            val estimateTag = if (estimatedKm > 0) ", 추정거리 ${"%.1f".format(estimatedKm)}km, 추정단가 ${fmt.format(estimatedUnitPrice)}원/km" else ""
-
-            Log.d("JudgeLogic", "baemin_no_dist: price=${call.price}, point=${call.point}, estimatedKm=${"%.1f".format(estimatedKm)}, estimatedUnitPrice=$estimatedUnitPrice, minUnitPrice=$minUnitPrice")
+            Log.d("JudgeLogic", "baemin_no_dist: price=${call.price}, point=${call.point}, pickupKm=${call.pickupDistanceKm}, minPrice=$minPrice")
 
             // 고액 콜 자동 통과
             if (call.price >= highPriceThreshold) {
                 return FilterResult(Verdict.ACCEPT,
-                    "고액 콜 ${fmt.format(call.price)}원 ≥ ${fmt.format(highPriceThreshold)}원$estimateTag$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "고액 콜 ${fmt.format(call.price)}원 ≥ ${fmt.format(highPriceThreshold)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
 
             // 최소배달료 미달
             if (call.price < minPrice) {
                 return FilterResult(Verdict.REJECT,
-                    "최소배달료 ${fmt.format(call.price)}원 미달 (설정: ${fmt.format(minPrice)}원)$estimateTag$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
-            }
-
-            // 단가 미달 (포인트 환산 성공 시만)
-            if (estimatedKm > 0 && estimatedUnitPrice < minUnitPrice) {
-                return FilterResult(Verdict.REJECT,
-                    "단가 ${fmt.format(estimatedUnitPrice)}원/km < ${fmt.format(minUnitPrice)}원 기준 미달 (거리 추정)$estimateTag$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                    "최소배달료 ${fmt.format(call.price)}원 미달 (설정: ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
 
             return FilterResult(Verdict.ACCEPT,
-                "최소배달료 통과 (${fmt.format(call.price)}원 ≥ ${fmt.format(minPrice)}원)$estimateTag$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+                "최소배달료 통과 (${fmt.format(call.price)}원 ≥ ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }
 
         // ── 단건 판정 (거리 있음 또는 배민 외 플랫폼) ──
