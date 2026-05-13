@@ -101,6 +101,8 @@ class OnTheWayService : AccessibilityService() {
         var gpsActive: Boolean = false
         /** Fix X v1.3: 마지막 위치 업데이트 시각 (locationAge 기반 gate 완화) */
         var lastLocationTime: Long = 0L
+        /** Fix IT-1: 마지막 위치 정확도 (meters) */
+        var lastLocationAccuracy: Float = 0f
 
         // v2.2: 진단 모드 — 패키지별 이벤트 카운트
         val packageEventCount = mutableMapOf<String, Int>()
@@ -132,7 +134,7 @@ class OnTheWayService : AccessibilityService() {
     private var lastAcceptTime: Long = 0
 
     // 배민 묶음 debounce (2초 윈도우)
-    private data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?, val pickupDistSource: String = "", val pickupPendingReason: String? = null)
+    private data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?, val pickupDistSource: String = "", val pickupPendingReason: String? = null, val reqClassification: DeliveryRequestClassifier.Result? = null)
     private val baeminBuffer = mutableListOf<PendingCall>()
     private var baeminDebounceRunnable: Runnable? = null
     private var bundleTimeoutRunnable: Runnable? = null
@@ -997,12 +999,17 @@ class OnTheWayService : AccessibilityService() {
         OtwFileLogger.log("DeliveryFilter", rawMsg)
 
         // v3.26: 고객 요청사항 파싱 (배민)
+        // Memory M1.wire: 요청사항 분류 (관찰만, 발화 X)
+        var reqClassification: DeliveryRequestClassifier.Result? = null
         if (pkg == PKG_BAEMIN) {
             val customerReq = BaeminParser.parseCustomerRequest(texts)
             if (customerReq != null) {
                 lastCustomerRequest = customerReq
                 OtwFileLogger.log("CustomerRequest", "감지: \"$customerReq\"")
             }
+            reqClassification = BaeminParser.classifyRequest(texts)
+        } else if (pkg == PKG_COUPANG) {
+            reqClassification = CoupangParser.classifyRequest(texts)
         }
 
         // v3.6: 배민 대량 중복 감지 — 파싱 전에 최근 3초 이내 같은 플랫폼 이벤트 횟수 체크
@@ -1081,7 +1088,7 @@ class OnTheWayService : AccessibilityService() {
                             }
                         }
                         val result = CallFilter.judge(enrichedBundle, this)
-                        val pendingCall = PendingCall(bundleCall, enrichedBundle, result, bundleCall.point, pickupDistKm, bundlePickupDistSrc, bundlePendingReason)
+                        val pendingCall = PendingCall(bundleCall, enrichedBundle, result, bundleCall.point, pickupDistKm, bundlePickupDistSrc, bundlePendingReason, reqClassification)
                         val bundleNow = System.currentTimeMillis()
                         lastCallDetectedTime = bundleNow
                         lastAccessibilityCallTime = bundleNow
@@ -1184,7 +1191,7 @@ class OnTheWayService : AccessibilityService() {
                 }
             }
             val result = CallFilter.judge(enrichedCall, this)
-            PendingCall(call, enrichedCall, result, baeminPoint, pickupDistKm, pickupDistSource, pickupPendingReason)
+            PendingCall(call, enrichedCall, result, baeminPoint, pickupDistKm, pickupDistSource, pickupPendingReason, reqClassification)
         }
 
         // ── 배민: 2초 debounce (묶음 중복 방지) ──
@@ -1454,12 +1461,25 @@ class OnTheWayService : AccessibilityService() {
                     put("verdict", result.verdict.name); put("reason", result.reason)
                 }.toString()
             )
+            // Memory M1.wire: REQUEST_CLASSIFIED ledger event
+            if (pending.reqClassification != null) {
+                com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                    this, id, callSessionEvt?.eventId, call.orderId, call.platform,
+                    com.vita.ontheway.ledger.LedgerEventType.REQUEST_CLASSIFIED, "internal",
+                    org.json.JSONObject().apply {
+                        put("request_classification", pending.reqClassification.classification.name)
+                        put("request_text_hash", pending.reqClassification.textHash)
+                        put("matched_keywords", org.json.JSONArray(pending.reqClassification.matchedKeywords))
+                    }.toString()
+                )
+            }
             id
         } catch (_: Exception) { null }
 
-        // Fix X v1.3: 비동기 픽업 거리 보강 (게이트 완화 — usableLocation 기반)
-        // 판정 변경 금지, 거리 factual update만 허용 (수락 후에도 Shadow 분석에 필요)
-        if (pickupDistKm == null && csId != null &&
+        // Fix IT-1: 비동기 픽업 거리 보강 (fallback overwrite 포함)
+        // pickupDistKm==null → 거리 미취득, low-trust source → fallback overwrite 대상
+        val isLowTrustPickup = pending.pickupDistSource in PickupDistanceResolver.LOW_TRUST_SOURCES
+        if ((pickupDistKm == null || isLowTrustPickup) && csId != null &&
             PickupDistanceResolver.hasUsableLocation(currentLat, currentLng, lastLocationTime)) {
             val addr = call.storeName.ifEmpty { call.destination }
             if (addr.isNotBlank()) {
@@ -1467,6 +1487,8 @@ class OnTheWayService : AccessibilityService() {
                 val capturedPlatform = call.platform
                 PickupDistanceResolver.resolveAsync(this, currentLat, currentLng, call.storeName, call.destination) { asyncRes ->
                     if (asyncRes !is PickupDistanceResolver.Result.Success) return@resolveAsync
+                    // Fix IT-1: only overwrite with high-trust result
+                    if (!asyncRes.isHighTrust()) return@resolveAsync
                     try {
                         val db = CallLogDb.get(appCtx)
                         val updated = db.updatePickupDistanceBySessionId(csId, asyncRes.km, asyncRes.source, asyncRes.confidence)
@@ -1500,6 +1522,11 @@ class OnTheWayService : AccessibilityService() {
             lastDeliveryCall = call
             lastDeliveryCallAt = System.currentTimeMillis()
             lastDeliveryVerdict = "주의"
+            lastDeliveryPlatform = platformName
+        } else if (result.verdict == CallFilter.Verdict.HOLD) {
+            lastDeliveryCall = call
+            lastDeliveryCallAt = System.currentTimeMillis()
+            lastDeliveryVerdict = "보류"
             lastDeliveryPlatform = platformName
         } else {
             val grabThreshold = TtsPrefs.getGrabThreshold(this)
@@ -1583,6 +1610,7 @@ class OnTheWayService : AccessibilityService() {
         val dbShadowVerdict = when (lastDeliveryVerdict) {
             "우세", "보통" -> "recommended_accept"
             "주의" -> "recommended_reject"
+            "보류" -> "recommended_hold"
             else -> null
         }
         val dbUp = PlatformDistancePolicy.unitPrice(
@@ -1595,6 +1623,13 @@ class OnTheWayService : AccessibilityService() {
         val dbIdentConf = enrichedCall.distanceConfidence
         val dbDistConf = enrichedCall.distanceConfidence
         val dbVehicleType = EarningManager.getVehicleType(ctx)
+        // Fix IT-1: LocationSnapshot at judgment time
+        val dbLocLat = if (currentLat != 0.0) currentLat else null
+        val dbLocLng = if (currentLng != 0.0) currentLng else null
+        val dbLocAgeMs = if (lastLocationTime > 0) System.currentTimeMillis() - lastLocationTime else null
+        val dbLocAccuracy = lastLocationAccuracy.takeIf { it > 0f }
+        // Memory M1.wire: 요청사항 분류 결과 → DB
+        val dbReqClassification = pending.reqClassification?.classification?.name
         dbExecutor.execute {
             try {
                 CallLogDb.get(ctx).insert(
@@ -1619,7 +1654,12 @@ class OnTheWayService : AccessibilityService() {
                     shadowVerdict = dbShadowVerdict,
                     bundleCountConfidence = dbBundleConf,
                     bundleCountSource = dbBundleSrc,
-                    vehicleType = dbVehicleType
+                    vehicleType = dbVehicleType,
+                    locationSnapshotLat = dbLocLat,
+                    locationSnapshotLng = dbLocLng,
+                    locationSnapshotAgeMs = dbLocAgeMs,
+                    locationSnapshotAccuracy = dbLocAccuracy,
+                    requestClassification = dbReqClassification
                 )
                 // 쿠팡: Accessibility에서 가게명 있으면 NLS 레코드도 업데이트
                 if (dbPlatform == "coupang" && dbStoreName.isNotBlank()) {
@@ -1943,6 +1983,7 @@ class OnTheWayService : AccessibilityService() {
             currentSpeed = loc.speed
             gpsActive = true
             lastLocationTime = System.currentTimeMillis()
+            lastLocationAccuracy = loc.accuracy
             Log.d("OTW_GPS", "위치: $currentLat, $currentLng, 속도: ${currentSpeed}m/s")
             try { ProximityDetector.onLocationUpdate(loc.latitude, loc.longitude) } catch (_: Exception) {}
             // Fix W: AcceptLifecycle GPS 피드 (변위 + 속도)
