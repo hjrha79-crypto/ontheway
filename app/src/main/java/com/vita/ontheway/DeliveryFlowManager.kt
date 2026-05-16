@@ -33,6 +33,12 @@ object DeliveryFlowManager {
     // TTS 콜백 (OnTheWayService에서 설정)
     var speakCallback: ((String) -> Unit)? = null
 
+    /** Fix M1.wire-fix v2: sha256(text+"otw")[:8] = 16 hex */
+    internal fun hashText(text: String): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest((text + "otw").toByteArray()).take(8)
+            .joinToString("") { "%02x".format(it) }
+
     /** 수락 시 배달 큐 설정 */
     fun onAccepted(call: DeliveryCall, customerRequest: String?) {
         clearState()
@@ -63,7 +69,10 @@ object DeliveryFlowManager {
         val msg = DeliveryTtsBuilder.buildArrival(delivery)
         if (msg != null) {
             speak(msg)
-            OtwFileLogger.log(TAG, "시나리오 B (도착): \"$msg\"")
+            val reqPart = if (delivery.customerRequest.isNotBlank())
+                "req_hash=${hashText(delivery.customerRequest)} len=${delivery.customerRequest.length}"
+            else "req=none"
+            OtwFileLogger.log(TAG, "시나리오 B (도착): addr=${delivery.shortAddress()} $reqPart")
         }
 
         // 시나리오 C: 60초 리마인더 예약
@@ -80,7 +89,7 @@ object DeliveryFlowManager {
             // 아직 완료 안됐으면 리마인드
             if (currentDelivery != null && deliveryNearFired) {
                 speak(reminderMsg)
-                OtwFileLogger.log(TAG, "시나리오 C (리마인더): \"$reminderMsg\"")
+                OtwFileLogger.log(TAG, "시나리오 C (리마인더): hash=${hashText(reminderMsg)} len=${reminderMsg.length}")
             }
         }
         handler.postDelayed(reminderRunnable!!, REMINDER_DELAY_MS)

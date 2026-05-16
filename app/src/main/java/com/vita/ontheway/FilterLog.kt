@@ -61,12 +61,12 @@ object FilterLog {
         dedupMap[key] = now
 
         // 메인 스레드에서 데이터 스냅샷 캡처
-        val totalKm = (call.pickupDistanceKm ?: 0.0) + (call.distance ?: 0.0)
-        val unitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
+        val unitPrice = PlatformDistancePolicy.unitPrice(
+            call.price, call.platform, call.distance, call.pickupDistanceKm, call.bundleCount)
         val entryStr = JSONObject().apply {
             put("ts", System.currentTimeMillis())
             put("platform", call.platform)
-            put("rawText", call.rawText)
+            // Fix M1.wire-fix: rawText 제거 (개인정보 보호)
             put("price", call.price)
             put("distanceKm", call.distance ?: -1.0)
             put("unitPrice", unitPrice)
@@ -269,17 +269,27 @@ object FilterLog {
         }
     }
 
-    /** 최근 콜의 storeName 업데이트 (사후 추출) */
-    fun updateLastStoreName(ctx: Context, storeName: String) {
+    /**
+     * Fix Q-0c: 최근 콜의 storeName 업데이트 (사후 추출, platform 안전 검증).
+     * @param platform non-null이면 platform 일치 + 60초 이내만 수정
+     */
+    fun updateLastStoreName(ctx: Context, storeName: String, platform: String? = null) {
         try {
             val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val arr = JSONArray(prefs.getString(KEY_ENTRIES, "[]"))
-            if (arr.length() > 0) {
-                val last = arr.getJSONObject(arr.length() - 1)
-                if (last.optString("storeName", "").isBlank()) {
-                    last.put("storeName", storeName)
-                    prefs.edit().putString(KEY_ENTRIES, arr.toString()).apply()
+            val now = System.currentTimeMillis()
+            // 최신부터 역순 탐색 (최대 3건)
+            for (i in (arr.length() - 1) downTo maxOf(0, arr.length() - 3)) {
+                val entry = arr.getJSONObject(i)
+                if (entry.optString("storeName", "").isNotBlank()) continue
+                if (platform != null) {
+                    if (entry.optString("platform", "") != platform) continue
+                    val ts = entry.optLong("ts", 0)
+                    if (now - ts > 60_000) continue
                 }
+                entry.put("storeName", storeName)
+                prefs.edit().putString(KEY_ENTRIES, arr.toString()).apply()
+                return
             }
         } catch (e: Exception) {
             Log.w("FilterLog", "updateLastStoreName 실패: ${e.message}")

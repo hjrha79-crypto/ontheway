@@ -10,6 +10,24 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Route Mini v0.2.5: package visibility for navi deep links (targetSdk 36) -->
+    <queries>
+        <package android:name="com.locnall.KimGiSa" />
+        <package android:name="net.daum.android.map" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="kakaonavi-sdk" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="kakaomap" />
+        </intent>
+    </queries>
+
     <application android:resizeableActivity="true"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -39,6 +57,11 @@
         <activity android:name=".DevStatsActivity" android:exported="false" />
         <activity android:name=".CoupangDiagnosticViewerActivity" android:exported="false" />
         <activity android:name=".ReviewActivity" android:exported="false" />
+        <activity
+            android:name=".RouteModeActivity"
+            android:exported="false"
+            android:windowSoftInputMode="stateHidden|adjustResize"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation" />
         <activity
             android:name=".AcceptFeedbackActivity"
             android:exported="false"

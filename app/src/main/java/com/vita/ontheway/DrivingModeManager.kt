@@ -79,7 +79,9 @@ object DrivingModeManager {
                 LocationTracker.stopTracking()
                 AdvancedPrefs.setGpsEnabled(ctx, false)
                 try { OnTheWayService.instance?.syncGpsWithDrivingMode() } catch (_: Exception) {}
-                OtwFileLogger.log(TAG, "운행 OFF: GPS 비활성화")
+                // HUD v0.1 v2: IDLE 전환 시 HUD 제거
+                try { CardOverlay.hide() } catch (_: Exception) {}
+                OtwFileLogger.log(TAG, "운행 OFF: GPS 비활성화, HUD 제거")
             }
         }
     }
@@ -144,23 +146,9 @@ object DrivingModeManager {
         // 날짜 변경 체크 (UI 갱신 시마다 호출됨)
         checkAndResetDate(ctx)
 
-        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val today = todayStr()
-        val savedDate = prefs.getString(KEY_TOTAL_DATE, "")
-
-        val accumulated = if (today == savedDate) {
-            prefs.getLong(KEY_TOTAL_TODAY, 0L)
-        } else 0L
-
-        val startedAt = prefs.getLong(KEY_STARTED_AT, 0L)
-        val ongoing = if (startedAt > 0L && getMode(ctx) == DrivingMode.DRIVING) {
-            val now = System.currentTimeMillis()
-            val todayMidnight = todayMidnightMs()
-            val effectiveStart = maxOf(startedAt, todayMidnight)
-            now - effectiveStart
-        } else 0L
-
-        return accumulated + ongoing
+        val todayMidnight = todayMidnightMs()
+        val now = System.currentTimeMillis()
+        return DriveTimeCalculator.calculateDriveTimeMs(ctx, todayMidnight, now)
     }
 
     /** 테스트용: 날짜 문자열 반환 */

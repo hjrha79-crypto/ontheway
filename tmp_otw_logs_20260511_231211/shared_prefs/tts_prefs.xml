@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="high_price" value="7000" />
+    <int name="grab_threshold" value="10000" />
+    <boolean name="grab_only" value="true" />
+</map>

@@ -25,6 +25,7 @@ object V2Event {
     const val PARSING_CONTENT_DESCRIPTION = "content_description"
     const val PARSING_TEXT_REGEX = "text_regex"
     const val PARSING_FALLBACK_POINT = "fallback_point"
+    const val PARSING_ACCESSIBILITY_NEW_CALL = "accessibility_new_call"
     const val PARSING_UNKNOWN = "unknown"
 
     /**

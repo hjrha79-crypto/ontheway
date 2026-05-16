@@ -29,5 +29,7 @@ data class DeliveryCall(
     val bundleCountConfidence: Double = 1.0,  // 1.0=확정, 0.8=contentDesc, 0.5=추정
     val bundleCountSource: String = "",       // "reason", "contentDesc", "notification", ""
     // Memory M1: 요청사항 분류
-    val requestClassification: String? = null // REPEAT_CRITICAL / NAVIGATION_HINT / IGNORE
+    val requestClassification: String? = null, // REPEAT_CRITICAL / NAVIGATION_HINT / IGNORE
+    // Repeat Critical v0.1: 조리 상태
+    val cookingStatus: String = "UNKNOWN" // COOKING_DONE / UNKNOWN
 )

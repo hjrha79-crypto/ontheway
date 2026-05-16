@@ -19,8 +19,8 @@ object EarningsTracker {
         val goalProgress: Float    // 0.0 ~ 1.0+
     )
 
-    // event_id 기반 dedup Set (오늘 처리한 event_id)
-    private val processedEventIds = mutableSetOf<String>()
+    // event_id 기반 dedup Set (오늘 처리한 event_id) — thread-safe
+    private val processedEventIds: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     private var dedupDate: String = ""
 
     /** 수락 기록 */

@@ -161,11 +161,12 @@ object KakaoGeocoder {
                 val body = conn.inputStream.bufferedReader().readText()
                 val result = parseFirstCoord(body)
                 if (result != null) {
-                    logKeywordResult(body, query)
+                    logKeywordResult(body, query, code, nearLat, nearLng)
                 }
                 result
             } else {
                 logApiError(code, KEYWORD_API_URL, query)
+                OtwFileLogger.log(TAG, "GEOCODE_RESULT: query=\"$query\" currentLat=$nearLat currentLng=$nearLng http=$code source=api_keyword confidence=0.0")
                 null
             }
         } catch (e: Exception) {
@@ -211,17 +212,23 @@ object KakaoGeocoder {
         Log.w(TAG, "$msg: $apiUrl for \"$query\"")
     }
 
-    /** keyword 결과 상세 로그 (검증용) */
-    private fun logKeywordResult(body: String, query: String) {
+    /** Fix IT-1: keyword 결과 상세 로그 (검증용, 전 필드 기록) */
+    private fun logKeywordResult(body: String, query: String, httpCode: Int = 200, nearLat: Double = 0.0, nearLng: Double = 0.0) {
         try {
             val json = JSONObject(body)
             val docs = json.optJSONArray("documents") ?: return
-            if (docs.length() > 0) {
+            val candidateCount = docs.length()
+            if (candidateCount > 0) {
                 val first = docs.getJSONObject(0)
                 val placeName = first.optString("place_name", "")
                 val addressName = first.optString("address_name", "")
+                val placeLat = first.optDouble("y", 0.0)
+                val placeLng = first.optDouble("x", 0.0)
                 val distance = first.optString("distance", "")
-                OtwFileLogger.log(TAG, "keyword hit: query=\"$query\" → place=\"$placeName\" addr=\"$addressName\" dist=${distance}m")
+                OtwFileLogger.log(TAG, "GEOCODE_RESULT: query=\"$query\" currentLat=$nearLat currentLng=$nearLng http=$httpCode candidates=$candidateCount " +
+                    "selected=\"$placeName\" addr=\"$addressName\" lat=$placeLat lng=$placeLng dist=${distance}m source=api_keyword confidence=1.0")
+            } else {
+                OtwFileLogger.log(TAG, "GEOCODE_RESULT: query=\"$query\" currentLat=$nearLat currentLng=$nearLng http=$httpCode candidates=0 source=api_keyword")
             }
         } catch (_: Exception) {}
     }
@@ -322,6 +329,9 @@ object KakaoGeocoder {
         val fallback = LocationTable.distanceTo(currentLat, currentLng, address)
         val fallbackHit = fallback != null
         OtwFileLogger.log(TAG, "SYNC_EXIT: addr=\"$address\" fallbackHit=$fallbackHit km=${if (fallback != null) "${"%.2f".format(fallback)}" else "null"} enabled=$enabled took=${System.currentTimeMillis() - startMs}ms")
+        if (fallback != null) {
+            OtwFileLogger.log(TAG, "GEOCODE_RESULT: query=\"$address\" currentLat=$currentLat currentLng=$currentLng source=fallback_location_table confidence=0.1 km=${"%.2f".format(fallback)}")
+        }
         return if (fallback != null) DistanceResult.fallback(fallback) else null
     }
 

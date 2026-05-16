@@ -36,17 +36,34 @@ class AcceptCoordinatorV2Test {
         every { ctx.getSharedPreferences(any(), any()) } returns mockPrefs
         every { ctx.applicationContext } returns ctx
 
-        mockkObject(EarningsTracker, JudgmentMatchLogger, FilterLog, OtwFileLogger)
-        every { EarningsTracker.recordAccept(any(), any(), any(), any()) } returns Unit
+        mockkObject(EarningsTracker, JudgmentMatchLogger, FilterLog, OtwFileLogger,
+            com.vita.ontheway.ledger.LedgerAppender, com.vita.ontheway.ledger.CallSessionRegistry)
+        every { EarningsTracker.recordAccept(any(), any(), any(), any(), any()) } returns Unit
         every { JudgmentMatchLogger.onAcceptDetected(any()) } returns Unit
         every { FilterLog.recordAccepted(any(), any(), any(), any(), any(), any()) } returns Unit
         every { OtwFileLogger.log(any(), any()) } returns Unit
+        every { com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(any(), any(), any(), any(), any(), any(), any(), any()) } returns Unit
+
+        // 각 호출마다 고유 sessionId 반환
+        var sessionCounter = 0
+        every { com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(any(), any(), any()) } answers {
+            "session-${sessionCounter++}"
+        }
+        every { com.vita.ontheway.ledger.CallSessionRegistry.resetForTest() } returns Unit
 
         AcceptCoordinator.resetForTest()
+        AcceptLifecycle.resetForTest()
+        AcceptLifecycle.autoConfirm = true
+        // ledger에 ACCEPT 없음 (신규)
+        AcceptCoordinator.ledgerChecker = { _, _ -> false }
+        // 동기 writer 테스트 bypass
+        AcceptCoordinator.ledgerSyncWriter = { _, _, _, _, _, _, _, _ -> }
     }
 
     @After
     fun teardown() {
+        AcceptCoordinator.resetForTest()
+        AcceptLifecycle.resetForTest()
         unmockkAll()
     }
 
@@ -85,24 +102,26 @@ class AcceptCoordinatorV2Test {
     }
 
     @Test
-    fun `동일 eventId 5분 내 중복 스킵`() {
+    fun `동일 sessionId 영구 중복 스킵`() {
+        every { com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(any(), any(), any()) } returns "same-session"
+
         AcceptCoordinator.handleAccept(
             ctx, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS,
             4000, "baemin", eventId = "evt-dup"
         )
-        // 두 번째 호출은 중복
         AcceptCoordinator.handleAccept(
             ctx, AcceptCoordinator.AcceptSource.SYSTEM_NOTI,
             4000, "baemin", eventId = "evt-dup"
         )
-        // FilterLog.recordAccepted는 1회만 호출
         verify(exactly = 1) {
             FilterLog.recordAccepted(any(), 4000, "baemin", "evt-dup", any(), any())
         }
     }
 
     @Test
-    fun `동일 orderId 5분 내 중복 스킵`() {
+    fun `동일 orderId 영구 중복 스킵`() {
+        every { com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(any(), any(), any()) } returns "same-session-ord"
+
         AcceptCoordinator.handleAccept(
             ctx, AcceptCoordinator.AcceptSource.COUPANG_PICKUP,
             3000, "coupang", orderId = "ORD-DUP"
@@ -118,6 +137,11 @@ class AcceptCoordinatorV2Test {
 
     @Test
     fun `다른 eventId 는 중복 아님`() {
+        var counter = 0
+        every { com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(any(), any(), any()) } answers {
+            "session-diff-${counter++}"
+        }
+
         AcceptCoordinator.handleAccept(
             ctx, AcceptCoordinator.AcceptSource.BAEMIN_PROGRESS,
             4000, "baemin", eventId = "evt-1"
@@ -142,13 +166,24 @@ class AcceptCoordinatorV2Test {
     }
 
     @Test
-    fun `EarningsTracker 호출 확인`() {
+    fun `EarningsTracker orderId 전달 확인`() {
         AcceptCoordinator.handleAccept(
             ctx, AcceptCoordinator.AcceptSource.SYSTEM_NOTI,
-            6000, "coupang", storeName = "BBQ"
+            6000, "coupang", storeName = "BBQ", orderId = "ORD-999"
         )
         verify {
-            EarningsTracker.recordAccept(ctx, 6000, "coupang", "BBQ")
+            EarningsTracker.recordAccept(ctx, 6000, "coupang", "BBQ", "ORD-999")
+        }
+    }
+
+    @Test
+    fun `EarningsTracker orderId blank 시 null 전달`() {
+        AcceptCoordinator.handleAccept(
+            ctx, AcceptCoordinator.AcceptSource.SYSTEM_NOTI,
+            6000, "coupang", storeName = "BBQ", eventId = "evt-noti"
+        )
+        verify {
+            EarningsTracker.recordAccept(ctx, 6000, "coupang", "BBQ", null)
         }
     }
 

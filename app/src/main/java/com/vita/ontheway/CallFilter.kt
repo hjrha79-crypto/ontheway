@@ -25,7 +25,7 @@ object CallFilter {
     private const val REDUCTION_STEP = 500
     private const val MIN_PRICE_FLOOR = 1500  // 최저 기준
 
-    enum class Verdict { ACCEPT, REJECT }
+    enum class Verdict { ACCEPT, REJECT, HOLD }
 
     data class FilterResult(
         val verdict: Verdict,
@@ -218,6 +218,13 @@ object CallFilter {
                     "최소배달료 ${fmt.format(call.price)}원 미달 (설정: ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
             }
 
+            // Fix IT-3.fix: distance=null + pickupKm=null → HOLD (거리 미측정 보류)
+            // pickupKm 있으면 GPS 기반 거리 정보 존재 → ACCEPT 허용
+            val hasPickup = pickupKm > 0
+            if (!hasPickup) {
+                return FilterResult(Verdict.HOLD,
+                    "거리 미측정, 금액 ${fmt.format(call.price)}원 ≥ 최소기준 ${fmt.format(minPrice)}원$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
+            }
             return FilterResult(Verdict.ACCEPT,
                 "최소배달료 통과 (${fmt.format(call.price)}원 ≥ ${fmt.format(minPrice)}원)$storeTag$peakTag$directionTag$gpsTag$autoDirectionTag$pointTag")
         }

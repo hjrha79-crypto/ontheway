@@ -161,7 +161,11 @@ class SettingsActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
                 setPadding(dp(4), dp(14), dp(4), dp(14))
                 setOnClickListener {
+                    val prev = EarningManager.getVehicleType(this@SettingsActivity)
                     EarningManager.setVehicleType(this@SettingsActivity, v)
+                    if (prev != v) {
+                        OtwFileLogger.log("Settings", "VEHICLE_CHANGED from=$prev to=$v")
+                    }
                     recreate()
                 }
             }, lp(0, WC, 1f).apply { setMargins(dp(4), 0, dp(4), 0) })

@@ -285,11 +285,68 @@ class DeveloperOptionsActivity : AppCompatActivity() {
             resultTv.text = dumpEarnings()
         }
 
+        simBtn("수동 accepted_at backfill") {
+            val r = CallLogDb.get(this@DeveloperOptionsActivity).backfillAcceptedAt()
+            resultTv.text = "backfill 완료: matched=${r.matched}, skipped=${r.skipped}"
+        }
+
         simCard.addView(resultTv)
         root.addView(simCard, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) })
 
+        // Fix S: 전체 로그 ZIP 다운로드
+        root.addView(TextView(this).apply {
+            text = "전체 로그 ZIP 다운로드"
+            textSize = 15f; setTypeface(null, Typeface.BOLD)
+            setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#E65100"))
+            setPadding(0, dp(14), 0, dp(14))
+            setOnClickListener { exportLogsZip() }
+        }, lp(MP, WC).apply { setMargins(dp(16), dp(8), dp(16), dp(8)) })
+
         scrollView.addView(root)
         setContentView(scrollView)
+    }
+
+    private fun exportLogsZip() {
+        val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100; progress = 0
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+        }
+        val rootLayout = (window.decorView as? ViewGroup)?.getChildAt(0) as? ViewGroup
+        rootLayout?.addView(progressBar)
+
+        Thread {
+            val result = LogZipExporter.export(this) { progress ->
+                runOnUiThread { progressBar.progress = (progress * 100).toInt() }
+            }
+            runOnUiThread {
+                rootLayout?.removeView(progressBar)
+                if (result.fileCount > 0) {
+                    android.widget.Toast.makeText(this,
+                        "ZIP 생성 완료: ${result.zipFile.name} (${LogZipExporter.formatSize(result.sizeBytes)})",
+                        android.widget.Toast.LENGTH_LONG).show()
+
+                    // 공유 인텐트
+                    try {
+                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                            this, "$packageName.fileprovider", result.zipFile)
+                        startActivity(Intent.createChooser(
+                            Intent(Intent.ACTION_SEND).apply {
+                                type = "application/zip"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }, "로그 ZIP 공유"
+                        ))
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(this,
+                            "공유 실패: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    val errMsg = result.errors.firstOrNull() ?: "알 수 없는 오류"
+                    android.widget.Toast.makeText(this, errMsg, android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun dumpEarnings(): String {

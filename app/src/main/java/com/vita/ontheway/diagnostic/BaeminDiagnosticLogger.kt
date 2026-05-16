@@ -20,7 +20,8 @@ object BaeminDiagnosticLogger {
 
     private const val TAG = "BaeminDiag"
     private const val FILE_NAME = "baemin_diagnostic.jsonl"
-    private const val MAX_ENTRIES = 5000
+    // TODO 70.11+: time/byte rolling으로 재설계 (readLines 메모리 부담)
+    private const val MAX_ENTRIES = 20000
     private const val MAX_DEPTH = 15
     private const val COOLDOWN_MS = 3000L
     private const val PKG_BAEMIN = "com.woowahan.bros"
@@ -29,8 +30,10 @@ object BaeminDiagnosticLogger {
     private var ioThread: HandlerThread? = null
     private var ioHandler: Handler? = null
     private var logFile: File? = null
+    private var appContext: Context? = null
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         logFile = File(context.filesDir, FILE_NAME)
         if (ioThread == null) {
             ioThread = HandlerThread("BaeminDiagIO").apply { start() }
@@ -227,6 +230,16 @@ object BaeminDiagnosticLogger {
             } catch (e: Exception) {
                 Log.w(TAG, "파일 쓰기 실패: ${e.message}")
             }
+        }
+
+        // Tier 1 ledger에도 동일 raw 데이터 영구 보존
+        val ctx = appContext ?: return
+        try {
+            com.vita.ontheway.ledger.LedgerAppender.appendDiagnosticAccessibility(
+                ctx, PKG_BAEMIN, entries
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "ledger append 실패 (silent): ${e.message}")
         }
     }
 

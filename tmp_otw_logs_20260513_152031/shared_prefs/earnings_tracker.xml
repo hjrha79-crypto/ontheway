@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="date">20260513</string>
+    <long name="first_accept" value="1778643288843" />
+    <int name="total" value="8340" />
+    <int name="count" value="2" />
+    <long name="last_accept" value="1778649621761" />
+</map>

@@ -62,6 +62,34 @@ class DeliveryNotificationService : NotificationListenerService() {
         } catch (e: Exception) {
             Log.w("DeliveryNoti", "SessionManager 초기화 실패: ${e.message}")
         }
+        // Core Sprint v2.1: 계측 hook 연결
+        wireInstrumentationHooks()
+    }
+
+    private fun wireInstrumentationHooks() {
+        val ctx = this
+        CoupangNotificationParser.parsedEventLogger = { ref, matchResult, price, distKm, bundleSize, bundleType, snippet ->
+            ioExecutor.execute {
+                try {
+                    InstrumentationDb.get(ctx).insertParsedEvent(
+                        ref, CoupangNotificationParser.PARSER_VERSION, "coupang",
+                        matchResult, bundleSize, bundleType, price, distKm,
+                        if (matchResult == "unmatched") "failed" else "success",
+                        if (matchResult == "unmatched") "no_pattern_match" else null,
+                        snippet
+                    )
+                } catch (_: Exception) {}
+            }
+        }
+        CrossSourceCallDetectionDedup.dedupDecisionLogger = { decision, reason, sourceChain, price, platform, timeGapMs ->
+            ioExecutor.execute {
+                try {
+                    InstrumentationDb.get(ctx).insertDedupDecision(
+                        null, decision, reason, sourceChain, null, price, platform, timeGapMs
+                    )
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -174,6 +202,10 @@ class DeliveryNotificationService : NotificationListenerService() {
         } catch (_: Exception) {}
         val combined = "$title $text $bigText".trim()
 
+        // Core Pipeline Phase 1: RawEvent 기록
+        val rawEvent = com.vita.ontheway.core.RawEvent.fromNotification(pkg, title, text, bigText, sbn.postTime)
+        try { com.vita.ontheway.core.CorePipeline.recordRawEvent(this, rawEvent) } catch (_: Exception) {}
+
         Log.d("DeliveryNoti", "알림 수신: pkg=$pkg, title=$title, text=$text")
 
         if (combined.isBlank()) return
@@ -211,9 +243,28 @@ class DeliveryNotificationService : NotificationListenerService() {
             else -> emptyList()
         }
 
+        // Core Pipeline Phase 1: ParsedEvent 기록
+        if (calls.isEmpty()) {
+            val parserName = if (pkg == PKG_BAEMIN) "BaeminNlsParser" else "CoupangNlsParser"
+            try { com.vita.ontheway.core.CorePipeline.recordParsedEvent(this,
+                com.vita.ontheway.core.ParsedEvent.failed(rawEvent.rawEventId, parserName,
+                    rawEvent.platformGuess, "parse_empty")) } catch (_: Exception) {}
+        } else {
+            for (call in calls) {
+                val parserName = if (pkg == PKG_BAEMIN) "BaeminNlsParser" else "CoupangNlsParser"
+                try { com.vita.ontheway.core.CorePipeline.recordParsedEvent(this,
+                    com.vita.ontheway.core.ParsedEvent.fromDeliveryCall(rawEvent.rawEventId, parserName, call)
+                ) } catch (_: Exception) {}
+            }
+        }
+
         if (calls.isEmpty()) {
             Log.d("DeliveryNoti", "금액 파싱 불가 - Accessibility에 위임")
             DropReason.recordDrop(DropReason.DROP_PARSE_FAIL, "notification parse empty", pkg)
+            // F1.h3 v2: 배민 빈 본문 NLS만 PENDING_DETECTION (parse fail 제외)
+            if (pkg == PKG_BAEMIN && isBaeminEmptyBodyNls(title, text, bigText)) {
+                triggerBaeminPendingDetection(combined, notiKey)
+            }
             return
         }
 
@@ -226,17 +277,26 @@ class DeliveryNotificationService : NotificationListenerService() {
                     source = CrossSourceCallDetectionDedup.SOURCE_NLS)) {
                 Log.d("DeliveryNoti", "CrossSourceDedup → 알림 스킵: ${call.platform} ${call.price}원")
                 DropReason.recordDrop(DropReason.DROP_DUPLICATE, "cross_source_dedup ${call.platform}_${call.price}")
+                try { com.vita.ontheway.core.CorePipeline.recordTtsDecision(this,
+                    com.vita.ontheway.core.TtsDecisionLog(rawEventId = rawEvent.rawEventId,
+                        platform = call.platform, decision = "suppress", reason = "cross_source_dedup")) } catch (_: Exception) {}
                 continue
             }
             // 기존 TtsDeduplicator fallback (하위 호환)
             if (TtsDeduplicator.wasProcessedWithin(call.platform, call.price)) {
                 Log.d("DeliveryNoti", "TtsDedup → 알림 스킵: ${call.platform} ${call.price}원")
                 DropReason.recordDrop(DropReason.DROP_DUPLICATE, "notification wasProcessed ${call.platform}_${call.price}")
+                try { com.vita.ontheway.core.CorePipeline.recordTtsDecision(this,
+                    com.vita.ontheway.core.TtsDecisionLog(rawEventId = rawEvent.rawEventId,
+                        platform = call.platform, decision = "suppress", reason = "tts_dedup")) } catch (_: Exception) {}
                 continue
             }
             // 쿠팡: Accessibility가 10초 이내 TTS 발화했으면 스킵 (하위 호환)
             if (pkg == PKG_COUPANG && TtsDeduplicator.wasSpokenWithin("coupang", call.price, 10_000)) {
                 Log.d("DeliveryNoti", "쿠팡 Accessibility TTS 우선 - 알림 스킵: ${call.price}원")
+                try { com.vita.ontheway.core.CorePipeline.recordTtsDecision(this,
+                    com.vita.ontheway.core.TtsDecisionLog(rawEventId = rawEvent.rawEventId,
+                        platform = "coupang", decision = "suppress", reason = "duplicate")) } catch (_: Exception) {}
                 continue
             }
             // v3.18: SessionManager 경유
@@ -314,6 +374,11 @@ class DeliveryNotificationService : NotificationListenerService() {
             val notiPickupKm = enrichedCall.pickupDistanceKm
             val notiDistSource = if (enrichedCall.distanceSource.isNotEmpty()) enrichedCall.distanceSource
                 else if (enrichedCall.distance != null && enrichedCall.distance > 0) "nls" else ""
+            // Fix IT-3.fix-NLS: HOLD → shadow_verdict = recommended_hold
+            val notiShadowVerdict = when (result.verdict) {
+                CallFilter.Verdict.HOLD -> "recommended_hold"
+                else -> null  // 기존 NLS 동작 유지 (ACCEPT/REJECT = null)
+            }
             val notiUp = PlatformDistancePolicy.unitPrice(
                 notiPrice, notiPlatform, notiDist, notiPickupKm, enrichedCall.bundleCount)
             // P0-3 + Fix 1 (v70.8.1): NLS identity 전달 + session null fallback
@@ -338,6 +403,11 @@ class DeliveryNotificationService : NotificationListenerService() {
                 notiStore.isNotBlank() -> 0.5
                 else -> 0.3
             }
+            // Fix IT-1: LocationSnapshot from OnTheWayService GPS
+            val notiLocLat = OnTheWayService.currentLat.takeIf { it != 0.0 }
+            val notiLocLng = OnTheWayService.currentLng.takeIf { it != 0.0 }
+            val notiLocAgeMs = if (OnTheWayService.lastLocationTime > 0) now - OnTheWayService.lastLocationTime else null
+            val notiLocAccuracy = OnTheWayService.lastLocationAccuracy.takeIf { it > 0f }
             ioExecutor.execute {
                 try {
                     CallLogDb.get(ctx).insert(
@@ -358,7 +428,12 @@ class DeliveryNotificationService : NotificationListenerService() {
                         identityConfidence = notiIdentityConf,
                         bundleCountConfidence = enrichedCall.bundleCountConfidence,
                         bundleCountSource = enrichedCall.bundleCountSource,
-                        vehicleType = EarningManager.getVehicleType(ctx)
+                        vehicleType = EarningManager.getVehicleType(ctx),
+                        locationSnapshotLat = notiLocLat,
+                        locationSnapshotLng = notiLocLng,
+                        locationSnapshotAgeMs = notiLocAgeMs,
+                        locationSnapshotAccuracy = notiLocAccuracy,
+                        shadowVerdict = notiShadowVerdict
                     )
                 } catch (e: Exception) { Log.w("DeliveryNoti", "DB 저장 실패: ${e.message}") }
             }
@@ -383,6 +458,19 @@ class DeliveryNotificationService : NotificationListenerService() {
             Log.d("DeliveryNoti", "근거 출력: ${enrichedCall.price}원 → \"${evidenceMsg ?: "SILENT"}\"")
 
             CardOverlay.setLastCall(enrichedCall.platform, enrichedCall.price)
+            // HUD v0.1: 지속형 Context HUD 업데이트
+            CardOverlay.showHud(this, enrichedCall.platform, enrichedCall.price, enrichedCall.pickupDistanceKm)
+
+            // Core Pipeline Phase 1: TtsDecisionLog (NLS path)
+            try { com.vita.ontheway.core.CorePipeline.recordTtsDecision(this,
+                com.vita.ontheway.core.TtsDecisionLog(
+                    rawEventId = rawEvent.rawEventId,
+                    platform = enrichedCall.platform,
+                    decision = if (evidenceMsg != null) "speak" else "suppress",
+                    reason = if (evidenceMsg != null) "first_seen" else "no_evidence",
+                    messagePreview = evidenceMsg?.take(50)
+                )) } catch (_: Exception) {}
+
             OutputController.emit(
                 ctx = this,
                 ttsText = evidenceMsg,
@@ -532,6 +620,9 @@ class DeliveryNotificationService : NotificationListenerService() {
                 val msg = "카카오, 주의, ${priceKr}원"
                 speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
                 Log.d("DeliveryNoti", "카카오T REJECT: ${call.price}원")
+            } else if (result.verdict == CallFilter.Verdict.HOLD) {
+                // Fix IT-3.fix-NLS: HOLD → 침묵 (거리 미측정 보류)
+                Log.d("DeliveryNoti", "카카오T HOLD: ${call.price}원 (거리 미측정 보류)")
             } else {
                 val msg = "카카오, 우세, ${priceKr}원"
                 speakTts(TtsMessageBuilder.build(ttsMode, call, result, msg))
@@ -563,19 +654,22 @@ class DeliveryNotificationService : NotificationListenerService() {
 
         val distance = Regex("(\\d+\\.?\\d*)\\s*km", RegexOption.IGNORE_CASE)
             .find(text)?.groupValues?.get(1)?.toDoubleOrNull()
-        val isMulti = text.contains("멀티") || text.contains("주문 두 건")
+
+        // v2: CoupangNotificationParser 결과 활용 (bundle 정보)
+        val parsedBundle = CoupangNotificationParser.parseBundleInfo(text)
+        val isMulti = parsedBundle.isMulti
+        val bundleCount = parsedBundle.bundleCount
 
         // FIX-STORE-NAME-V2: 쿠팡 알림에서 가게명 추출
-        // "멀티 [가게명] [가격]원" 또는 "[가게명] [가격]원" 패턴
         val storeName = extractCoupangStoreFromNotif(text, price)
 
         // v70.9.2.1: 쿠팡 픽업 추정 주입 (Phase 1)
         val estimatedPickup = PlatformDistancePolicy.calculatePickupKm("coupang", null)
-        val pickupSource = PlatformDistancePolicy.pickupDistanceSource("coupang", null)
         return listOf(DeliveryCall(
             price = price, distance = distance, isMulti = isMulti,
             platform = "coupang", rawText = text,
             storeName = storeName,
+            bundleCount = bundleCount,
             parsingMethod = V2Event.PARSING_NOTIFICATION,
             pickupDistanceKm = estimatedPickup,
             distanceSource = if (distance != null && distance > 0) "nls" else ""
@@ -729,6 +823,93 @@ class DeliveryNotificationService : NotificationListenerService() {
                 }
             } catch (_: Exception) {}
         }
+    }
+
+    /**
+     * F1.h3 v2: 배민 빈 본문 NLS 판정.
+     * title이 배달 관련 + 본문에 가격/금액/거리 정보 없음 = true.
+     * parse fail (가격 형식 이상 등)은 false → PENDING 트리거 안함.
+     */
+    internal fun isBaeminEmptyBodyNls(title: String, text: String, bigText: String): Boolean {
+        val titleLower = title.trim()
+        // 배민 배달 알림 title 패턴
+        val isBaeminDeliveryTitle = titleLower.contains("신규배달") ||
+            titleLower.contains("배달요청") ||
+            titleLower.contains("배민") ||
+            titleLower.contains("새 배달")
+        if (!isBaeminDeliveryTitle) return false
+
+        // 본문에 가격/거리 정보가 있으면 "빈 본문"이 아님 → parse fail
+        val body = "$text $bigText".trim()
+        val hasPrice = Regex("[\\d,]+\\s*원").containsMatchIn(body)
+        val hasDistance = Regex("\\d+\\.?\\d*\\s*km", RegexOption.IGNORE_CASE).containsMatchIn(body)
+        return !hasPrice && !hasDistance
+    }
+
+    /**
+     * F1.h3: 배민 NLS 가격 없는 알림 → PENDING_DETECTION + A11Y probe 스케줄.
+     * "신규배달" 등 본문만 있고 금액/거리 없는 배민 알림에서 호출.
+     */
+    private fun triggerBaeminPendingDetection(combined: String, notiKey: String) {
+        Log.d("DeliveryNoti", "F1: 배민 PENDING_DETECTION 생성: ${combined.take(30)}")
+        OtwFileLogger.log("DeliveryNoti", "F1: PENDING_DETECTION notiKey=$notiKey")
+
+        // Ledger: PENDING_DETECTION (raw 원문 저장 X, hash만)
+        try {
+            val csId = com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
+                fingerprint = "pending_baemin_$notiKey"
+            )
+            com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                this, csId, null, null, "baemin",
+                com.vita.ontheway.ledger.LedgerEventType.PENDING_DETECTION, "notification",
+                org.json.JSONObject().apply {
+                    put("trigger", "nls_no_price")
+                    put("notiKeyHash", notiKey.hashCode())
+                }.toString()
+            )
+        } catch (_: Exception) {}
+
+        // A11Y probe 스케줄
+        val ctx = this
+        A11yProbeScheduler.schedule(
+            onProbe = { seqId ->
+                val svc = OnTheWayService.instance ?: return@schedule false
+                svc.probeForBaemin()
+            },
+            onTimeout = { seqId ->
+                Log.d("DeliveryNoti", "F1: PENDING_TIMEOUT seqId=$seqId")
+                OtwFileLogger.log("DeliveryNoti", "F1: PENDING_TIMEOUT seqId=$seqId")
+                try {
+                    val csId = com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
+                        fingerprint = "pending_baemin_$notiKey"
+                    )
+                    com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                        ctx, csId, null, null, "baemin",
+                        com.vita.ontheway.ledger.LedgerEventType.PENDING_TIMEOUT, "notification",
+                        org.json.JSONObject().apply {
+                            put("trigger", "nls_probe_exhausted")
+                        }.toString()
+                    )
+                } catch (_: Exception) {}
+            },
+            onSuperseded = { oldSeqId ->
+                Log.d("DeliveryNoti", "F1: PENDING_SUPERSEDED oldSeqId=$oldSeqId")
+                OtwFileLogger.log("DeliveryNoti", "F1: PENDING_SUPERSEDED oldSeqId=$oldSeqId")
+                try {
+                    val csId = com.vita.ontheway.ledger.CallSessionRegistry.getOrCreateSessionId(
+                        fingerprint = "pending_baemin_$notiKey"
+                    )
+                    com.vita.ontheway.ledger.LedgerAppender.appendLifecycle(
+                        ctx, csId, null, null, "baemin",
+                        com.vita.ontheway.ledger.LedgerEventType.PENDING_SUPERSEDED, "notification",
+                        org.json.JSONObject().apply {
+                            put("trigger", "nls_superseded")
+                            put("oldSeqId", oldSeqId)
+                        }.toString()
+                    )
+                } catch (_: Exception) {}
+            }
+        )
     }
 
     private fun speakTts(text: String) {

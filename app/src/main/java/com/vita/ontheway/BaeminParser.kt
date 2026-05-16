@@ -40,6 +40,9 @@ object BaeminParser {
     private val MULTI_COUNT_PATTERN = Regex("(2|두|세)\\s*건")
     // FIX-T2CN: 배민 주문번호 패턴
     private val ORDER_ID_PATTERN = Regex("T2C[A-Z][A-Z0-9]{4,}")
+    // Repeat Critical v0.1: 조리완료 감지 (N분 뒤 조리완료 제외)
+    private val COOKING_DONE_PATTERN = Regex("조리\\s*완료")
+    private val COOKING_EXCLUDE_PATTERN = Regex("\\d+분\\s*(뒤|후)\\s*조리\\s*완료")
 
     // 파싱 dedup 캐시: 동일 storeName+price 5분 내 재파싱 방지
     private const val PARSE_DEDUP_WINDOW_MS = 300_000L  // 5분
@@ -251,6 +254,11 @@ object BaeminParser {
         val results = mutableListOf<DeliveryCall>()
         val joined = texts.joinToString(" ")
 
+        // Repeat Critical v0.1: 조리완료 감지
+        val cookingStatus = if (COOKING_DONE_PATTERN.containsMatchIn(joined) &&
+            !COOKING_EXCLUDE_PATTERN.containsMatchIn(joined) &&
+            !joined.contains("조리중")) "COOKING_DONE" else "UNKNOWN"
+
         // 이전내역 화면 감지 → DROP
         // FIX2: 강화된 신규 콜 증거 — "신규배차_수락버튼" 명시 필요
         // FIX-DETAIL-CLASSIFIER: "신규배달" 단독은 상세 화면에도 등장하므로 제거
@@ -315,7 +323,7 @@ object BaeminParser {
                     price = price, distance = extractScreenDistance(texts), isMulti = false, platform = "baemin",
                     rawText = joined, storeName = storeName, destination = destination,
                     point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
-                    orderId = orderId
+                    orderId = orderId, cookingStatus = cookingStatus
                 ))
                 Log.d("BaeminParser", "파싱(단일): ${price}원, point=${point}P, store=$storeName, orderId=$orderId")
                 OtwFileLogger.log("BaeminParser", "파싱(단일): ${price}원, point=${point}P, store=$storeName")
@@ -334,7 +342,7 @@ object BaeminParser {
                         price = price, distance = extractScreenDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
                         point = point, parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
-                        orderId = orderId
+                        orderId = orderId, cookingStatus = cookingStatus
                     ))
                     Log.d("BaeminParser", "파싱(분리노드): ${price}원, orderId=$orderId")
                     OtwFileLogger.log("BaeminParser", "파싱(분리노드): ${price}원")
@@ -352,7 +360,7 @@ object BaeminParser {
                         price = price, distance = extractScreenDistance(texts), isMulti = false, platform = "baemin",
                         rawText = joined, storeName = storeName, destination = destination,
                         point = point, parsingMethod = V2Event.PARSING_TEXT_REGEX,
-                        orderId = orderId
+                        orderId = orderId, cookingStatus = cookingStatus
                     ))
                     Log.d("BaeminParser", "파싱(join): ${price}원")
                     OtwFileLogger.log("BaeminParser", "파싱(join): ${price}원")
@@ -394,7 +402,8 @@ object BaeminParser {
                 parsingMethod = V2Event.PARSING_ACCESSIBILITY_TEXT,
                 orderId = orderId,
                 bundleCountConfidence = 1.0,
-                bundleCountSource = "reason"
+                bundleCountSource = "reason",
+                cookingStatus = cookingStatus
             ))
         }
 

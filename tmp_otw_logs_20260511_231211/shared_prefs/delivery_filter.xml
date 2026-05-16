@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="min_price" value="2500" />
+    <int name="min_unit_price" value="1500" />
+    <int name="multi_min_price" value="5500" />
+</map>

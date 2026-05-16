@@ -134,7 +134,8 @@ class OnTheWayService : AccessibilityService() {
     private var lastAcceptTime: Long = 0
 
     // 배민 묶음 debounce (2초 윈도우)
-    private data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?, val pickupDistSource: String = "", val pickupPendingReason: String? = null, val reqClassification: DeliveryRequestClassifier.Result? = null)
+    @androidx.annotation.VisibleForTesting(otherwise = androidx.annotation.VisibleForTesting.PRIVATE)
+    internal data class PendingCall(val call: DeliveryCall, val enrichedCall: DeliveryCall, val result: CallFilter.FilterResult, val baeminPoint: Double?, val pickupDistKm: Double?, val pickupDistSource: String = "", val pickupPendingReason: String? = null, val reqClassification: DeliveryRequestClassifier.Result? = null)
     private val baeminBuffer = mutableListOf<PendingCall>()
     private var baeminDebounceRunnable: Runnable? = null
     private var bundleTimeoutRunnable: Runnable? = null
@@ -757,7 +758,10 @@ class OnTheWayService : AccessibilityService() {
                 lastCustomerRequestCallKey = callKey
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     speakTts(request)
-                    OtwFileLogger.log("CustomerRequest", "리마인드 TTS: \"$request\"")
+                    val h = java.security.MessageDigest.getInstance("SHA-256")
+                        .digest((request + "otw").toByteArray()).take(8)
+                        .joinToString("") { "%02x".format(it) }
+                    OtwFileLogger.log("CustomerRequest", "리마인드 TTS: hash=$h len=${request.length}")
                 }, 5000)
             }
         }
@@ -767,6 +771,9 @@ class OnTheWayService : AccessibilityService() {
 
         // FIX-TTS-DELIVERY-FLOW: 배달 큐 설정
         try { DeliveryFlowManager.onAccepted(call, lastCustomerRequest) } catch (_: Exception) {}
+
+        // Repeat Critical v0.1: 수락 시점 조리완료 TTS (Case A)
+        try { tryCookingDoneTts(call, platform) } catch (_: Exception) {}
 
         // 수익 트래킹: AcceptCoordinator.handleAccept 내부에서 처리
 
@@ -852,6 +859,38 @@ class OnTheWayService : AccessibilityService() {
                 scheduleRootRetry(pkg, RETRY_DELAY_2_MS, attempt + 1)
             }
         }, delayMs)
+    }
+
+    /**
+     * F1.h3: NLS PENDING_DETECTION → A11Y probe.
+     * rootInActiveWindow 읽기 + 배민 파싱 시도.
+     * @return true if 파싱 성공 (콜 감지됨)
+     */
+    fun probeForBaemin(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val rootPkg = root.packageName?.toString()
+        if (rootPkg != PKG_BAEMIN) {
+            // 배민 윈도우 탐색
+            val baeminRoot = findWindowRoot(PKG_BAEMIN) ?: return false
+            return doProbeParseAndProcess(baeminRoot)
+        }
+        return doProbeParseAndProcess(root)
+    }
+
+    private fun doProbeParseAndProcess(root: android.view.accessibility.AccessibilityNodeInfo): Boolean {
+        val texts = mutableListOf<String>()
+        extractText(root, texts)
+        if (texts.isEmpty()) return false
+
+        val calls = BaeminParser.parse(texts)
+        if (calls.isNullOrEmpty()) return false
+
+        Log.d("A11yProbe", "probe 파싱 성공: ${calls.size}건, ${calls[0].price}원")
+        OtwFileLogger.log("A11yProbe", "probe 파싱 성공: ${calls.size}건, price=${calls[0].price}")
+
+        // 기존 handleDeliveryPlatform 경로로 처리
+        handleDeliveryPlatform(root, PKG_BAEMIN)
+        return true
     }
 
     // Q-0b: 쿠팡 state event 텍스트 판별 (비콜 필터 전에 사용)
@@ -942,6 +981,9 @@ class OnTheWayService : AccessibilityService() {
                     // Fix W++: platform+sessionId 매칭 state signal
                     try { AcceptLifecycle.onStateSignal(this, "baemin_in_progress", "baemin", lastDeliverySessionId) } catch (_: Exception) {}
 
+                    // Repeat Critical v0.1: IN_PROGRESS에서 조리완료 감지 (Case B)
+                    try { tryCookingDoneFromRaw(joined, "baemin") } catch (_: Exception) {}
+
                     // Fix V+: stale 체크 (5분 초과 시 lastDeliveryCall 무효화)
                     val now = System.currentTimeMillis()
                     if (lastDeliveryCallAt > 0 && now - lastDeliveryCallAt > 5 * 60_000) {
@@ -994,9 +1036,12 @@ class OnTheWayService : AccessibilityService() {
             }
         }
 
-        val rawMsg = "[$platformName] rawText: ${texts.joinToString(" | ")}"
-        Log.d("DeliveryFilter", rawMsg)
-        OtwFileLogger.log("DeliveryFilter", rawMsg)
+        // Fix M1.wire-fix: raw 원문 제거, hash + 항목 수만 로깅
+        val rawHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest((texts.joinToString("|") + "otw").toByteArray()).take(8)
+            .joinToString("") { "%02x".format(it) }
+        Log.d("DeliveryFilter", "[$platformName] items=${texts.size} hash=$rawHash")
+        OtwFileLogger.log("DeliveryFilter", "[$platformName] items=${texts.size} hash=$rawHash")
 
         // v3.26: 고객 요청사항 파싱 (배민)
         // Memory M1.wire: 요청사항 분류 (관찰만, 발화 X)
@@ -1005,7 +1050,11 @@ class OnTheWayService : AccessibilityService() {
             val customerReq = BaeminParser.parseCustomerRequest(texts)
             if (customerReq != null) {
                 lastCustomerRequest = customerReq
-                OtwFileLogger.log("CustomerRequest", "감지: \"$customerReq\"")
+                // Fix M1.wire-fix: raw 원문 제거, hash만 로깅
+                val reqHash = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest((customerReq + "otw").toByteArray()).take(8)
+                    .joinToString("") { "%02x".format(it) }
+                OtwFileLogger.log("CustomerRequest", "감지: hash=$reqHash len=${customerReq.length}")
             }
             reqClassification = BaeminParser.classifyRequest(texts)
         } else if (pkg == PKG_COUPANG) {
@@ -1306,7 +1355,8 @@ class OnTheWayService : AccessibilityService() {
     }
 
     /** 개별 콜 처리 (TTS + 로그 + 진동 등) */
-    private fun processDeliveryCall(pending: PendingCall, now: Long) {
+    @androidx.annotation.VisibleForTesting(otherwise = androidx.annotation.VisibleForTesting.PRIVATE)
+    internal fun processDeliveryCall(pending: PendingCall, now: Long) {
         PerfTrace.mark(if (pending.call.platform == "coupang") "COUPANG" else "BAEMIN", "tts_start")
         val call = pending.call
         val enrichedCall = pending.enrichedCall
@@ -1314,6 +1364,35 @@ class OnTheWayService : AccessibilityService() {
         val baeminPoint = pending.baeminPoint
         val pickupDistKm = pending.pickupDistKm
         val platformName = call.platform
+
+        // Core Pipeline Phase 1: RawEvent + ParsedEvent (A11Y path)
+        val a11yRawEvent = com.vita.ontheway.core.RawEvent(
+            sourceType = "accessibility", platformGuess = call.platform,
+            packageName = if (call.platform == "coupang") "com.coupang.mobile.eats.courier" else "com.woowahan.bros",
+            sourceTimestamp = now,
+            payloadHash = call.rawText.hashCode(),
+            payloadText = call.rawText.take(200),
+            truncated = call.rawText.length > 200
+        )
+        try { com.vita.ontheway.core.CorePipeline.recordRawEvent(this, a11yRawEvent) } catch (_: Exception) {}
+        val parserName = if (call.platform == "coupang") "CoupangParser" else "BaeminParser"
+        try { com.vita.ontheway.core.CorePipeline.recordParsedEvent(this,
+            com.vita.ontheway.core.ParsedEvent.fromDeliveryCall(a11yRawEvent.rawEventId, parserName, call)
+        ) } catch (_: Exception) {}
+
+        // v4: Cross-source dedup — NLS에서 이미 처리된 콜이면 A11Y 경로 전체 차단
+        if (CrossSourceCallDetectionDedup.isProcessed(
+                orderId = call.orderId, platform = call.platform,
+                price = call.price, storeName = call.storeName,
+                source = CrossSourceCallDetectionDedup.SOURCE_A11Y)) {
+            Log.d("DeliveryFilter", "CrossSourceDedup A11Y suppress: ${call.platform} ${call.price}원")
+            OtwFileLogger.log("DeliveryFilter", "CrossSourceDedup A11Y suppress: ${call.platform} ${call.price}원 store=${call.storeName}")
+            DropReason.recordDrop(DropReason.DROP_DUPLICATE, "cross_source_a11y_suppress ${call.platform}_${call.price}")
+            try { com.vita.ontheway.core.CorePipeline.recordTtsDecision(this,
+                com.vita.ontheway.core.TtsDecisionLog(rawEventId = a11yRawEvent.rawEventId,
+                    platform = call.platform, decision = "suppress", reason = "cross_source_dedup")) } catch (_: Exception) {}
+            return
+        }
 
         // v3.20: 묶음 suppression 조기 체크 (TTS 큐잉 전)
         val sessId = sessionManager?.getCurrentOrLastSessionId()
@@ -1417,7 +1496,7 @@ class OnTheWayService : AccessibilityService() {
             storeName = call.storeName,
             source = CrossSourceCallDetectionDedup.SOURCE_A11Y)
         lastDeliveryReason = result.reason
-        lastDeliverySessionId = callSessionEvt?.eventId
+        // Fix A1-lite: lastDeliverySessionId → ACCEPT 브랜치로 이동 (REJECT/HOLD 시 갱신 X)
 
         // Ledger: CALL_DETECTED + JUDGMENT_ISSUED
         val csId: String? = try {
@@ -1518,14 +1597,11 @@ class OnTheWayService : AccessibilityService() {
         }
 
         // 내부 verdict (데이터/JudgmentMatch용 — 사용자에게는 노출 X)
+        // Fix A1-lite: REJECT/HOLD → lastDeliveryCall/lastDeliveryCallAt/lastDeliverySessionId 갱신 X
         if (result.verdict == CallFilter.Verdict.REJECT) {
-            lastDeliveryCall = call
-            lastDeliveryCallAt = System.currentTimeMillis()
             lastDeliveryVerdict = "주의"
             lastDeliveryPlatform = platformName
         } else if (result.verdict == CallFilter.Verdict.HOLD) {
-            lastDeliveryCall = call
-            lastDeliveryCallAt = System.currentTimeMillis()
             lastDeliveryVerdict = "보류"
             lastDeliveryPlatform = platformName
         } else {
@@ -1543,6 +1619,7 @@ class OnTheWayService : AccessibilityService() {
             lastDeliveryCallAt = System.currentTimeMillis()
             lastDeliveryPlatform = platformName
             lastDeliveryVerdict = if (isTopAccept) "우세" else "보통"
+            lastDeliverySessionId = callSessionEvt?.eventId
         }
 
         // ── TTS 3단계 판정 (중복 방지) — TTS만 스킵, 오버레이/DB/로그는 항상 실행 ──
@@ -1579,6 +1656,22 @@ class OnTheWayService : AccessibilityService() {
 
         // 오버레이 카드 클릭 피드백용 콜 정보 저장
         CardOverlay.setLastCall(call.platform, call.price)
+        // HUD v0.1: 지속형 Context HUD 업데이트
+        CardOverlay.showHud(this, call.platform, call.price, enrichedCall.pickupDistanceKm)
+
+        // Core Pipeline Phase 1: TtsDecisionLog (A11Y path)
+        try { com.vita.ontheway.core.CorePipeline.recordTtsDecision(this,
+            com.vita.ontheway.core.TtsDecisionLog(
+                rawEventId = a11yRawEvent.rawEventId,
+                platform = call.platform,
+                decision = if (shouldSpeak && evidenceMsg != null) "speak" else "suppress",
+                reason = when {
+                    !shouldSpeak -> "tts_dedup"
+                    evidenceMsg == null -> "no_evidence"
+                    else -> "first_seen"
+                },
+                messagePreview = evidenceMsg?.take(50)
+            )) } catch (_: Exception) {}
 
         // OutputController 통합 (TTS + Overlay)
         OutputController.emit(
@@ -1762,6 +1855,36 @@ class OnTheWayService : AccessibilityService() {
         }
         tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "filter_${System.currentTimeMillis()}")
         PerfTrace.mark("TTS", "tts_spoken")
+    }
+
+    // ── Repeat Critical v0.1: 조리완료 TTS ──
+    private val cookingDoneRegex = Regex("조리\\s*완료")
+    private val cookingExcludeRegex = Regex("\\d+분\\s*(뒤|후)\\s*조리\\s*완료")
+
+    /** Case A: 수락 시점에 이미 COOKING_DONE */
+    private fun tryCookingDoneTts(call: DeliveryCall, platform: String) {
+        if (call.cookingStatus != "COOKING_DONE") return
+        if (call.storeName.isEmpty()) return
+        val key = CookingStatusTracker.dedupeKey(platform, lastDeliverySessionId, call.storeName, call.price)
+        if (!CookingStatusTracker.tryMarkSpoken(key)) return
+        val msg = "${call.storeName} 조리 완료"
+        OutputController.emitStatusAlert(this, msg, msg, tts, ttsReady)
+        OtwFileLogger.log("RepeatCritical", "REPEAT_CRITICAL_COOKING_DONE_SPOKEN: " +
+            "store_hash=${DeliveryFlowManager.hashText(call.storeName)} key_hash=${DeliveryFlowManager.hashText(key)}")
+    }
+
+    /** Case B: IN_PROGRESS 화면에서 조리완료 감지 */
+    private fun tryCookingDoneFromRaw(joined: String, platform: String) {
+        if (!cookingDoneRegex.containsMatchIn(joined)) return
+        if (cookingExcludeRegex.containsMatchIn(joined) || joined.contains("조리중")) return
+        val call = lastDeliveryCall ?: return
+        if (call.storeName.isEmpty()) return
+        val key = CookingStatusTracker.dedupeKey(platform, lastDeliverySessionId, call.storeName, call.price)
+        if (!CookingStatusTracker.tryMarkSpoken(key)) return
+        val msg = "${call.storeName} 조리 완료"
+        OutputController.emitStatusAlert(this, msg, msg, tts, ttsReady)
+        OtwFileLogger.log("RepeatCritical", "REPEAT_CRITICAL_COOKING_DONE_SPOKEN: " +
+            "store_hash=${DeliveryFlowManager.hashText(call.storeName)} key_hash=${DeliveryFlowManager.hashText(key)}")
     }
 
     /** v3.1: 금액 읽기 방식 (한국어 / 숫자) */
@@ -2173,6 +2296,9 @@ class OnTheWayService : AccessibilityService() {
         try { locationManager?.removeUpdates(locationListener) } catch (e: Exception) {}
         gpsActive = false
         try { CardOverlay.hide() } catch (e: Exception) {}
+        // F1.h3 v2: probe scheduler 안전 취소 + instance null
+        try { A11yProbeScheduler.cancelAll() } catch (_: Exception) {}
+        instance = null
         BaeminBundleSession.reset()
         bundleTimeoutRunnable?.let { debounceHandler.removeCallbacks(it) }
         DeliveryFlowManager.clearState()

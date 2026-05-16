@@ -142,6 +142,20 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // v3.8: 오염 데이터 정리 마이그레이션
         FilterLog.migrateV38Cleanup(this)
 
+        // v70.11.2: ledger → accepted_at backfill (1회 마이그레이션)
+        try { CallLogDb.get(this).backfillAcceptedAt() } catch (_: Exception) {}
+
+        // Fix W+++: accept_state legacy backfill (1회)
+        val prefs = getSharedPreferences("ontheway", MODE_PRIVATE)
+        if (!prefs.getBoolean("accept_state_backfill_v1_done", false)) {
+            Thread {
+                try {
+                    CallLogDb.get(this).backfillAcceptStateFromLedger()
+                    prefs.edit().putBoolean("accept_state_backfill_v1_done", true).apply()
+                } catch (_: Exception) {}
+            }.start()
+        }
+
         window.statusBarColor = C_BG
         window.navigationBarColor = C_BG
 
@@ -1169,7 +1183,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             addSection("픽업", detailPickupLabel)
             if (dist > 0) {
                 val totalKm = pickupKm + dist
-                addSection("총거리", "${"%.1f".format(totalKm)}km (${nf.format((price / totalKm).toInt())}원/km)")
+                val totalUp = PlatformDistancePolicy.unitPrice(price, platformCode, dist, pickupKm, bundleCount)
+                addSection("총거리", "${"%.1f".format(totalKm)}km (${nf.format(if (totalUp > 0) totalUp else (price / totalKm).toInt())}원/km)")
             }
         }
 

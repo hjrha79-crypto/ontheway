@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="screenFilterLogging" value="true" />
+    <boolean name="personalPreset" value="true" />
+    <string name="ttsPreset">ULTRA</string>
+    <boolean name="baeminDiagnosticLogging" value="true" />
+    <boolean name="aiAssistEnabled" value="true" />
+    <boolean name="coupangDiagnosticLogging" value="true" />
+    <boolean name="overlayEnabled" value="true" />
+    <boolean name="showAcceptFeedback" value="false" />
+    <boolean name="showChatTab" value="false" />
+    <boolean name="connectivityTTS" value="true" />
+    <boolean name="proximityTTS" value="true" />
+    <boolean name="baeminDistanceAutoTap" value="true" />
+    <boolean name="backgroundCapture" value="true" />
+    <boolean name="devMode" value="true" />
+    <boolean name="ttsLevelToggle" value="false" />
+    <boolean name="acceptLoggerEnabled" value="true" />
+    <boolean name="feedbackSystemEnabled" value="true" />
+    <boolean name="hourlyWageDisplay" value="true" />
+    <boolean name="regionHeatmap" value="true" />
+</map>

@@ -92,6 +92,7 @@ object TtsMessageBuilder {
         return when (result.verdict) {
             CallFilter.Verdict.ACCEPT -> "우세"
             CallFilter.Verdict.REJECT -> "주의"
+            CallFilter.Verdict.HOLD -> "보통"
         }
     }
 }

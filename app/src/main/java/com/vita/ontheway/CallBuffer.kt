@@ -18,8 +18,8 @@ object CallBuffer {
         fun unitPrice(): Int {
             val d = distanceKm ?: return -1
             if (d <= 0) return -1
-            val totalKm = (pickupKm ?: 0.0) + d
-            return if (totalKm > 0) (price / totalKm).toInt() else -1
+            val up = PlatformDistancePolicy.unitPrice(price, platform, distanceKm, pickupKm)
+            return if (up > 0) up else -1
         }
     }
 

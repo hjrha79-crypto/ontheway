@@ -30,12 +30,20 @@ object PickupDistanceResolver {
         VALIDATION_REJECTED
     }
 
+    /** Fix IT-1: low-trust source 목록 (fallback overwrite 허용 대상) */
+    val LOW_TRUST_SOURCES = setOf("fallback", "fallback_location_table", "estimated", "")
+    const val HIGH_TRUST_THRESHOLD = 0.8
+
     sealed class Result {
         data class Success(
             val km: Double,
             val source: String,
             val confidence: Double
-        ) : Result()
+        ) : Result() {
+            /** Fix IT-1: high-trust (API/cache) 여부 */
+            fun isHighTrust(): Boolean = confidence >= HIGH_TRUST_THRESHOLD &&
+                source !in LOW_TRUST_SOURCES
+        }
 
         data class Pending(val reason: PendingReason) : Result()
 

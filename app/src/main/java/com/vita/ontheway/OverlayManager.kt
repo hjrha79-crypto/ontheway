@@ -94,13 +94,13 @@ object OverlayManager {
             val step2 = view.findViewById<View>(R.id.overlay_step2)
 
             view.findViewById<View>(R.id.overlay_accept).setOnClickListener {
-                updateDriverAction(context, "simulated_accept")
+                updateShadowVerdict(context, "user_accept")
                 Toast.makeText(context, "수락 기록", Toast.LENGTH_SHORT).show()
                 hide()
             }
 
             view.findViewById<View>(R.id.overlay_reject).setOnClickListener {
-                updateDriverAction(context, "simulated_reject")
+                updateShadowVerdict(context, "user_reject")
                 step1.visibility = View.GONE
                 step2.visibility = View.VISIBLE
                 handler.removeCallbacks(hideRunnable) // 사용자 입력 시간 확보
@@ -196,15 +196,15 @@ object OverlayManager {
         }
     }
 
-    private fun updateDriverAction(context: Context, action: String) {
+    private fun updateShadowVerdict(context: Context, verdict: String) {
         val service = OnTheWayService.instance ?: return
         val call = service.lastDeliveryCall ?: return
 
         try {
-            CallLogDb.get(context).updateDriverAction(call.price, call.platform, action)
-            Log.d("OverlayV1", "driver_action 덮어쓰기: ${call.platform} ${call.price}원 → $action")
+            CallLogDb.get(context).updateShadowVerdict(call.price, call.platform, verdict)
+            Log.d("OverlayV1", "shadow_verdict 덮어쓰기: ${call.platform} ${call.price}원 → $verdict")
         } catch (e: Exception) {
-            Log.e("OverlayV1", "driver_action 덮어쓰기 실패", e)
+            Log.e("OverlayV1", "shadow_verdict 덮어쓰기 실패", e)
         }
     }
 
@@ -235,7 +235,7 @@ object OverlayManager {
                 sessionId = sessionId,
                 feedback = feedback,
                 reasons = reasonsList,
-                driverAction = "simulated_reject"
+                driverAction = "user_reject"
             )
             Toast.makeText(context, "거절 기록", Toast.LENGTH_SHORT).show()
             Log.d("OverlayV1", "거절 저장: feedback=$feedback reasons=$reasonsList")

@@ -1,0 +1,4 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="sessions">[{&quot;sessionId&quot;:&quot;00d30d83-94bd-4be7-ad80-6aa797bd8668&quot;,&quot;startedAt&quot;:1777515666929,&quot;startLocation&quot;:&quot;&quot;,&quot;firstCallAt&quot;:1778556952318,&quot;firstCallPrice&quot;:4500,&quot;firstAcceptedCallAt&quot;:-1,&quot;acceptedCallId&quot;:&quot;&quot;,&quot;acceptedCallPrice&quot;:-1,&quot;acceptedCallDistance&quot;:-1,&quot;acceptedCallDirection&quot;:-1,&quot;isUrgentAccepted&quot;:false,&quot;endedAt&quot;:-1,&quot;endLocation&quot;:&quot;&quot;,&quot;totalEarnedWon&quot;:0,&quot;totalMovedDistanceKm&quot;:0,&quot;idleMinutes&quot;:0,&quot;callsReceived&quot;:1775,&quot;callsRejected&quot;:0,&quot;callsTimeout&quot;:0,&quot;recommendationSessionId&quot;:&quot;&quot;,&quot;status&quot;:&quot;searching&quot;}]</string>
+</map>

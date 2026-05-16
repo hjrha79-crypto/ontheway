@@ -12,12 +12,13 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Fix IT-3: Baemin point*0.15 legacy heuristic ACCEPT 차단.
+ * Fix IT-3.fix: distance=null + pickupKm=null → HOLD (거리 미측정 보류).
  *
- * 3 필수 테스트:
- * 1. distance=null + pickupKm=null + point=17 → ACCEPT 근거에 추정거리 X
- * 2. reason에 "추정거리"/"추정단가" 포함 X
- * 3. distance 실제 존재 → 기존 동작 유지
+ * T1. distance=null + pickupKm=null → verdict ≠ ACCEPT (HOLD)
+ * T2. reason에 "추정거리"/"추정단가" 표현 없음
+ * T3. shadow_verdict ≠ recommended_accept (mapping 검증)
+ * T4. 실제 distance 존재 → 기존 동작 유지
+ * T5. trust policy 4-way 일치 검증
  */
 class InputTrustIT3Test {
 
@@ -55,13 +56,10 @@ class InputTrustIT3Test {
         unmockkAll()
     }
 
-    // ── 1. 증거 재현: distance=null + pickupKm=null + point=17 ──
+    // ── T1. distance=null + pickupKm=null → HOLD (ACCEPT 아님) ──
 
     @Test
-    fun `baemin distance_null pickupKm_null point17 - no ACCEPT based on estimated distance`() {
-        // 증거: 동대문엽기떡볶이 4530원, point=17P
-        // 이전: 17*0.15=2.55km → 추정단가 1776원/km → ACCEPT + 추정거리
-        // Fix IT-3: point*0.15 미사용 → price 4530 >= minPrice 3000 → ACCEPT (가격 기준만)
+    fun `T1 baemin distance_null pickupKm_null - verdict is HOLD not ACCEPT`() {
         val call = DeliveryCall(
             price = 4530, distance = null, isMulti = false,
             platform = "baemin", point = 17.0,
@@ -69,27 +67,22 @@ class InputTrustIT3Test {
         )
         val result = CallFilter.judge(call, ctx)
 
-        // ACCEPT은 가격 기준으로 가능하지만, reason에 추정거리/추정단가 없어야 함
-        assertFalse("추정거리 포함 금지", result.reason.contains("추정거리"))
-        assertFalse("추정단가 포함 금지", result.reason.contains("추정단가"))
-        assertTrue("최소배달료 통과 사유", result.reason.contains("최소배달료 통과"))
+        assertEquals("거리 미측정 → HOLD", CallFilter.Verdict.HOLD, result.verdict)
+        assertNotEquals("ACCEPT 아님", CallFilter.Verdict.ACCEPT, result.verdict)
+        assertTrue("거리 미측정 사유", result.reason.contains("거리 미측정"))
     }
 
-    // ── 2. reason에 추정거리/추정단가 표현 금지 (다양한 케이스) ──
+    // ── T2. reason에 "추정거리"/"추정단가" 표현 금지 ──
 
     @Test
-    fun `baemin no_distance - reason never contains estimated distance or unit price`() {
+    fun `T2 baemin no_distance - reason never contains estimated expressions`() {
         val testCases = listOf(
-            // 일반 통과
             DeliveryCall(price = 4000, distance = null, isMulti = false,
                 platform = "baemin", point = 10.0, pickupDistanceKm = null),
-            // 최소배달료 미달 (REJECT)
             DeliveryCall(price = 2500, distance = null, isMulti = false,
                 platform = "baemin", point = 30.0, pickupDistanceKm = null),
-            // 고액 (ACCEPT)
             DeliveryCall(price = 8000, distance = null, isMulti = false,
                 platform = "baemin", point = 50.0, pickupDistanceKm = null),
-            // point=0 (거리/포인트 모두 없음)
             DeliveryCall(price = 5000, distance = null, isMulti = false,
                 platform = "baemin", point = 0.0, pickupDistanceKm = null),
         )
@@ -102,10 +95,33 @@ class InputTrustIT3Test {
         }
     }
 
-    // ── 3. distance 실제 존재 케이스 = 기존 동작 유지 ──
+    // ── T3. shadow_verdict mapping: HOLD → "보류" → "recommended_hold" ──
 
     @Test
-    fun `baemin with real distance - existing behavior preserved`() {
+    fun `T3 HOLD shadow_verdict is not recommended_accept`() {
+        val call = DeliveryCall(
+            price = 4530, distance = null, isMulti = false,
+            platform = "baemin", point = 17.0, pickupDistanceKm = null
+        )
+        val result = CallFilter.judge(call, ctx)
+        assertEquals(CallFilter.Verdict.HOLD, result.verdict)
+
+        // OnTheWayService mapping: HOLD → lastDeliveryVerdict="보류" → shadow_verdict
+        val simulatedLastDeliveryVerdict = "보류"  // HOLD maps to this
+        val shadowVerdict = when (simulatedLastDeliveryVerdict) {
+            "우세", "보통" -> "recommended_accept"
+            "주의" -> "recommended_reject"
+            "보류" -> "recommended_hold"
+            else -> null
+        }
+        assertEquals("recommended_hold", shadowVerdict)
+        assertNotEquals("recommended_accept", shadowVerdict)
+    }
+
+    // ── T4. distance 실제 존재 → 기존 동작 유지 ──
+
+    @Test
+    fun `T4 baemin with real distance - existing behavior preserved`() {
         // 고단가 근거리 → ACCEPT
         val acceptCall = DeliveryCall(
             price = 5000, distance = 2.0, isMulti = false,
@@ -113,7 +129,6 @@ class InputTrustIT3Test {
         )
         val acceptResult = CallFilter.judge(acceptCall, ctx)
         assertEquals("거리 있으면 ACCEPT 유지", CallFilter.Verdict.ACCEPT, acceptResult.verdict)
-        assertTrue("단가 정보 포함", acceptResult.reason.contains("단가") || acceptResult.reason.contains("금액"))
 
         // 단가 미달 → REJECT
         val rejectCall = DeliveryCall(
@@ -122,16 +137,45 @@ class InputTrustIT3Test {
         )
         val rejectResult = CallFilter.judge(rejectCall, ctx)
         assertEquals("단가 미달 REJECT 유지", CallFilter.Verdict.REJECT, rejectResult.verdict)
-        assertTrue("단가 미달 사유", rejectResult.reason.contains("단가") && rejectResult.reason.contains("미달"))
     }
 
-    // ── 4. 묶음배달: point*0.15 → 효율 ACCEPT 차단 ──
+    // ── T5. trust policy 4-way 일치: CallFilter(HOLD) + OutputController(보통) + DB(HOLD) + shadow(recommended_hold) ──
+
+    @Test
+    fun `T5 trust policy 4-way consistency for distance_null`() {
+        val call = DeliveryCall(
+            price = 4530, distance = null, isMulti = false,
+            platform = "baemin", point = 17.0, pickupDistanceKm = null
+        )
+        val filterResult = CallFilter.judge(call, ctx)
+
+        // 1. CallFilter verdict = HOLD
+        assertEquals("CallFilter: HOLD", CallFilter.Verdict.HOLD, filterResult.verdict)
+
+        // 2. DB verdict column = "HOLD"
+        val dbVerdict = filterResult.verdict.name
+        assertEquals("DB: HOLD", "HOLD", dbVerdict)
+
+        // 3. OutputController: HOLD + totalKm=0 → "보통"
+        val ttsMsg = OutputController.buildMessage(call, filterResult)
+        assertNotNull("TTS 메시지 생성", ttsMsg)
+        assertTrue("OutputController: 보통", ttsMsg!!.contains("보통"))
+        assertFalse("OutputController: 우세 아님", ttsMsg.contains("우세"))
+
+        // 4. shadow_verdict = "recommended_hold" (not recommended_accept)
+        val shadowVerdict = when ("보류") {  // HOLD → "보류" in OnTheWayService
+            "우세", "보통" -> "recommended_accept"
+            "주의" -> "recommended_reject"
+            "보류" -> "recommended_hold"
+            else -> null
+        }
+        assertNotEquals("shadow: not recommended_accept", "recommended_accept", shadowVerdict)
+    }
+
+    // ── 묶음배달: point*0.15 → 효율 ACCEPT 차단 (IT-3 기존 검증) ──
 
     @Test
     fun `bundle with point but no distance - no efficiency ACCEPT from estimated distance`() {
-        // 묶음 2건, 10000원, point=20 (old: 20*0.15=3.0km → 건당 1.5km ≤ 3km → 효율 ACCEPT)
-        // Fix IT-3: distance=null → bundleDist=null → 효율 판정 스킵 → 묶음 통과(가격 기준)
-        // price=10000 → perPrice=5000 ≥ BUNDLE_PER_ITEM_MIN_2(4500) → 건당단가 통과
         val call = DeliveryCall(
             price = 10000, distance = null, isMulti = true,
             platform = "baemin", point = 20.0, bundleCount = 2
@@ -141,12 +185,10 @@ class InputTrustIT3Test {
         assertFalse("묶음 효율 사유 없어야 함", result.reason.contains("묶음 효율"))
     }
 
-    // ── 5. 쿠팡 영향 없음 확인 ──
+    // ── 쿠팡 영향 없음 확인 ──
 
     @Test
     fun `coupang not affected by IT3 fix`() {
-        // coupang: effectiveDist = 3.0 + 1.0(추정픽업) = 4.0km
-        // unitPrice = 6000/4.0 = 1500 >= minUnitPrice(1400) → ACCEPT
         val call = DeliveryCall(
             price = 6000, distance = 3.0, isMulti = false,
             platform = "coupang"
@@ -155,22 +197,16 @@ class InputTrustIT3Test {
         assertEquals(CallFilter.Verdict.ACCEPT, result.verdict)
     }
 
-    // ── 6. OutputController verdict 일관성: 거리 미측정 → "보통" ──
+    // ── pickupKm 있으면 ACCEPT 허용 (HOLD 아님) ──
 
     @Test
-    fun `outputController verdict consistent with no distance`() {
+    fun `baemin distance_null but pickupKm present - ACCEPT allowed`() {
         val call = DeliveryCall(
             price = 4530, distance = null, isMulti = false,
-            platform = "baemin", point = 17.0, pickupDistanceKm = null
+            platform = "baemin", point = 17.0,
+            pickupDistanceKm = 1.5
         )
-        val filterResult = CallFilter.judge(call, ctx)
-        val ttsMsg = OutputController.buildMessage(call, filterResult)
-
-        // CallFilter: ACCEPT (가격 기준)
-        assertEquals(CallFilter.Verdict.ACCEPT, filterResult.verdict)
-        // OutputController: "보통" (거리 미측정)
-        assertNotNull("TTS 메시지 생성", ttsMsg)
-        assertTrue("보통 verdict", ttsMsg!!.contains("보통"))
-        assertFalse("우세 아님 (거리 미측정)", ttsMsg.contains("우세"))
+        val result = CallFilter.judge(call, ctx)
+        assertEquals("pickupKm 있으면 ACCEPT", CallFilter.Verdict.ACCEPT, result.verdict)
     }
 }

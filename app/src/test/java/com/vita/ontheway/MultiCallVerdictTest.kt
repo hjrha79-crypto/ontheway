@@ -26,15 +26,16 @@ class MultiCallVerdictTest {
     }
 
     @Test
-    fun `멀티 4400원 1_3km = 보통 (강등)`() {
+    fun `멀티 4400원 1_3km = 주의 (건당 단가 + 보정)`() {
+        // Fix D: 쿠팡 effectiveDist = 1.0+1.3=2.3, unitPrice=4400/2.3=1913
+        // multi 보정: 1913*0.5=956 < 1500 → 주의
         val call = DeliveryCall(
             price = 4400, distance = 1.3, isMulti = true,
             platform = "coupang", rawText = ""
         )
         val msg = OutputController.buildMessage(call, acceptResult)
         assertNotNull("메시지가 null이면 안됨", msg)
-        assertTrue("보통 포함: $msg", msg!!.contains("보통"))
-        assertFalse("우세 미포함: $msg", msg.contains("우세"))
+        assertTrue("주의 포함: $msg", msg!!.contains("주의"))
     }
 
     @Test
@@ -49,15 +50,16 @@ class MultiCallVerdictTest {
     }
 
     @Test
-    fun `멀티 8000원 2km = 보통 (고액이어도 멀티 강등)`() {
+    fun `멀티 8000원 2km = 주의 (쿠팡 추정픽업 반영)`() {
+        // Fix D: 쿠팡 effectiveDist = 1.0+2.0=3.0, unitPrice=8000/3.0=2666
+        // multi 보정: 2666*0.5=1333 < 1500 → 주의
         val call = DeliveryCall(
             price = 8000, distance = 2.0, isMulti = true,
             platform = "coupang", rawText = ""
         )
         val msg = OutputController.buildMessage(call, acceptResult)
         assertNotNull("메시지가 null이면 안됨", msg)
-        // 보정단가 = 4000*0.5 = 2000 >= 1500, raw="우세" → 강등 → "보통"
-        assertTrue("보통 포함: $msg", msg!!.contains("보통"))
+        assertTrue("주의 포함: $msg", msg!!.contains("주의"))
     }
 
     @Test

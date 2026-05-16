@@ -1,0 +1,5 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="accept_state_backfill_v1_done" value="true" />
+    <boolean name="migration_v38_cleanup" value="true" />
+</map>

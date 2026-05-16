@@ -19,8 +19,8 @@ class LedgerEventsTest {
     // ── LedgerEventType: 16개 정의 확인 ──
 
     @Test
-    fun `LedgerEventType 28개 정의`() {
-        assertEquals(28, LedgerEventType.entries.size)
+    fun `LedgerEventType 31개 정의`() {
+        assertEquals(31, LedgerEventType.entries.size)
     }
 
     @Test
@@ -40,7 +40,9 @@ class LedgerEventsTest {
             "ACCEPT_UNCONFIRMED", "ACCEPT_REJECTED_FALSE",
             "PICKUP_DISTANCE_LATE_UPDATED",
             "STALE_PENDING_BLOCKED", "ORPHAN_ACCEPT",
-            "REQUEST_CLASSIFIED"
+            "REQUEST_CLASSIFIED",
+            "PENDING_DETECTION", "PENDING_TIMEOUT",
+            "PENDING_SUPERSEDED"
         )
         val actual = LedgerEventType.entries.map { it.name }
         assertEquals(expected, actual)

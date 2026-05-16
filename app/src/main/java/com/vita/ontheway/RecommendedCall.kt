@@ -12,5 +12,7 @@ data class RecommendedCall(
     val distanceKm: Double,
     val score: Int,
     val isUrgent: Boolean = false,
-    val reason: String = ""
+    val reason: String = "",
+    val platform: String = "baemin",
+    val bundleCount: Int = 1
 )

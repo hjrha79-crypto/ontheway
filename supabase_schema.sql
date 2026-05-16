@@ -21,10 +21,16 @@ CREATE TABLE IF NOT EXISTS otw_call_logs (
     tts_suppressed BOOLEAN DEFAULT FALSE,
     source_type TEXT DEFAULT 'unknown',
     parsing_method TEXT DEFAULT 'unknown',
-    driver_action TEXT DEFAULT 'unknown',
+    driver_action TEXT DEFAULT 'no_action',
+    shadow_verdict TEXT,
+    pickup_distance_source TEXT DEFAULT '',
+    vehicle_type TEXT DEFAULT '',
     source_app TEXT DEFAULT 'on_the_way',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Fix BB: vehicle_type per-call (실제 ALTER는 별도 시점 실행)
+-- ALTER TABLE otw_call_logs ADD COLUMN IF NOT EXISTS vehicle_type TEXT DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_otw_call_logs_ts ON otw_call_logs(ts);
 CREATE INDEX IF NOT EXISTS idx_otw_call_logs_platform ON otw_call_logs(platform);

@@ -43,7 +43,10 @@ object LedgerEventsRepository {
     private const val LOG_THRESHOLD_10K = 10_000
     private const val LOG_THRESHOLD_100K = 100_000
     private const val WARN_SIZE_BYTES = 100L * 1024 * 1024  // 100MB
+    private const val SIZE_CHECK_INTERVAL_MS = 30_000L  // 30초 throttle
     private var lastLoggedThreshold = 0
+    @Volatile private var lastSizeCheckMs = 0L
+    @Volatile private var appendCountSinceCheck = 0
 
     /**
      * 이벤트 append (INSERT).
@@ -76,7 +79,14 @@ object LedgerEventsRepository {
             if (rowId == -1L) {
                 Log.w(TAG, "append CONFLICT_IGNORE: ledger_event_id=${event.ledgerEventId}")
             } else {
-                checkSizeThreshold(ctx)
+                // Fix 1: 30초 throttle — sync insert 경로 오염 방지
+                appendCountSinceCheck++
+                val now = System.currentTimeMillis()
+                if (now - lastSizeCheckMs > SIZE_CHECK_INTERVAL_MS || appendCountSinceCheck >= 100) {
+                    lastSizeCheckMs = now
+                    appendCountSinceCheck = 0
+                    checkSizeThreshold(ctx)
+                }
             }
             rowId
         } catch (e: Exception) {
@@ -99,6 +109,26 @@ object LedgerEventsRepository {
     fun getByType(ctx: Context, type: LedgerEventType, sinceWall: Long = 0): List<LedgerEvent> {
         return query(ctx, "event_type = ? AND occurred_at_wall >= ?",
             arrayOf(type.name, sinceWall.toString()))
+    }
+
+    /**
+     * 해당 call_session_id에 수락 이벤트가 존재하는지 확인.
+     * Fix W+: ACCEPT_CONFIRMED + DRIVER_ACCEPTED (legacy 호환) 모두 인식.
+     * AcceptCoordinator 영구 dedup용.
+     */
+    fun hasAcceptedSession(ctx: Context, callSessionId: String): Boolean {
+        return try {
+            val db = LedgerEventsDb.get(ctx).readableDatabase
+            val cursor = db.rawQuery(
+                "SELECT 1 FROM ${LedgerEventsDb.TABLE} WHERE call_session_id = ? " +
+                "AND event_type IN (?, ?) LIMIT 1",
+                arrayOf(callSessionId, LedgerEventType.ACCEPT_CONFIRMED.name, LedgerEventType.DRIVER_ACCEPTED.name)
+            )
+            cursor.use { it.moveToFirst() }
+        } catch (e: Exception) {
+            Log.e(TAG, "hasAcceptedSession 실패: ${e.message}")
+            false
+        }
     }
 
     /** 전체 카운트 */

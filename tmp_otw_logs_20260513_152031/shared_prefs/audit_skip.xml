@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="skip_20260511" value="true" />
+    <boolean name="skip_20260510" value="true" />
+    <boolean name="skip_20260509" value="true" />
+    <boolean name="skip_20260508" value="true" />
+    <boolean name="skip_20260506" value="true" />
+    <boolean name="skip_20260512" value="true" />
+</map>

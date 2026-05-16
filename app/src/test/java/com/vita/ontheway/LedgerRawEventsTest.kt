@@ -127,6 +127,152 @@ class LedgerRawEventsTest {
         assertEquals(0.3, event.identityConfidence, 0.001)
     }
 
+    // ── DiagnosticAccessibility raw payload 구조 검증 ──
+
+    @Test
+    fun `diagnostic accessibility payload 한글 contentDesc 보존`() {
+        val entries = listOf(
+            JSONObject().apply {
+                put("ts", 1778200000000)
+                put("phase", "immediate")
+                put("eventType", "TYPE_WINDOW_STATE_CHANGED")
+                put("pkg", "com.coupang.mobile.eats.courier")
+                put("depth", 3)
+                put("className", "android.widget.TextView")
+                put("text", "6,218원")
+                put("contentDesc", "경기도 광주시 고불로 87 태전 효성해링턴")
+                put("hintText", "")
+                put("viewId", "")
+                put("bounds", "[0,100][540,200]")
+            },
+            JSONObject().apply {
+                put("ts", 1778200000000)
+                put("phase", "immediate")
+                put("eventType", "TYPE_WINDOW_STATE_CHANGED")
+                put("pkg", "com.coupang.mobile.eats.courier")
+                put("depth", 4)
+                put("className", "android.widget.TextView")
+                put("text", "주문 수락")
+                put("contentDesc", "")
+                put("hintText", "")
+                put("viewId", "")
+                put("bounds", "[0,200][540,300]")
+            }
+        )
+
+        val payload = JSONObject().apply {
+            put("package", "com.coupang.mobile.eats.courier")
+            put("source", "diagnostic_tree_walk")
+            put("node_count", entries.size)
+            val nodesArray = org.json.JSONArray()
+            for (entry in entries) nodesArray.put(entry)
+            put("nodes", nodesArray)
+        }
+        val json = payload.toString()
+
+        assertTrue("한글 contentDesc 포함", json.contains("경기도 광주시 고불로"))
+        assertTrue("한글 text 포함", json.contains("6,218원"))
+        assertEquals(2, payload.getInt("node_count"))
+        assertEquals("diagnostic_tree_walk", payload.getString("source"))
+
+        val nodes = payload.getJSONArray("nodes")
+        assertEquals(2, nodes.length())
+        assertEquals("경기도 광주시 고불로 87 태전 효성해링턴",
+            nodes.getJSONObject(0).getString("contentDesc"))
+    }
+
+    @Test
+    fun `diagnostic accessibility payload for baemin 한글 보존`() {
+        val entries = listOf(
+            JSONObject().apply {
+                put("ts", 1778200000000)
+                put("phase", "delayed_100ms")
+                put("eventType", "TYPE_WINDOW_CONTENT_CHANGED")
+                put("pkg", "com.woowahan.bros")
+                put("depth", 2)
+                put("className", "android.view.View")
+                put("text", "")
+                put("contentDesc", "배민배달, 조리완료, 픽업지, 맘스터치 광주역점, 전달지, 경기도 광주시")
+                put("hintText", "")
+                put("viewId", "")
+                put("bounds", "[0,0][1080,500]")
+            }
+        )
+
+        val payload = JSONObject().apply {
+            put("package", "com.woowahan.bros")
+            put("source", "diagnostic_tree_walk")
+            put("node_count", entries.size)
+            val nodesArray = org.json.JSONArray()
+            for (entry in entries) nodesArray.put(entry)
+            put("nodes", nodesArray)
+        }
+
+        val rawJson = LedgerAppender.truncatePayload(payload.toString())
+        assertTrue("truncate 후에도 한글 보존", rawJson.contains("맘스터치 광주역점"))
+
+        val event = LedgerEvent(
+            ledgerEventId = UUID.randomUUID().toString(),
+            eventId = "com.woowahan.bros:diag:1778200000000",
+            platform = "baemin",
+            eventType = LedgerEventType.RAW_ACCESSIBILITY_SEEN,
+            sourceChannel = "accessibility_diagnostic",
+            occurredAtWall = System.currentTimeMillis(),
+            identityConfidence = 0.5,
+            confidence = 1.0,
+            rawPayloadJson = rawJson
+        )
+        assertEquals(LedgerEventType.RAW_ACCESSIBILITY_SEEN, event.eventType)
+        assertEquals("accessibility_diagnostic", event.sourceChannel)
+        assertTrue(event.rawPayloadJson!!.contains("맘스터치"))
+    }
+
+    @Test
+    fun `diagnostic payload 5KB 초과 시 truncate 호출됨`() {
+        val entries = mutableListOf<JSONObject>()
+        // 50개 노드 × 긴 contentDesc = 5KB 초과
+        repeat(50) { i ->
+            entries.add(JSONObject().apply {
+                put("ts", 1778200000000)
+                put("phase", "immediate")
+                put("depth", i)
+                put("contentDesc", "경기도 광주시 고불로 87번길 태전 효성해링턴 플레이스 $i 동 $i 호".repeat(3))
+            })
+        }
+
+        val payload = JSONObject().apply {
+            put("package", "com.coupang.mobile.eats.courier")
+            put("source", "diagnostic_tree_walk")
+            put("node_count", entries.size)
+            val nodesArray = org.json.JSONArray()
+            for (entry in entries) nodesArray.put(entry)
+            put("nodes", nodesArray)
+        }
+
+        val original = payload.toString()
+        assertTrue("원본 > 5KB", original.toByteArray().size > 5 * 1024)
+
+        val rawJson = LedgerAppender.truncatePayload(original)
+        // truncatePayload는 hard truncate 적용 (5KB 이내로 잘림)
+        assertTrue("truncated 결과 존재", rawJson.isNotEmpty())
+        assertTrue("truncated 표시 포함", rawJson.contains("truncated"))
+    }
+
+    @Test
+    fun `diagnostic payload 빈 entries = append 안 됨 (빈 리스트 체크)`() {
+        val entries = emptyList<JSONObject>()
+        // appendDiagnosticAccessibility는 empty check → early return
+        // 여기서는 빈 entries로 payload 만들어도 정상
+        val payload = JSONObject().apply {
+            put("package", "com.coupang.mobile.eats.courier")
+            put("source", "diagnostic_tree_walk")
+            put("node_count", 0)
+            put("nodes", org.json.JSONArray())
+        }
+        assertEquals(0, payload.getInt("node_count"))
+        assertEquals(0, payload.getJSONArray("nodes").length())
+    }
+
     // ── append 실패 시 예외 X (silent) ──
 
     @Test

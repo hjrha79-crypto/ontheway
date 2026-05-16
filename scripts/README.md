@@ -1,44 +1,73 @@
-# OnTheWay DevOps Agent v0
+# OnTheWay Scripts
 
-일일 개발 마감 자동화 스크립트.
-
-## 사용법
+## collect_otw — 디바이스 데이터 회수 + Ledger 분석
 
 ```bash
 # Git Bash 또는 터미널에서
-scripts/devops_daily.sh
+scripts/collect_otw.sh
 
 # Windows CMD에서
-scripts\devops_daily.bat
+scripts\collect_otw.bat
 ```
 
-## 출력 파일
+### 회수 대상
 
 | 파일 | 용도 |
 |------|------|
-| `scripts/output/daily_report.md` | 종합 보고서 (대표가 읽음) |
-| `scripts/output/codex_review_prompt.txt` | Codex 복붙 가능 프롬프트 |
-| `scripts/output/build_result.txt` | 빌드 raw 출력 |
-| `scripts/output/test_result.txt` | 테스트 raw 출력 |
+| `ledger.db` | P0-1 원장 (영구 보존) |
+| `call_logs.db` | 운영 콜 로그 |
+| `diagnostic.db` | 진단 로그 |
+| `prefs/*.xml` | SharedPreferences |
+| `logs/*` | OtwFileLogger 파일 |
 
-## 자동 실행 항목
+### 자동 분석 (ledger_report.md)
 
-1. git status
-2. git log --oneline -10
-3. gradlew test
-4. gradlew assembleDebug
-5. 실패 로그 핵심 추출
-6. APK 생성 여부 + 크기
-7. git diff --stat (변경 파일 + LOC)
-8. 위험 파일 감지 (1000줄+, 테스트 없음, TODO)
-9. Codex prompt 자동 생성
+| 섹션 | 내용 |
+|------|------|
+| 8.1 | Event Type 분포 |
+| 8.2 | DRIVER_ACCEPTED Source 분포 |
+| 8.3 | 거품 검증 (중복 ACCEPT, 매출 정확도) |
+| 8.4 | Lifecycle 분포 |
+| 8.5 | Raw 한글 보존 비율 |
+| 8.6 | ledger.db 사이즈 + 성장 속도 |
+| 8.7 | 정체성 6단계 종합 (GREEN/YELLOW/RED) |
 
-## READ-ONLY MODE
+### 환경 설정
 
-이 스크립트는 **절대로**:
+- **ADB**: `OTW_ADB_PATH` 환경변수 또는 자동 감지
+  - PATH 내 `adb`
+  - `C:\platform-tools\adb.exe` (노트북)
+  - `%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe` (데스크탑)
+- **Python**: `python3` / `python` / `py` 자동 감지
+
+### 출력
+
+```
+scripts/output/otw_2026_05_09_2130/
+├── ledger.db
+├── call_logs.db
+├── diagnostic.db
+├── prefs/
+│   ├── ontheway.xml
+│   ├── earnings_tracker.xml
+│   └── ...
+├── logs/
+│   └── otw_*.txt
+├── ledger_report.md
+└── pull_log.txt
+```
+
+## devops_daily — 일일 빌드/테스트 보고
+
+```bash
+scripts/devops_daily.sh
+scripts\devops_daily.bat
+```
+
+### READ-ONLY MODE
+
+두 스크립트 모두 **절대로**:
 - git commit / push 하지 않음
 - APK 설치하지 않음
 - 코드 수정하지 않음
-- 배포하지 않음
-
-모든 결정 = 대표 수동.
+- 디바이스 데이터 수정/삭제하지 않음

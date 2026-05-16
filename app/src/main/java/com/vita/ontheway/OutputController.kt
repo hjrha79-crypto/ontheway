@@ -54,9 +54,8 @@ object OutputController {
         val price = call.price
         val dist = call.distance
         val distKm = dist ?: 0.0
-        val pickupForUnit = call.pickupDistanceKm ?: 0.0
-        val totalForUnit = pickupForUnit + distKm
-        val unitPrice = if (totalForUnit > 0) (price / totalForUnit).toInt() else 0
+        val unitPrice = PlatformDistancePolicy.unitPrice(
+            price, call.platform, call.distance, call.pickupDistanceKm, call.bundleCount)
         val isMulti = call.isMulti
         val bundleCount = call.bundleCount.coerceAtLeast(if (isMulti) 2 else 1)
         val platform = if (call.platform == "coupang") "쿠팡" else "배민"
@@ -64,9 +63,11 @@ object OutputController {
 
         if (price <= 0) return null
 
-        // ── 묶음 ──
+        // ── 묶음/멀티 ──
         if (isMulti) {
-            return validateMessage("$platform, ${price}원, ${bundleCount}개 묶음, $verdict")
+            val bundleLabel = if (call.rawText.contains("멀티"))
+                "멀티 ${bundleCount}건" else "묶음 ${bundleCount}건"
+            return validateMessage("$platform, $bundleLabel, ${price}원, $verdict")
         }
 
         // ── 단일 (거리 있음 → 단가 표시) ──
@@ -95,7 +96,8 @@ object OutputController {
         val dist = call.distance ?: 0.0
         val pickupKm = call.pickupDistanceKm ?: 0.0
         val totalKm = pickupKm + dist
-        val unitPrice = if (totalKm > 0) (call.price / totalKm).toInt() else 0
+        val unitPrice = PlatformDistancePolicy.unitPrice(
+            call.price, call.platform, call.distance, call.pickupDistanceKm, call.bundleCount)
         val pickupUnknown = call.pickupDistanceKm == null || call.pickupDistanceKm <= 0.0
 
         // 거리 미측정 → 보통 고정 (verdict 보류)
@@ -117,11 +119,11 @@ object OutputController {
             else -> "주의"
         }
 
-        // 멀티콜 보정: 단가 0.5x + 우세 강등
+        // 멀티콜 보정: 우세 강등 + 보정단가 검문
         if (call.isMulti) {
-            val effectiveUnitPrice = ((call.price / totalKm) * 0.5).toInt()
+            val effectiveUnitPrice = (unitPrice * 0.5).toInt()
             OtwFileLogger.log(TAG, "[VERDICT_MULTI] 멀티 보정: " +
-                "원래 단가=${(call.price / totalKm).toInt()} → 보정 $effectiveUnitPrice")
+                "건당 단가=${unitPrice} → 보정 $effectiveUnitPrice")
             // 멀티는 우세/보통 → 보통 강등
             val downgraded = if (raw == "우세") "보통" else raw
             // 보정 단가 < 1500 → 주의
@@ -244,9 +246,8 @@ object OutputController {
      * CallDetailDialog, UserModeActivity 공용.
      */
     fun toEvidenceReason(reason: String, price: Int, call: DeliveryCall?): String {
-        val dist = call?.distance
-        val totalKmEvidence = (call?.pickupDistanceKm ?: 0.0) + (dist ?: 0.0)
-        val unitPrice = if (totalKmEvidence > 0) (price / totalKmEvidence).toInt() else 0
+        val unitPrice = if (call != null) PlatformDistancePolicy.unitPrice(
+            price, call.platform, call.distance, call.pickupDistanceKm, call.bundleCount) else 0
         val isMulti = call?.isMulti == true
         val bundleCount = (call?.bundleCount ?: 1).coerceAtLeast(if (isMulti) 2 else 1)
         val perItem = if (isMulti && bundleCount > 1) price / bundleCount else 0

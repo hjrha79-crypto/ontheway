@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0F0F1A"
+    android:fitsSystemWindows="true">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/route_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Route Mini"
+            android:textSize="24sp"
+            android:textColor="#00F5A0"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/route_end_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:gravity="center"
+            android:text="운영 종료"
+            android:textSize="14sp"
+            android:textColor="#EF233C"
+            android:textStyle="bold"
+            android:paddingLeft="14dp"
+            android:paddingRight="14dp"
+            android:background="@android:color/transparent" />
+    </LinearLayout>
+
+    <!-- Input area (collapsible) -->
+    <LinearLayout
+        android:id="@+id/route_input_area"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp">
+
+        <TextView
+            android:id="@+id/route_input_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="주소를 자유롭게 입력하세요"
+            android:textSize="16sp"
+            android:textColor="#6C757D"
+            android:paddingBottom="8dp" />
+
+        <EditText
+            android:id="@+id/route_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="120dp"
+            android:gravity="top|start"
+            android:inputType="textMultiLine"
+            android:background="#1A1A2E"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:padding="12dp"
+            android:hint="한 줄에 하나씩 주소를 입력하세요&#10;&#10;예시:&#10;고산동 396&#10;오포로909번길 32-7&#10;강남구 삼성동 123-45&#10;강남역"
+            android:textColorHint="#4A4A6A" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:id="@+id/route_extract_btn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="주소 추출"
+                android:textSize="18sp"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:background="#00C9FF"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/route_ocr_btn"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="OCR (P2)"
+                android:textSize="16sp"
+                android:textColor="#6C757D"
+                android:background="#1A1A2E" />
+        </LinearLayout>
+
+        <!-- 복귀지 입력 (선택) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="복귀:"
+                android:textSize="15sp"
+                android:textColor="#6C757D"
+                android:paddingEnd="8dp" />
+
+            <EditText
+                android:id="@+id/route_return_input"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:inputType="text"
+                android:background="#1A1A2E"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:paddingLeft="10dp"
+                android:paddingRight="10dp"
+                android:hint="복귀 주소 (선택)"
+                android:textColorHint="#4A4A6A"
+                android:singleLine="true" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Raw text toggle -->
+    <TextView
+        android:id="@+id/route_raw_toggle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="원문 보기"
+        android:textSize="13sp"
+        android:textColor="#4A4A6A"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp"
+        android:paddingBottom="4dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/route_raw_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:textColor="#4A4A6A"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp"
+        android:paddingBottom="8dp"
+        android:maxLines="5"
+        android:visibility="gone" />
+
+    <!-- Drag 힌트 -->
+    <TextView
+        android:id="@+id/route_drag_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="\u2261 길게 눌러 순서 변경"
+        android:textSize="12sp"
+        android:textColor="#4A4A6A"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="2dp"
+        android:visibility="gone" />
+
+    <!-- Stop list (scrollable, takes remaining space) -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:id="@+id/route_stop_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:paddingBottom="16dp" />
+    </ScrollView>
+
+    <!-- Bottom bar: FIXED at bottom, always visible when route active -->
+    <LinearLayout
+        android:id="@+id/route_bottom_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="12dp"
+        android:gravity="center_vertical"
+        android:background="#0F0F1A"
+        android:elevation="4dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/route_add_stop_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="52dp"
+            android:minWidth="80dp"
+            android:gravity="center"
+            android:text="+ 추가"
+            android:textSize="18sp"
+            android:textColor="#00F5A0"
+            android:textStyle="bold"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp"
+            android:background="#1A1A2E" />
+
+        <TextView
+            android:id="@+id/route_optimize_btn"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="Route 생성"
+            android:textSize="20sp"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:background="#00F5A0"
+            android:layout_marginStart="10dp" />
+    </LinearLayout>
+
+</LinearLayout>

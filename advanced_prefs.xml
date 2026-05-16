@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="earnings_tracking" value="true" />
+    <boolean name="onboarding_shown" value="true" />
+    <string name="driving_total_today_date">2026-05-05</string>
+    <string name="kakao_api_key">ecbb648904aa1b2a199cbeff413a4075</string>
+    <string name="driving_mode">IDLE</string>
+    <long name="driving_total_today_ms" value="375273" />
+    <boolean name="gps_enabled" value="false" />
+</map>

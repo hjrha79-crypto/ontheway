@@ -49,30 +49,29 @@ class CallFilterTest {
     // ---- 배민 단건 단가 체크 ----
 
     @Test
-    fun `배민 단건 거리없음 5030원 29P ACCEPT 가격기준`() {
-        // Fix IT-3: point*0.15 미사용 → 5030 >= 3000(minPrice) → ACCEPT
+    fun `배민 단건 거리없음 5030원 29P HOLD 거리미측정`() {
+        // Fix IT-3.fix: distance=null + pickupKm=null → HOLD (거리 미측정 보류)
         val call = DeliveryCall(
             price = 5030, distance = null, isMulti = false,
             platform = "baemin", point = 29.1
         )
         val result = CallFilter.judge(call, ctx)
-        assertEquals("가격 기준 ACCEPT", CallFilter.Verdict.ACCEPT, result.verdict)
-        assertTrue("최소배달료 통과 사유", result.reason.contains("최소배달료 통과"))
+        assertEquals("거리 미측정 HOLD", CallFilter.Verdict.HOLD, result.verdict)
+        assertTrue("거리 미측정 사유", result.reason.contains("거리 미측정"))
         assertFalse("추정거리 없어야 함", result.reason.contains("추정거리"))
         assertFalse("거리 추정 없어야 함", result.reason.contains("거리 추정"))
         println("PASS: ${result.reason}")
     }
 
     @Test
-    fun `배민 단건 단가 통과 ACCEPT - 4960원 23P`() {
-        // 4,960원 / 23.8P → 추정 3.57km → 단가 1,389원/km > 1,200원
-        // minPrice=2500이므로 금액도 통과
+    fun `배민 단건 거리없음 4960원 23P HOLD 거리미측정`() {
+        // Fix IT-3.fix: distance=null + pickupKm=null → HOLD
         val call = DeliveryCall(
             price = 4960, distance = null, isMulti = false,
             platform = "baemin", point = 23.8
         )
         val result = CallFilter.judge(call, ctx)
-        assertEquals("단가 통과이어야 함", CallFilter.Verdict.ACCEPT, result.verdict)
+        assertEquals("거리 미측정 HOLD", CallFilter.Verdict.HOLD, result.verdict)
         println("PASS: ${result.reason}")
     }
 

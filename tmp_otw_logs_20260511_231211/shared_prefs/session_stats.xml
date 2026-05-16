@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <int name="timeout_count" value="0" />
+    <int name="single_count" value="36" />
+    <int name="finalized_count" value="2" />
+    <string name="last_reset_date">2026-05-11</string>
+    <int name="bundle_count" value="2" />
+    <int name="app_check_count" value="27" />
+</map>

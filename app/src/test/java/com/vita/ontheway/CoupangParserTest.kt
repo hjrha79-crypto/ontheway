@@ -192,4 +192,137 @@ class CoupangParserTest {
         assertEquals("페리카나 오포점", result[0].storeName)
         assertTrue(result[0].isMulti)
     }
+
+    // ── Fix Z: 신규 콜 화면 식별 (주문 수락 카운트다운 패턴) ──
+
+    @Test
+    fun `NEW_CALL - KFC 광주태전점 전체 파싱 성공`() {
+        val texts = listOf(
+            "KFC 광주태전점", "3,952원", "거리할증 포함",
+            "배달거리 3.6km(실제경로)", "주문 수락\n38초", "거절"
+        )
+        val result = CoupangParser.parse(texts)
+        assertTrue("CALL_DETECTED 발생해야 함", result.isNotEmpty())
+        assertEquals("coupang", result[0].platform)
+        assertEquals("accessibility_new_call", result[0].parsingMethod)
+        assertEquals(3952, result[0].price)
+        assertEquals(3.6, result[0].distance!!, 0.01)
+        assertEquals("KFC 광주태전점", result[0].storeName)
+    }
+
+    @Test
+    fun `NEW_CALL - 주문 수락 없으면 신규콜 미감지`() {
+        val texts = listOf(
+            "KFC 광주태전점", "3,952원", "거리할증 포함",
+            "배달거리 3.6km(실제경로)", "거절"
+        )
+        val result = CoupangParser.parseNewCallScreen(texts)
+        assertTrue("주문 수락 없으면 null", result == null)
+    }
+
+    @Test
+    fun `NEW_CALL - 가격 정규식 3,952원 추출`() {
+        val texts = listOf(
+            "KFC 광주태전점", "3,952원", "거리할증 포함",
+            "배달거리 3.6km(실제경로)", "주문 수락\n38초", "거절"
+        )
+        val result = CoupangParser.parseNewCallScreen(texts)
+        assertNotNull(result)
+        assertEquals(3952, result!!.price)
+    }
+
+    @Test
+    fun `NEW_CALL - 거리 정규식 3_6km 추출`() {
+        val texts = listOf(
+            "KFC 광주태전점", "3,952원", "거리할증 포함",
+            "배달거리 3.6km(실제경로)", "주문 수락\n38초", "거절"
+        )
+        val result = CoupangParser.parseNewCallScreen(texts)
+        assertNotNull(result)
+        assertEquals(3.6, result!!.distance!!, 0.01)
+    }
+
+    @Test
+    fun `NEW_CALL - 가게명 KFC 광주태전점 추출`() {
+        val texts = listOf(
+            "KFC 광주태전점", "3,952원", "거리할증 포함",
+            "배달거리 3.6km(실제경로)", "주문 수락\n38초", "거절"
+        )
+        val result = CoupangParser.parseNewCallScreen(texts)
+        assertNotNull(result)
+        assertEquals("KFC 광주태전점", result!!.storeName)
+    }
+
+    @Test
+    fun `NEW_CALL - 카운트다운 8초 짧은 타이머`() {
+        val texts = listOf(
+            "맥도날드 광주점", "4,500원",
+            "배달거리 2.1km(실제경로)", "주문 수락\n8초", "거절"
+        )
+        val result = CoupangParser.parseNewCallScreen(texts)
+        assertNotNull(result)
+        assertEquals(4500, result!!.price)
+        assertEquals(2.1, result.distance!!, 0.01)
+        assertEquals("맥도날드 광주점", result.storeName)
+    }
+
+    @Test
+    fun `NEW_CALL - NON_CALL_KEYWORDS 포함해도 신규콜 우선 감지`() {
+        // 실제 상황: 하단 탭에 "주문 현황" 같은 비콜 텍스트가 함께 수집됨
+        val texts = listOf(
+            "주문 현황", "KFC 광주태전점", "3,952원", "거리할증 포함",
+            "배달거리 3.6km(실제경로)", "주문 수락\n38초", "거절"
+        )
+        val result = CoupangParser.parse(texts)
+        assertTrue("NON_CALL_KEYWORDS 있어도 신규콜 감지", result.isNotEmpty())
+        assertEquals("accessibility_new_call", result[0].parsingMethod)
+    }
+
+    // ── Fix Z v2: 3종 세트 강제 + NODE_PRICE_PATTERN ──
+
+    @Test
+    fun `NEW_CALL_V2 - 카운트다운 + 가격만 (거리 없음) → 신규콜 X`() {
+        val texts = listOf(
+            "KFC 광주태전점", "3,952원", "거리할증 포함",
+            "주문 수락\n38초", "거절"
+        )
+        val result = CoupangParser.parseNewCallScreen(texts)
+        assertTrue("거리 없으면 null (3종 세트 강제)", result == null)
+    }
+
+    @Test
+    fun `NEW_CALL_V2 - NODE_PRICE_PATTERN 단일 노드 매칭`() {
+        val texts = listOf(
+            "모현각", "3,952원",
+            "배달거리 1.6km(실제경로)", "주문 수락\n25초", "거절"
+        )
+        val result = CoupangParser.parseNewCallScreen(texts)
+        assertNotNull(result)
+        assertEquals(3952, result!!.price)
+    }
+
+    @Test
+    fun `NEW_CALL_V2 - 부가 텍스트 포함 노드 → fallback PRICE_PATTERN`() {
+        // "거리할증 포함 3,952원" 은 NODE_PRICE_PATTERN에 안 걸리지만 fallback으로 추출
+        val texts = listOf(
+            "모현각", "거리할증 포함 3,952원",
+            "배달거리 1.6km(실제경로)", "주문 수락\n25초", "거절"
+        )
+        val result = CoupangParser.parseNewCallScreen(texts)
+        assertNotNull(result)
+        assertEquals(3952, result!!.price)
+    }
+
+    @Test
+    fun `NEW_CALL_V2 - KFC 전체 케이스 회귀 없음`() {
+        val texts = listOf(
+            "KFC 광주태전점", "3,952원", "거리할증 포함",
+            "배달거리 3.6km(실제경로)", "주문 수락\n38초", "거절"
+        )
+        val result = CoupangParser.parseNewCallScreen(texts)
+        assertNotNull("3종 세트 모두 있으면 감지", result)
+        assertEquals(3952, result!!.price)
+        assertEquals(3.6, result.distance!!, 0.01)
+        assertEquals("KFC 광주태전점", result.storeName)
+    }
 }

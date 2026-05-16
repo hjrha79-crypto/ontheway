@@ -21,7 +21,17 @@ data class CallSession(
 
     // v3.20: 연결성 분석용 (기록만, TTS/판정/UI 반영 금지)
     var completedAt: Long? = null,
-    var nextCallWaitMs: Long? = null
+    var nextCallWaitMs: Long? = null,
+
+    // v70.9: storeName provenance (5/8 미스터리 검증)
+    var storeNameFirstSource: String? = null,
+    var storeNameLastSource: String? = null,
+    var storeNameChangeCount: Int = 0,
+
+    // v70.9.2: 픽업 거리 추정
+    var pickupDistanceKm: Double? = null,           // 추정 또는 실측
+    var pickupDistanceSource: String? = null,        // "estimated" / "gps_calculated"
+    var totalDistanceKm: Double? = null              // 픽업 + 배달
 ) {
     fun isExpired(now: Long = System.currentTimeMillis()): Boolean {
         return (now - startedAt) > 30_000L  // 30초 timeout

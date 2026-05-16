@@ -126,7 +126,10 @@ object CallDetailDialog {
             val pointKm = BaeminParser.convertPointToKm(point)
             section("거리", "약 ${"%.1f".format(pointKm)}km (${"%.1f".format(point)}P)")
             val pointTotalKm = (if (pickupKm > 0) pickupKm else 0.0) + pointKm
-            if (pointTotalKm > 0) section("단가", "${nf.format((price / pointTotalKm).toInt())}원/km")
+            if (pointTotalKm > 0) {
+                val pointUp = PlatformDistancePolicy.unitPrice(price, platform, pointKm, if (pickupKm > 0) pickupKm else null, bundleCount)
+                if (pointUp > 0) section("단가", "${nf.format(pointUp)}원/km")
+            }
         } else if (dist >= 0) {
             section("거리", "${"%.1f".format(dist)}km")
             if (unitPrice > 0) section("단가", "${nf.format(unitPrice)}원/km")
@@ -136,7 +139,8 @@ object CallDetailDialog {
             section("픽업", "${"%.1f".format(pickupKm)}km")
             if (dist > 0) {
                 val totalKm = pickupKm + dist
-                section("총거리", "${"%.1f".format(totalKm)}km (${nf.format((price / totalKm).toInt())}원/km)")
+                val totalUp = PlatformDistancePolicy.unitPrice(price, platform, dist, pickupKm, bundleCount)
+                section("총거리", "${"%.1f".format(totalKm)}km (${nf.format(if (totalUp > 0) totalUp else (price / totalKm).toInt())}원/km)")
             }
         }
 

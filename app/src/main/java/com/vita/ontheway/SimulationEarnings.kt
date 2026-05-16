@@ -6,7 +6,7 @@ import java.util.concurrent.TimeUnit
 /**
  * 시뮬레이션 시급 계산.
  *
- * 데이터 소스: CallLogDb (driver_action == "simulated_accept")
+ * 데이터 소스: CallLogDb (shadow_verdict == "recommended_accept")
  * 의미: "OnTheWay 추천 100% 따랐다면 시급 얼마"
  */
 object SimulationEarnings {
@@ -32,7 +32,7 @@ object SimulationEarnings {
     }
 
     private fun calcHourlyRate(context: Context, since: Long, until: Long): Int {
-        val rows = CallLogDb.get(context).getSimulatedAcceptCalls(since)
+        val rows = CallLogDb.get(context).getRecommendedAcceptCalls(since)
             .filter { it.ts <= until }
 
         if (rows.size < 2) return 0

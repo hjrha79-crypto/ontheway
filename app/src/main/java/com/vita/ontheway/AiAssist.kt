@@ -31,8 +31,8 @@ object AiAssist {
     fun isAmbiguous(call: DeliveryCall): Boolean {
         val dist = call.distance ?: return false
         if (dist <= 0) return false
-        val totalKm = (call.pickupDistanceKm ?: 0.0) + dist
-        val unitPrice = (call.price / totalKm).toInt()
+        val unitPrice = PlatformDistancePolicy.unitPrice(
+            call.price, call.platform, call.distance, call.pickupDistanceKm, call.bundleCount)
         return unitPrice in 1400..1699
     }
 
@@ -49,8 +49,8 @@ object AiAssist {
 
         val dist = call.distance ?: return
         val pickupKm = call.pickupDistanceKm ?: 0.0
-        val totalKm = pickupKm + dist
-        val unitPrice = (call.price / totalKm).toInt()
+        val unitPrice = PlatformDistancePolicy.unitPrice(
+            call.price, call.platform, call.distance, call.pickupDistanceKm, call.bundleCount)
         val platform = call.platform
         val price = call.price
 

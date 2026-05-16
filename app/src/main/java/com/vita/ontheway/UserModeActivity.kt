@@ -33,6 +33,7 @@ class UserModeActivity : AppCompatActivity() {
     private lateinit var callCountText: TextView
     private lateinit var driveBtn: TextView
     private lateinit var accessibilityBanner: TextView
+    private lateinit var permissionStatus: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private val fmt = NumberFormat.getNumberInstance()
@@ -74,7 +75,8 @@ class UserModeActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(dp(32), 1)
         })
         val logo = TextView(this).apply {
-            text = "OnTheWay"; textSize = 14f; setTextColor(C_SUB)
+            text = "OnTheWay Lite"; textSize = 28f; setTextColor(C_SUB)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, WC, 1f)
         }
@@ -103,28 +105,45 @@ class UserModeActivity : AppCompatActivity() {
         headerRow.addView(settingsBtn)
         container.addView(headerRow)
 
-        // ═══ 2. 시간당 수익 ═══
+        // ═══ 2. 시간당 수익 (Lite 1.0: GONE — false CONFIRMED 영향) ═══
         container.addView(TextView(this).apply {
             text = "시간당 수익"; textSize = 14f; setTextColor(C_SUB)
             gravity = Gravity.CENTER; setPadding(0, dp(32), 0, 0)
+            visibility = View.GONE
         })
 
         hourlyText = TextView(this).apply {
             text = "0원/h"; textSize = 56f; setTextColor(C_SUB); gravity = Gravity.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            visibility = View.GONE
         }
         container.addView(hourlyText)
 
         callCountText = TextView(this).apply {
             textSize = 12f; setTextColor(C_SUB); gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, dp(48))
+            visibility = View.GONE
         }
         container.addView(callCountText)
 
-        // ═══ 3. 접근성 권한 경고 배너 (운행 버튼 위) ═══
+        // ═══ 2b. Lite 안내문 ═══
+        container.addView(TextView(this).apply {
+            text = "AI 운행 비서 준비 완료\n배민/쿠팡 콜을 실시간 음성 안내합니다"
+            textSize = 20f; setTextColor(C_SUB); gravity = Gravity.CENTER
+            setPadding(0, dp(48), 0, dp(48))
+            setLineSpacing(dp(4).toFloat(), 1f)
+        })
+
+        // ═══ 3. 접근성 권한 상태 표시 ═══
+        permissionStatus = TextView(this).apply {
+            textSize = 16f; gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(8))
+        }
+        container.addView(permissionStatus)
+
         accessibilityBanner = TextView(this).apply {
             text = "\u26A0 접근성 권한 필요 - 탭하여 설정"
-            textSize = 13f; setTextColor(Color.parseColor("#856404"))
+            textSize = 14f; setTextColor(Color.parseColor("#856404"))
             background = roundRect(Color.parseColor("#FFF3CD"), 8)
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -138,14 +157,49 @@ class UserModeActivity : AppCompatActivity() {
 
         // ═══ 4. 운행 버튼 ═══
         driveBtn = TextView(this).apply {
-            textSize = 18f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            textSize = 22f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            setPadding(0, dp(20), 0, dp(20))
+            setPadding(0, dp(24), 0, dp(24))
             elevation = dp(4).toFloat()
-            layoutParams = LinearLayout.LayoutParams(MP, dp(64)).apply { bottomMargin = dp(16) }
+            layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(16) }
         }
         driveBtn.setOnClickListener { toggleDrivingMode() }
         container.addView(driveBtn)
+
+        // ═══ 4b. Route 시작 버튼 (★ 베타 핵심 — 강조) ═══
+        val routeBtn = TextView(this).apply {
+            text = "Route 시작\n"
+            textSize = 22f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            setPadding(0, dp(20), 0, dp(12))
+            background = gradientRect(C_BTN_GO_S, C_BTN_GO_E, 16)
+            elevation = dp(4).toFloat()
+            layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(16) }
+        }
+        // 부제목 추가
+        val routeSub = TextView(this).apply {
+            text = "주소 관리 / 자동 경로"
+            textSize = 13f; setTextColor(Color.parseColor("#FFFFFFB3")); gravity = Gravity.CENTER
+        }
+        val routeContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = gradientRect(C_BTN_GO_S, C_BTN_GO_E, 16)
+            elevation = dp(4).toFloat()
+            setPadding(0, dp(20), 0, dp(16))
+            layoutParams = LinearLayout.LayoutParams(MP, WC).apply { bottomMargin = dp(16) }
+        }
+        val routeTitle = TextView(this).apply {
+            text = "Route 시작"
+            textSize = 22f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        routeContainer.addView(routeTitle)
+        routeContainer.addView(routeSub)
+        routeContainer.setOnClickListener {
+            startActivity(Intent(this, RouteModeActivity::class.java))
+        }
+        container.addView(routeContainer)
 
         root.addView(container)
         setContentView(root)
@@ -164,6 +218,11 @@ class UserModeActivity : AppCompatActivity() {
     private fun toggleDrivingMode() {
         val current = DrivingModeManager.getMode(this)
         val newMode = if (current == DrivingMode.DRIVING) DrivingMode.IDLE else DrivingMode.DRIVING
+        if (newMode == DrivingMode.DRIVING && !isAccessibilityEnabled()) {
+            Toast.makeText(this, "접근성 권한이 필요합니다", Toast.LENGTH_SHORT).show()
+            try { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (_: Exception) {}
+            return
+        }
         DrivingModeManager.setMode(this, newMode, "user_toggle_usermode")
         if (newMode == DrivingMode.DRIVING) {
             LocationTracker.startTracking(this)
@@ -190,13 +249,21 @@ class UserModeActivity : AppCompatActivity() {
         })
         callCountText.text = "오늘 ${callCount}콜"
 
-        driveBtn.text = if (isDriving) "운행 중지" else "운행 시작"
+        driveBtn.text = if (isDriving) "AI 동승 중지" else "AI 동승 시작"
         driveBtn.background = if (isDriving)
             gradientRect(C_BTN_ST_S, C_BTN_ST_E, 16)
         else
-            gradientRect(C_BTN_GO_S, C_BTN_GO_E, 16)
+            roundRect(Color.parseColor("#2A2A3E"), 16)
 
-        accessibilityBanner.visibility = if (isAccessibilityEnabled()) View.GONE else View.VISIBLE
+        val permOk = isAccessibilityEnabled()
+        accessibilityBanner.visibility = if (permOk) View.GONE else View.VISIBLE
+        if (permOk) {
+            permissionStatus.text = "\u2713 접근성 연결됨\n\u2713 음성 안내 준비됨"
+            permissionStatus.setTextColor(C_GREEN)
+        } else {
+            permissionStatus.text = "\u26A0 접근성 권한 필요"
+            permissionStatus.setTextColor(Color.parseColor("#EF233C"))
+        }
     }
 
     private fun roundRect(color: Int, radiusDp: Int): GradientDrawable {

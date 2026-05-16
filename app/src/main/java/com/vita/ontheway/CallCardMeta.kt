@@ -55,8 +55,9 @@ object CallCardMetaBuilder {
         // km당 단가 (픽업 + 배달)
         val totalKm = pickupDistanceKm + call.distanceKm
         if (call.price > 0 && totalKm > 0) {
-            val wonPerKm = (call.price / totalKm).toInt()
-            parts.add("km당 ${String.format("%,d", wonPerKm)}원")
+            val wonPerKm = PlatformDistancePolicy.unitPrice(
+                call.price, call.platform, call.distanceKm, pickupDistanceKm, call.bundleCount)
+            if (wonPerKm > 0) parts.add("km당 ${String.format("%,d", wonPerKm)}원")
         }
 
         return parts.take(4).joinToString(" · ")
@@ -89,7 +90,8 @@ object CallCardMetaBuilder {
         // 낮은 효율 (totalKm 기준)
         val totalKm = pickupDistanceKm + call.distanceKm
         if (call.price > 0 && totalKm > 0) {
-            val efficiency = call.price / totalKm
+            val efficiency = PlatformDistancePolicy.unitPrice(
+                call.price, call.platform, call.distanceKm, pickupDistanceKm, call.bundleCount)
             if (efficiency < 800) risks.add("효율 낮음 ⚠")
         }
 

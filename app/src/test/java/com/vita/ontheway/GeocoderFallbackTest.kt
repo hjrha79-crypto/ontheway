@@ -11,26 +11,26 @@ class GeocoderFallbackTest {
     // ── DistanceResult factory 테스트 ──
 
     @Test
-    fun `cache factory confidence = 0_9`() {
+    fun `cache factory confidence = 0_8`() {
         val r = KakaoGeocoder.DistanceResult.cache(3.5)
         assertEquals(3.5, r.km, 0.01)
-        assertEquals("cache", r.source)
-        assertEquals(0.9, r.confidence, 0.01)
+        assertEquals("cache_mem", r.source)
+        assertEquals(0.8, r.confidence, 0.01)
     }
 
     @Test
     fun `fallback factory confidence = 0_1`() {
         val r = KakaoGeocoder.DistanceResult.fallback(3.86)
         assertEquals(3.86, r.km, 0.01)
-        assertEquals("fallback", r.source)
+        assertEquals("fallback_location_table", r.source)
         assertEquals(0.1, r.confidence, 0.01)
     }
 
     @Test
-    fun `api factory confidence = 0_95`() {
+    fun `api factory confidence = 1_0`() {
         val r = KakaoGeocoder.DistanceResult.api(2.1)
-        assertEquals("api", r.source)
-        assertEquals(0.95, r.confidence, 0.01)
+        assertEquals("api_keyword", r.source)
+        assertEquals(1.0, r.confidence, 0.01)
     }
 
     @Test
@@ -50,7 +50,7 @@ class GeocoderFallbackTest {
             distanceSource = KakaoGeocoder.DistanceResult.SOURCE_FALLBACK,
             distanceConfidence = 0.1
         )
-        assertEquals("fallback", enriched.distanceSource)
+        assertEquals(KakaoGeocoder.DistanceResult.SOURCE_FALLBACK, enriched.distanceSource)
         assertEquals(0.1, enriched.distanceConfidence, 0.01)
         assertEquals(5.01, enriched.pickupDistanceKm!!, 0.01)
     }

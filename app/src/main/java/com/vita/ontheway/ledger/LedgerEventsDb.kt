@@ -17,7 +17,7 @@ class LedgerEventsDb(ctx: Context) : SQLiteOpenHelper(ctx, DB_NAME, null, DB_VER
 
     companion object {
         const val DB_NAME = "ledger.db"
-        const val DB_VERSION = 1
+        const val DB_VERSION = 3
         const val TABLE = "ledger_events"
 
         private var instance: LedgerEventsDb? = null
@@ -52,11 +52,33 @@ class LedgerEventsDb(ctx: Context) : SQLiteOpenHelper(ctx, DB_NAME, null, DB_VER
         db.execSQL("CREATE INDEX idx_le_event_id ON $TABLE(event_id)")
         db.execSQL("CREATE INDEX idx_le_type ON $TABLE(event_type)")
         db.execSQL("CREATE INDEX idx_le_wall ON $TABLE(occurred_at_wall)")
+        db.execSQL("CREATE INDEX idx_le_session_type ON $TABLE(call_session_id, event_type)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_le_unique_accept ON $TABLE(call_session_id) WHERE event_type = 'DRIVER_ACCEPTED'")
         Log.d("LedgerEventsDb", "ledger_events 테이블 생성 완료")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
         // append-only: 스키마 변경 시 ALTER TABLE만 허용, DROP 금지
         Log.d("LedgerEventsDb", "onUpgrade: $old → $new")
+        if (old < 2) {
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_le_session_type ON $TABLE(call_session_id, event_type)")
+        }
+        if (old < 3) {
+            // 기존 중복 ACCEPT 정리 후 UNIQUE 제약 추가
+            try {
+                db.execSQL("""
+                    DELETE FROM $TABLE WHERE id NOT IN (
+                        SELECT MIN(id) FROM $TABLE
+                        WHERE event_type = 'DRIVER_ACCEPTED' AND call_session_id IS NOT NULL
+                        GROUP BY call_session_id
+                    ) AND event_type = 'DRIVER_ACCEPTED' AND call_session_id IS NOT NULL
+                """)
+            } catch (_: Exception) {}
+            try {
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_le_unique_accept ON $TABLE(call_session_id) WHERE event_type = 'DRIVER_ACCEPTED'")
+            } catch (e: Exception) {
+                Log.w("LedgerEventsDb", "idx_le_unique_accept 생성 실패 (graceful): ${e.message}")
+            }
+        }
     }
 }
